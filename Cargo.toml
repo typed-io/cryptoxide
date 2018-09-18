@@ -7,6 +7,7 @@ homepage = "https://github.com/typed-io/cryptoxide/"
 repository = "https://github.com/typed-io/cryptoxide/"
 description = "pure implementation of various common modern cryptographic algorithms, WASM compatible"
 keywords = [ "Crypto", "Cryptography", "Sha2", "Sha3", "Blake2", "HMAC", "HKDF", "Curve25519", "Ed25519", "ChaCha", "Poly1305", "ChaChaPoly1305" ]
+category = [ "cryptography" ]
 
 [build-dependencies]
 

@@ -53,6 +53,12 @@ impl Context {
     pub fn finalized_aad(&mut self) {
         pad16(&mut self.mac, self.aad_len);
     }
+
+    /// Add encrypted data to the Poly1305 context
+    pub fn add_encrypted(&mut self, encrypted: &[u8]) {
+        self.mac.input(encrypted);
+        self.data_len += encrypted.len() as u64;
+    }
 }
 
 
@@ -107,8 +113,7 @@ impl ChaCha20Poly1305 {
         assert!(out_tag.len() == 16);
 
         self.context.cipher.process(input, output);
-        self.context.data_len += input.len() as u64;
-        self.context.mac.input(output);
+        self.context.add_encrypted(output);
         self.finished = true;
 
         self.finalize(out_tag);
@@ -125,13 +130,10 @@ impl ChaCha20Poly1305 {
 
         self.finished = true;
 
-        self.context.mac.input(input);
-        self.context.data_len += input.len() as u64;
+        self.context.add_encrypted(input);
 
-        let mut calc_tag =  [0u8; 16];
-
+        let mut calc_tag = [0u8; 16];
         self.finalize(&mut calc_tag);
-
         if fixed_time_eq(&calc_tag, tag) {
             self.context.cipher.process(input, output);
             true

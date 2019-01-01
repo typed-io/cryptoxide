@@ -13,14 +13,54 @@ use mac::Mac;
 use cryptoutil::{write_u64_le};
 use util::fixed_time_eq;
 
+#[derive(Clone, Copy)]
+struct Context {
+    cipher: ChaCha20,
+    mac: Poly1305,
+    aad_len: u64,
+    data_len: u64,
+}
+
+impl Context {
+    /// Create a new ChaCha20Poly1305
+    ///
+    /// * key needs to be 16 or 32 bytes
+    /// * nonce needs to be 8 or 12 bytes
+    pub fn new(key: &[u8], nonce: &[u8]) -> Self {
+        assert!(key.len() == 16 || key.len() == 32);
+        assert!(nonce.len() == 8 || nonce.len() == 12);
+        let mut cipher = ChaCha20::new(key, nonce);
+        let mut mac_key = [0u8; 64];
+        let zero_key = [0u8; 64];
+        cipher.process(&zero_key, &mut mac_key);
+
+        let mac = Poly1305::new(&mac_key[..32]);
+        Context {
+            cipher: cipher,
+            mac: mac,
+            aad_len: 0,
+            data_len: 0,
+        }
+    }
+
+    /// Add Authenticated Data (AAD) in the context
+    pub fn aad(&mut self, aad: &[u8]) {
+        self.aad_len += aad.len() as u64;
+        self.mac.input(aad);
+    }
+
+    /// Finalize the AAD part
+    pub fn finalized_aad(&mut self) {
+        pad16(&mut self.mac, self.aad_len);
+    }
+}
+
+
 /// A ChaCha20+Poly1305 Context
 #[derive(Clone, Copy)]
 pub struct ChaCha20Poly1305 {
-    cipher: ChaCha20,
-    mac: Poly1305,
     finished: bool,
-    aad_len: u64,
-    data_len: u64,
+    context: Context,
 }
 
 fn pad16(mac: &mut Poly1305, len: u64) {
@@ -31,31 +71,30 @@ fn pad16(mac: &mut Poly1305, len: u64) {
     }
 }
 
-
 impl ChaCha20Poly1305 {
     /// Create a new ChaCha20Poly1305
-    /// 
-    /// key needs to be 16 or 32 bytes
-    /// nonce needs to be 8 or 12 bytes
+    ///
+    /// * key needs to be 16 or 32 bytes
+    /// * nonce needs to be 8 or 12 bytes
     pub fn new(key: &[u8], nonce: &[u8], aad: &[u8]) -> ChaCha20Poly1305 {
-        assert!(key.len() == 16 || key.len() == 32);
-        assert!(nonce.len() == 8 || nonce.len() == 12);
-
-        let mut cipher = ChaCha20::new(key, nonce);
-        let mut mac_key = [0u8; 64];
-        let zero_key = [0u8; 64];
-        cipher.process(&zero_key, &mut mac_key);
-
-        let mut mac = Poly1305::new(&mac_key[..32]);
-        mac.input(aad);
-        pad16(&mut mac, aad.len() as u64);
+        let mut context = Context::new(key, nonce);
+        context.aad(aad);
+        context.finalized_aad();
         ChaCha20Poly1305 {
-            cipher: cipher,
-            mac: mac,
+            context: context,
             finished: false,
-            aad_len: aad.len() as u64,
-            data_len: 0,
         }
+    }
+
+    fn finalize(&mut self, out_tag: &mut [u8]) {
+        assert!(out_tag.len() == 16);
+
+        let mut len_buf = [0u8; 16];
+        pad16(&mut self.context.mac, self.context.data_len);
+        write_u64_le(&mut len_buf[0..8], self.context.aad_len);
+        write_u64_le(&mut len_buf[8..16], self.context.data_len);
+        self.context.mac.input(&len_buf);
+        self.context.mac.raw_result(out_tag);
     }
 
     /// Encrypt input buffer to output buffer, and write an authenticated tag to out_tag.
@@ -67,16 +106,12 @@ impl ChaCha20Poly1305 {
         assert!(self.finished == false);
         assert!(out_tag.len() == 16);
 
-        self.cipher.process(input, output);
-        self.data_len += input.len() as u64;
-        self.mac.input(output);
+        self.context.cipher.process(input, output);
+        self.context.data_len += input.len() as u64;
+        self.context.mac.input(output);
         self.finished = true;
-        pad16(&mut self.mac, self.data_len);
-        let mut len_buf = [0u8; 16];
-        write_u64_le(&mut len_buf[0..8], self.aad_len);
-        write_u64_le(&mut len_buf[8..16], self.data_len);
-        self.mac.input(&len_buf);
-        self.mac.raw_result(out_tag);
+
+        self.finalize(out_tag);
     }
 
     /// Decrypt the input to the output buffer
@@ -90,21 +125,15 @@ impl ChaCha20Poly1305 {
 
         self.finished = true;
 
-        self.mac.input(input);
-
-        self.data_len += input.len() as u64;
-
-        pad16(&mut self.mac, self.data_len);
-        let mut len_buf = [0u8; 16];
-
-        write_u64_le(&mut len_buf[0..8], self.aad_len);
-        write_u64_le(&mut len_buf[8..16], self.data_len);
-        self.mac.input(&len_buf);
+        self.context.mac.input(input);
+        self.context.data_len += input.len() as u64;
 
         let mut calc_tag =  [0u8; 16];
-        self.mac.raw_result(&mut calc_tag);
+
+        self.finalize(&mut calc_tag);
+
         if fixed_time_eq(&calc_tag, tag) {
-            self.cipher.process(input, output);
+            self.context.cipher.process(input, output);
             true
         } else {
             false

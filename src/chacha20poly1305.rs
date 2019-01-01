@@ -13,9 +13,10 @@ use mac::Mac;
 use cryptoutil::{write_u64_le};
 use util::fixed_time_eq;
 
+/// A ChaCha20+Poly1305 Context
 #[derive(Clone, Copy)]
 pub struct ChaCha20Poly1305 {
-    cipher  : ChaCha20,
+    cipher: ChaCha20,
     mac: Poly1305,
     finished: bool,
     aad_len: u64,

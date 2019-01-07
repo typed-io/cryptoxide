@@ -136,26 +136,19 @@ impl ChaCha20 {
             32 => b"expand 32-byte k",
             _  => unreachable!(),
         };
+        let a = u32x4(read_u32_le(&constant[0..4]),
+                      read_u32_le(&constant[4..8]),
+                      read_u32_le(&constant[8..12]),
+                      read_u32_le(&constant[12..16]));
+        let b = u32x4(read_u32_le(&key[0..4]),
+                      read_u32_le(&key[4..8]),
+                      read_u32_le(&key[8..12]),
+                      read_u32_le(&key[12..16]));
         ChaChaState {
-            a: u32x4(
-                read_u32_le(&constant[0..4]),
-                read_u32_le(&constant[4..8]),
-                read_u32_le(&constant[8..12]),
-                read_u32_le(&constant[12..16])
-            ),
-            b: u32x4(
-                read_u32_le(&key[0..4]),
-                read_u32_le(&key[4..8]),
-                read_u32_le(&key[8..12]),
-                read_u32_le(&key[12..16])
-            ),
+            a: a,
+            b: b,
             c: if key.len() == 16 {
-                    u32x4(
-                        read_u32_le(&key[0..4]),
-                        read_u32_le(&key[4..8]),
-                        read_u32_le(&key[8..12]),
-                        read_u32_le(&key[12..16])
-                    )
+                    b
                 } else {
                     u32x4(
                         read_u32_le(&key[16..20]),

@@ -13,8 +13,9 @@ use mac::Mac;
 use cryptoutil::{write_u64_le};
 use util::fixed_time_eq;
 
-#[derive(Clone, Copy)]
-struct Context {
+/// Chacha20 Poly1305 incremental context
+#[derive(Clone)]
+pub struct Context {
     cipher: ChaCha20,
     mac: Poly1305,
     aad_len: u64,
@@ -63,7 +64,7 @@ impl Context {
 
 
 /// A ChaCha20+Poly1305 Context
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct ChaCha20Poly1305 {
     finished: bool,
     context: Context,

@@ -29,6 +29,11 @@ pub struct Poly1305 {
     finalized : bool,
 }
 
+#[inline(always)]
+fn mul64(a: u32, b: u32) -> u64 {
+    a as u64 * b as u64
+}
+
 impl Poly1305 {
     /// Create a new `Poly1305` context using the key (32 bytes)
     pub fn new(key: &[u8]) -> Self {
@@ -78,11 +83,11 @@ impl Poly1305 {
         h4 += (read_u32_le(&m[12..16]) >> 8) | hibit;
 
         // h *= r
-        let     d0 = (h0 as u64 * r0 as u64) + (h1 as u64 * s4 as u64) + (h2 as u64 * s3 as u64) + (h3 as u64 * s2 as u64) + (h4 as u64 * s1 as u64);
-        let mut d1 = (h0 as u64 * r1 as u64) + (h1 as u64 * r0 as u64) + (h2 as u64 * s4 as u64) + (h3 as u64 * s3 as u64) + (h4 as u64 * s2 as u64);
-        let mut d2 = (h0 as u64 * r2 as u64) + (h1 as u64 * r1 as u64) + (h2 as u64 * r0 as u64) + (h3 as u64 * s4 as u64) + (h4 as u64 * s3 as u64);
-        let mut d3 = (h0 as u64 * r3 as u64) + (h1 as u64 * r2 as u64) + (h2 as u64 * r1 as u64) + (h3 as u64 * r0 as u64) + (h4 as u64 * s4 as u64);
-        let mut d4 = (h0 as u64 * r4 as u64) + (h1 as u64 * r3 as u64) + (h2 as u64 * r2 as u64) + (h3 as u64 * r1 as u64) + (h4 as u64 * r0 as u64);
+        let     d0 = mul64(h0, r0) + mul64(h1, s4) + mul64(h2, s3) + mul64(h3, s2) + mul64(h4, s1);
+        let mut d1 = mul64(h0, r1) + mul64(h1, r0) + mul64(h2, s4) + mul64(h3, s3) + mul64(h4, s2);
+        let mut d2 = mul64(h0, r2) + mul64(h1, r1) + mul64(h2, r0) + mul64(h3, s4) + mul64(h4, s3);
+        let mut d3 = mul64(h0, r3) + mul64(h1, r2) + mul64(h2, r1) + mul64(h3, r0) + mul64(h4, s4);
+        let mut d4 = mul64(h0, r4) + mul64(h1, r3) + mul64(h2, r2) + mul64(h3, r1) + mul64(h4, r0);
 
         // (partial) h %= p
         let mut c : u32;

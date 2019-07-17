@@ -13,7 +13,7 @@ use mac::Mac;
 use cryptoutil::{write_u64_le};
 use util::fixed_time_eq;
 
-/// Chacha20 Poly1305 incremental context
+/// Chacha20Poly1305 Incremental Context for Authenticated Data (AAD)
 #[derive(Clone)]
 pub struct Context {
     cipher: ChaCha20,
@@ -22,11 +22,29 @@ pub struct Context {
     data_len: u64,
 }
 
+/// ChaCha20Poly1305 Incremental Context for encryption
+#[derive(Clone)]
+pub struct ContextEncryption(Context);
+
+/// ChaCha20Poly1305 Incremental Context for decryption
+#[derive(Clone)]
+pub struct ContextDecryption(Context);
+
+/// ChaCha20Poly1305 Authenticated Tag (128 bits)
+#[derive(Debug, Clone)]
+pub struct Tag(pub [u8;16]);
+
+impl PartialEq for Tag {
+    fn eq(&self, other: &Self) -> bool {
+        fixed_time_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for Tag {
+}
+
 impl Context {
-    /// Create a new ChaCha20Poly1305
-    ///
-    /// * key needs to be 16 or 32 bytes
-    /// * nonce needs to be 8 or 12 bytes
+    /// Create a new context given the key and nonce
     pub fn new(key: &[u8], nonce: &[u8]) -> Self {
         assert!(key.len() == 16 || key.len() == 32);
         assert!(nonce.len() == 8 || nonce.len() == 12);
@@ -44,24 +62,103 @@ impl Context {
         }
     }
 
-    /// Add Authenticated Data (AAD) in the context
-    pub fn aad(&mut self, aad: &[u8]) {
+    fn add_encrypted(&mut self, encrypted: &[u8]) {
+        self.mac.input(encrypted);
+        self.data_len += encrypted.len() as u64;
+    }
+
+    /// Add Authenticated Data to the MAC Context
+    ///
+    /// This can be called multiple times
+    pub fn add_data(&mut self, aad: &[u8]) {
         self.aad_len += aad.len() as u64;
         self.mac.input(aad);
     }
 
-    /// Finalize the AAD part
-    pub fn finalized_aad(&mut self) {
+    /// Finish authenticated part and move to the encryption phase
+    pub fn to_encryption(mut self) -> ContextEncryption {
         pad16(&mut self.mac, self.aad_len);
+        ContextEncryption(self)
     }
 
-    /// Add encrypted data to the Poly1305 context
-    pub fn add_encrypted(&mut self, encrypted: &[u8]) {
-        self.mac.input(encrypted);
-        self.data_len += encrypted.len() as u64;
+    /// Finish authenticated part and move to the decryption phase
+    pub fn to_decryption(mut self) -> ContextDecryption {
+        pad16(&mut self.mac, self.aad_len);
+        ContextDecryption(self)
     }
 }
 
+fn finalize_raw(inner: &mut Context) -> [u8;16] {
+    let mut len_buf = [0u8; 16];
+    pad16(&mut inner.mac, inner.data_len);
+    write_u64_le(&mut len_buf[0..8], inner.aad_len);
+    write_u64_le(&mut len_buf[8..16], inner.data_len);
+    inner.mac.input(&mut len_buf);
+    inner.mac.raw_result(&mut len_buf);
+    len_buf
+}
+
+impl ContextEncryption {
+    /// Encrypt input in place
+    pub fn encrypt_mut(&mut self, buf: &mut [u8]) {
+        self.0.cipher.process_mut(buf);
+        self.0.add_encrypted(buf);
+
+    }
+
+    /// Encrypt the input slice to the output slice
+    ///
+    /// Panics:
+    ///     if input and output are of different size
+    pub fn encrypt(&mut self, input: &[u8], output: &mut [u8]) {
+        assert_eq!(input.len(), output.len());
+        self.0.cipher.process(input, output);
+        self.0.add_encrypted(output);
+    }
+
+    /// Finalize the encryption context and return the tag
+    #[must_use]
+    pub fn finalize(mut self) -> Tag {
+        let tag = finalize_raw(&mut self.0);
+        Tag(tag)
+    }
+}
+
+/// Whether or not, the decryption was succesful related to the expected tag
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DecryptionResult {
+    Match,
+    MisMatch,
+}
+
+impl ContextDecryption {
+    /// Decrypt input in place
+    pub fn decrypt_mut(&mut self, buf: &mut [u8]) {
+        self.0.add_encrypted(buf);
+        self.0.cipher.process_mut(buf);
+    }
+
+    /// Decrypt the input to the output slice
+    ///
+    /// Panics:
+    ///     if input and output are of different size
+    pub fn decrypt(&mut self, input: &[u8], output: &mut [u8]) {
+        assert_eq!(input.len(), output.len());
+        self.0.add_encrypted(input);
+        self.0.cipher.process(input, output);
+    }
+
+    /// Finalize the decryption context and check that the tag match the expected value
+    #[must_use]
+    pub fn finalize(mut self, expected_tag: &Tag) -> DecryptionResult {
+        let got_tag = Tag(finalize_raw(&mut self.0));
+        if &got_tag == expected_tag {
+            DecryptionResult::Match
+        } else {
+            DecryptionResult::MisMatch
+        }
+    }
+}
 
 /// A ChaCha20+Poly1305 Context
 #[derive(Clone)]
@@ -85,23 +182,11 @@ impl ChaCha20Poly1305 {
     /// * nonce needs to be 8 or 12 bytes
     pub fn new(key: &[u8], nonce: &[u8], aad: &[u8]) -> ChaCha20Poly1305 {
         let mut context = Context::new(key, nonce);
-        context.aad(aad);
-        context.finalized_aad();
+        context.add_data(aad);
         ChaCha20Poly1305 {
             context: context,
             finished: false,
         }
-    }
-
-    fn finalize(&mut self, out_tag: &mut [u8]) {
-        assert!(out_tag.len() == 16);
-
-        let mut len_buf = [0u8; 16];
-        pad16(&mut self.context.mac, self.context.data_len);
-        write_u64_le(&mut len_buf[0..8], self.context.aad_len);
-        write_u64_le(&mut len_buf[8..16], self.context.data_len);
-        self.context.mac.input(&len_buf);
-        self.context.mac.raw_result(out_tag);
     }
 
     /// Encrypt input buffer to output buffer, and write an authenticated tag to out_tag.
@@ -113,11 +198,13 @@ impl ChaCha20Poly1305 {
         assert!(self.finished == false);
         assert!(out_tag.len() == 16);
 
-        self.context.cipher.process(input, output);
-        self.context.add_encrypted(output);
         self.finished = true;
 
-        self.finalize(out_tag);
+        let mut ctx = self.context.clone().to_encryption();
+        ctx.encrypt(input, output);
+
+        let Tag(tag) = ctx.finalize();
+        out_tag.copy_from_slice(&tag[..])
     }
 
     /// Decrypt the input to the output buffer
@@ -131,16 +218,13 @@ impl ChaCha20Poly1305 {
 
         self.finished = true;
 
-        self.context.add_encrypted(input);
+        let mut tag_data = [0u8; 16];
+        tag_data.copy_from_slice(tag);
 
-        let mut calc_tag = [0u8; 16];
-        self.finalize(&mut calc_tag);
-        if fixed_time_eq(&calc_tag, tag) {
-            self.context.cipher.process(input, output);
-            true
-        } else {
-            false
-        }
+        let mut ctx = self.context.clone().to_decryption();
+
+        ctx.decrypt(input, output);
+        ctx.finalize(&Tag(tag_data)) == DecryptionResult::Match
     }
 }
 

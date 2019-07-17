@@ -15,7 +15,7 @@ use std::cmp;
 
 use buffer::{BufferResult, RefReadBuffer, RefWriteBuffer};
 use symmetriccipher::{Encryptor, Decryptor, SynchronousStreamCipher, SymmetricCipherError};
-use cryptoutil::{read_u32_le, symm_enc_or_dec, write_u32_le, xor_keystream};
+use cryptoutil::{read_u32_le, symm_enc_or_dec, write_u32_le, xor_keystream, xor_keystream_mut};
 use simd::u32x4;
 
 #[derive(Clone,Copy)]
@@ -245,6 +245,26 @@ impl ChaCha20 {
         }
 
         self.offset = 0;
+    }
+}
+
+impl ChaCha20 {
+    pub fn process_mut(&mut self, data: &mut [u8]) {
+        let len = data.len();
+        let mut i = 0;
+        while i < len {
+            // If there is no keystream available in the output buffer,
+            // generate the next block.
+            if self.offset == 64 {
+                self.update();
+            }
+
+            // Process the min(available keystream, remaining input length).
+            let count = cmp::min(64 - self.offset, len - i);
+            xor_keystream_mut(&mut data[i..i+count], &self.output[self.offset..]);
+            i += count;
+            self.offset += count;
+        }
     }
 }
 

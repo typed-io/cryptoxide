@@ -192,6 +192,18 @@ pub fn xor_keystream(dst: &mut[u8], plaintext: &[u8], keystream: &[u8]) {
     }
 }
 
+/// XOR a keystream in a buffer
+pub fn xor_keystream_mut(buf: &mut [u8], keystream: &[u8]) {
+    assert!(buf.len() <= keystream.len());
+
+    // Do one byte at a time, using unsafe to skip bounds checking.
+    let k = keystream.as_ptr();
+    let d = buf.as_mut_ptr();
+    for i in 0isize..buf.len() as isize {
+        unsafe{ *d.offset(i) = *d.offset(i) ^ *k.offset(i) };
+    }
+}
+
 /// Copy bytes from src to dest
 #[inline]
 pub fn copy_memory(src: &[u8], dst: &mut [u8]) {

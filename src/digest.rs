@@ -24,7 +24,7 @@
 
 use std::iter::repeat;
 
-static CHARS: &'static[u8] = b"0123456789abcdef";
+static CHARS: &'static [u8] = b"0123456789abcdef";
 
 /**
  * The Digest trait specifies an interface common to digest functions, such as SHA-1 and the SHA-2
@@ -90,7 +90,7 @@ pub trait Digest {
     fn result_str(&mut self) -> String {
         //use serialize::hex::ToHex;
 
-        let mut buf: Vec<u8> = repeat(0).take((self.output_bits()+7)/8).collect();
+        let mut buf: Vec<u8> = repeat(0).take((self.output_bits() + 7) / 8).collect();
         self.result(&mut buf);
 
         // inline buf[..].to_hex()
@@ -100,9 +100,6 @@ pub trait Digest {
             v.push(CHARS[(byte & 0xf) as usize]);
         }
 
-        unsafe {
-            String::from_utf8_unchecked(v)
-        }
-
+        unsafe { String::from_utf8_unchecked(v) }
     }
 }

@@ -47,8 +47,8 @@ assert_eq!(hex, "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe2451143153
 
 use std::cmp;
 
+use cryptoutil::{read_u64v_le, write_u64v_le, zero};
 use digest::Digest;
-use cryptoutil::{write_u64v_le, read_u64v_le, zero};
 
 const B: usize = 200;
 const NROUNDS: usize = 24;
@@ -76,21 +76,15 @@ const RC: [u64; 24] = [
     0x8000000080008081,
     0x8000000000008080,
     0x0000000080000001,
-    0x8000000080008008
+    0x8000000080008008,
 ];
 const ROTC: [usize; 24] = [
-    1, 3, 6, 10, 15, 21, 28, 36,
-    45, 55, 2, 14, 27, 41, 56, 8,
-    25, 43, 62, 18, 39, 61, 20, 44
+    1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14, 27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44,
 ];
 const PIL: [usize; 24] = [
-    10, 7, 11, 17, 18, 3, 5, 16,
-    8, 21, 24, 4, 15, 23, 19, 13,
-    12, 2, 20, 14, 22, 9, 6, 1
+    10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1,
 ];
-const M5: [usize; 10] = [
-    0, 1, 2, 3, 4, 0, 1, 2, 3, 4
-];
+const M5: [usize; 10] = [0, 1, 2, 3, 4, 0, 1, 2, 3, 4];
 
 #[inline]
 fn rotl64(v: u64, n: usize) -> u64 {
@@ -144,7 +138,6 @@ fn keccak_f(state: &mut [u8]) {
     write_u64v_le(state, &s);
 }
 
-
 /// SHA-3 Modes.
 #[allow(non_camel_case_types)]
 #[derive(Debug, Copy, Clone)]
@@ -170,7 +163,7 @@ impl Sha3Mode {
             Sha3Mode::Sha3_256 | Sha3Mode::Keccak256 => 32,
             Sha3Mode::Sha3_384 | Sha3Mode::Keccak384 => 48,
             Sha3Mode::Sha3_512 | Sha3Mode::Keccak512 => 64,
-            Sha3Mode::Shake128 | Sha3Mode::Shake256 => 0
+            Sha3Mode::Shake128 | Sha3Mode::Shake256 => 0,
         }
     }
 
@@ -178,15 +171,18 @@ impl Sha3Mode {
     pub fn is_shake(&self) -> bool {
         match *self {
             Sha3Mode::Shake128 | Sha3Mode::Shake256 => true,
-            _ => false
+            _ => false,
         }
     }
 
     /// Return `true` if `mode` is a Keccak mode.
     pub fn is_keccak(&self) -> bool {
         match *self {
-            Sha3Mode::Keccak224 | Sha3Mode::Keccak256 | Sha3Mode::Keccak384 | Sha3Mode::Keccak512 => true,
-            _ => false
+            Sha3Mode::Keccak224
+            | Sha3Mode::Keccak256
+            | Sha3Mode::Keccak384
+            | Sha3Mode::Keccak512 => true,
+            _ => false,
         }
     }
 
@@ -198,19 +194,18 @@ impl Sha3Mode {
             Sha3Mode::Sha3_384 | Sha3Mode::Keccak384 => 96,
             Sha3Mode::Sha3_512 | Sha3Mode::Keccak512 => 128,
             Sha3Mode::Shake128 => 32,
-            Sha3Mode::Shake256 => 64
+            Sha3Mode::Shake256 => 64,
         }
     }
 }
 
-
 pub struct Sha3 {
-    state: [u8; B],  // B bytes
+    state: [u8; B], // B bytes
     mode: Sha3Mode,
     can_absorb: bool,  // Can absorb
-    can_squeeze: bool,  // Can squeeze
-    offset: usize  // Enqueued bytes in state for absorb phase
-                   // Squeeze offset for squeeze phase
+    can_squeeze: bool, // Can squeeze
+    offset: usize,     // Enqueued bytes in state for absorb phase
+                       // Squeeze offset for squeeze phase
 }
 
 impl Sha3 {
@@ -221,7 +216,7 @@ impl Sha3 {
             mode: mode,
             can_absorb: true,
             can_squeeze: true,
-            offset: 0
+            offset: 0,
         }
     }
 
@@ -443,9 +438,7 @@ impl Digest for Sha3 {
     }
 }
 
-impl Copy for Sha3 {
-
-}
+impl Copy for Sha3 {}
 
 impl Clone for Sha3 {
     fn clone(&self) -> Self {

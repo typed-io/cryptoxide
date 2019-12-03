@@ -11,16 +11,16 @@
 // except according to those terms.
 
 use std;
-use std::{io, mem};
 use std::ptr;
+use std::{io, mem};
 
-use buffer::{ReadBuffer, WriteBuffer, BufferResult};
-use buffer::BufferResult::{BufferUnderflow, BufferOverflow};
-use symmetriccipher::{SynchronousStreamCipher, SymmetricCipherError};
+use buffer::BufferResult::{BufferOverflow, BufferUnderflow};
+use buffer::{BufferResult, ReadBuffer, WriteBuffer};
+use symmetriccipher::{SymmetricCipherError, SynchronousStreamCipher};
 
 /// Write a u64 into a vector, which must be 8 bytes long. The value is written in big-endian
 /// format.
-pub fn write_u64_be(dst: &mut[u8], mut input: u64) {
+pub fn write_u64_be(dst: &mut [u8], mut input: u64) {
     assert!(dst.len() == 8);
     input = input.to_be();
     unsafe {
@@ -31,7 +31,7 @@ pub fn write_u64_be(dst: &mut[u8], mut input: u64) {
 
 /// Write a u64 into a vector, which must be 8 bytes long. The value is written in little-endian
 /// format.
-pub fn write_u64_le(dst: &mut[u8], mut input: u64) {
+pub fn write_u64_le(dst: &mut [u8], mut input: u64) {
     assert!(dst.len() == 8);
     input = input.to_le();
     unsafe {
@@ -41,7 +41,7 @@ pub fn write_u64_le(dst: &mut[u8], mut input: u64) {
 }
 
 /// Write a vector of u64s into a vector of bytes. The values are written in little-endian format.
-pub fn write_u64v_le(dst: &mut[u8], input: &[u64]) {
+pub fn write_u64v_le(dst: &mut [u8], input: &[u64]) {
     assert!(dst.len() == 8 * input.len());
     unsafe {
         let mut x: *mut u8 = dst.get_unchecked_mut(0);
@@ -68,7 +68,7 @@ pub fn write_u32_be(dst: &mut [u8], mut input: u32) {
 
 /// Write a u32 into a vector, which must be 4 bytes long. The value is written in little-endian
 /// format.
-pub fn write_u32_le(dst: &mut[u8], mut input: u32) {
+pub fn write_u32_le(dst: &mut [u8], mut input: u32) {
     assert!(dst.len() == 4);
     input = input.to_le();
     unsafe {
@@ -78,7 +78,7 @@ pub fn write_u32_le(dst: &mut[u8], mut input: u32) {
 }
 
 /// Write a vector of u32s into a vector of bytes. The values are written in little-endian format.
-pub fn write_u32v_le (dst: &mut[u8], input: &[u32]) {
+pub fn write_u32v_le(dst: &mut [u8], input: &[u32]) {
     assert!(dst.len() == 4 * input.len());
     unsafe {
         let mut x: *mut u8 = dst.get_unchecked_mut(0);
@@ -93,7 +93,7 @@ pub fn write_u32v_le (dst: &mut[u8], input: &[u32]) {
 }
 
 /// Read a vector of bytes into a vector of u64s. The values are read in big-endian format.
-pub fn read_u64v_be(dst: &mut[u64], input: &[u8]) {
+pub fn read_u64v_be(dst: &mut [u64], input: &[u8]) {
     assert!(dst.len() * 8 == input.len());
     unsafe {
         let mut x: *mut u64 = dst.get_unchecked_mut(0);
@@ -109,7 +109,7 @@ pub fn read_u64v_be(dst: &mut[u64], input: &[u8]) {
 }
 
 /// Read a vector of bytes into a vector of u64s. The values are read in little-endian format.
-pub fn read_u64v_le(dst: &mut[u64], input: &[u8]) {
+pub fn read_u64v_le(dst: &mut [u64], input: &[u8]) {
     assert!(dst.len() * 8 == input.len());
     unsafe {
         let mut x: *mut u64 = dst.get_unchecked_mut(0);
@@ -125,7 +125,7 @@ pub fn read_u64v_le(dst: &mut[u64], input: &[u8]) {
 }
 
 /// Read a vector of bytes into a vector of u32s. The values are read in big-endian format.
-pub fn read_u32v_be(dst: &mut[u32], input: &[u8]) {
+pub fn read_u32v_be(dst: &mut [u32], input: &[u8]) {
     assert!(dst.len() * 4 == input.len());
     unsafe {
         let mut x: *mut u32 = dst.get_unchecked_mut(0);
@@ -141,7 +141,7 @@ pub fn read_u32v_be(dst: &mut[u32], input: &[u8]) {
 }
 
 /// Read a vector of bytes into a vector of u32s. The values are read in little-endian format.
-pub fn read_u32v_le(dst: &mut[u32], input: &[u8]) {
+pub fn read_u32v_le(dst: &mut [u32], input: &[u8]) {
     assert!(dst.len() * 4 == input.len());
     unsafe {
         let mut x: *mut u32 = dst.get_unchecked_mut(0);
@@ -179,7 +179,7 @@ pub fn read_u32_be(input: &[u8]) -> u32 {
 */
 
 /// XOR plaintext and keystream, storing the result in dst.
-pub fn xor_keystream(dst: &mut[u8], plaintext: &[u8], keystream: &[u8]) {
+pub fn xor_keystream(dst: &mut [u8], plaintext: &[u8], keystream: &[u8]) {
     assert!(dst.len() == plaintext.len());
     assert!(plaintext.len() <= keystream.len());
 
@@ -188,7 +188,7 @@ pub fn xor_keystream(dst: &mut[u8], plaintext: &[u8], keystream: &[u8]) {
     let k = keystream.as_ptr();
     let d = dst.as_mut_ptr();
     for i in 0isize..plaintext.len() as isize {
-        unsafe{ *d.offset(i) = *p.offset(i) ^ *k.offset(i) };
+        unsafe { *d.offset(i) = *p.offset(i) ^ *k.offset(i) };
     }
 }
 
@@ -200,7 +200,7 @@ pub fn xor_keystream_mut(buf: &mut [u8], keystream: &[u8]) {
     let k = keystream.as_ptr();
     let d = buf.as_mut_ptr();
     for i in 0isize..buf.len() as isize {
-        unsafe{ *d.offset(i) = *d.offset(i) ^ *k.offset(i) };
+        unsafe { *d.offset(i) = *d.offset(i) ^ *k.offset(i) };
     }
 }
 
@@ -233,7 +233,10 @@ pub trait WriteExt {
     fn write_u64_be(&mut self, val: u64) -> io::Result<()>;
 }
 
-impl <T> WriteExt for T where T: io::Write {
+impl<T> WriteExt for T
+where
+    T: io::Write,
+{
     fn write_u8(&mut self, val: u8) -> io::Result<()> {
         let buff = [val];
         self.write_all(&buff)
@@ -263,10 +266,10 @@ impl <T> WriteExt for T where T: io::Write {
 /// `symm_enc_or_dec()` implements the necessary functionality to turn a `SynchronousStreamCipher` into
 /// an Encryptor or Decryptor
 pub fn symm_enc_or_dec<S: SynchronousStreamCipher, R: ReadBuffer, W: WriteBuffer>(
-        c: &mut S,
-        input: &mut R,
-        output: &mut W) ->
-        Result<BufferResult, SymmetricCipherError> {
+    c: &mut S,
+    input: &mut R,
+    output: &mut W,
+) -> Result<BufferResult, SymmetricCipherError> {
     let count = std::cmp::min(input.remaining(), output.remaining());
     c.process(input.take_next(count), output.take_next(count));
     if input.is_empty() {
@@ -291,13 +294,13 @@ pub fn add_bytes_to_bits(bits: u64, bytes: u64) -> u64 {
         panic!("Numeric overflow occured.")
     }
 
-    bits.checked_add(new_low_bits).expect("Numeric overflow occured.")
+    bits.checked_add(new_low_bits)
+        .expect("Numeric overflow occured.")
 }
 
 /// Adds the specified number of bytes to the bit count, which is a tuple where the first element is
 /// the high order value. `panic!()` if this would cause numeric overflow.
-pub fn add_bytes_to_bits_tuple
-        (bits: (u64, u64), bytes: u64) -> (u64, u64) {
+pub fn add_bytes_to_bits_tuple(bits: (u64, u64), bytes: u64) -> (u64, u64) {
     let (new_high_bits, new_low_bits) = to_bits(bytes);
     let (hi, low) = bits;
 
@@ -313,14 +316,14 @@ pub fn add_bytes_to_bits_tuple
             } else {
                 match hi.checked_add(new_high_bits) {
                     Some(y) => return (y, x),
-                    None => panic!("Numeric overflow occured.")
+                    None => panic!("Numeric overflow occured."),
                 }
             }
-        },
+        }
         None => {
             let z = match new_high_bits.checked_add(1) {
                 Some(w) => w,
-                None => panic!("Numeric overflow occured.")
+                None => panic!("Numeric overflow occured."),
             };
             match hi.checked_add(z) {
                 // This re-executes the addition that was already performed earlier when overflow
@@ -331,12 +334,11 @@ pub fn add_bytes_to_bits_tuple
                 // be UnsignedInt - overflow is not defined for Signed types. This function could
                 // be implemented for signed types as well if that were needed.
                 Some(y) => return (y, low.wrapping_add(new_low_bits)),
-                None => panic!("Numeric overflow occured.")
+                None => panic!("Numeric overflow occured."),
             }
         }
     }
 }
-
 
 /// A `FixedBuffer`, likes its name implies, is a fixed size buffer. When the buffer becomes full, it
 /// must be processed. The `input()` method takes care of processing and then clearing the buffer
@@ -362,7 +364,7 @@ pub trait FixedBuffer {
     /// Get the current buffer. The buffer must already be full. This clears the buffer as well.
     fn full_buffer<'s>(&'s mut self) -> &'s [u8];
 
-     /// Get the current buffer.
+    /// Get the current buffer.
     fn current_buffer<'s>(&'s mut self) -> &'s [u8];
 
     /// Get the current position of the buffer.
@@ -462,14 +464,18 @@ pub struct FixedBuffer64 {
     buffer_idx: usize,
 }
 
-impl Clone for FixedBuffer64 { fn clone(&self) -> FixedBuffer64 { *self } }
+impl Clone for FixedBuffer64 {
+    fn clone(&self) -> FixedBuffer64 {
+        *self
+    }
+}
 
 impl FixedBuffer64 {
     /// Create a new buffer
     pub fn new() -> FixedBuffer64 {
         FixedBuffer64 {
             buffer: [0u8; 64],
-            buffer_idx: 0
+            buffer_idx: 0,
         }
     }
 }
@@ -483,20 +489,23 @@ pub struct FixedBuffer128 {
     buffer_idx: usize,
 }
 
-impl Clone for FixedBuffer128 { fn clone(&self) -> FixedBuffer128 { *self } }
+impl Clone for FixedBuffer128 {
+    fn clone(&self) -> FixedBuffer128 {
+        *self
+    }
+}
 
 impl FixedBuffer128 {
     /// Create a new buffer
     pub fn new() -> FixedBuffer128 {
         FixedBuffer128 {
             buffer: [0u8; 128],
-            buffer_idx: 0
+            buffer_idx: 0,
         }
     }
 }
 
 impl_fixed_buffer!(FixedBuffer128, 128);
-
 
 /// The `StandardPadding` trait adds a method useful for various hash algorithms to a `FixedBuffer`
 /// struct.
@@ -508,7 +517,7 @@ pub trait StandardPadding {
     fn standard_padding<F: FnMut(&[u8])>(&mut self, rem: usize, func: F);
 }
 
-impl <T: FixedBuffer> StandardPadding for T {
+impl<T: FixedBuffer> StandardPadding for T {
     fn standard_padding<F: FnMut(&[u8])>(&mut self, rem: usize, mut func: F) {
         let size = self.size();
 
@@ -523,7 +532,6 @@ impl <T: FixedBuffer> StandardPadding for T {
     }
 }
 
-
 #[cfg(test)]
 pub mod test {
     use std;
@@ -537,7 +545,11 @@ pub mod test {
 
     /// Feed 1,000,000 'a's into the digest with varying input sizes and check that the result is
     /// correct.
-    pub fn test_digest_1million_random<D: Digest>(digest: &mut D, blocksize: usize, expected: &str) {
+    pub fn test_digest_1million_random<D: Digest>(
+        digest: &mut D,
+        blocksize: usize,
+        expected: &str,
+    ) {
         let total_size = 1000000;
         let buffer: Vec<u8> = repeat('a' as u8).take(blocksize * 2).collect();
         //let mut rng = IsaacRng::new_unseeded();

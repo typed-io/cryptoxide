@@ -9,9 +9,9 @@
  * <http://tools.ietf.org/html/rfc2898>.
  */
 
-use std::iter::repeat;
 use cryptoutil::{copy_memory, write_u32_be};
 use mac::Mac;
+use std::iter::repeat;
 
 // Calculate a block of the output of size equal to the output_bytes of the underlying Mac function
 // `mac` - The Mac function to use
@@ -21,12 +21,13 @@ use mac::Mac;
 // `scratch` - a temporary variable the same length as the block
 // `block` - the block of the output to calculate
 fn calculate_block<M: Mac>(
-        mac: &mut M,
-        salt: &[u8],
-        c: u32,
-        idx: u32,
-        scratch: &mut [u8],
-        block: &mut [u8]) {
+    mac: &mut M,
+    salt: &[u8],
+    c: u32,
+    idx: u32,
+    scratch: &mut [u8],
+    block: &mut [u8],
+) {
     // Perform the 1st iteration. The output goes directly into block
     mac.input(salt);
     let mut idx_buf = [0u8; 4];

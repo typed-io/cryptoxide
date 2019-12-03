@@ -22,7 +22,7 @@ pub fn fixed_time_eq(lhs: &[u8], rhs: &[u8]) -> bool {
             let a = lhs[i];
             let b = rhs[i];
             v = v | (a ^ b);
-        };
+        }
         v == 0
     }
 }

@@ -57,14 +57,14 @@ pub trait SynchronousStreamCipher {
 }
 
 // TODO - Its a bit unclear to me why this is necessary
-impl SynchronousStreamCipher for Box<SynchronousStreamCipher + 'static> {
+impl SynchronousStreamCipher for Box<dyn SynchronousStreamCipher + 'static> {
     fn process(&mut self, input: &[u8], output: &mut [u8]) {
         let me = &mut **self;
         me.process(input, output);
     }
 }
 
-impl Encryptor for Box<SynchronousStreamCipher + 'static> {
+impl Encryptor for Box<dyn SynchronousStreamCipher + 'static> {
     fn encrypt(
         &mut self,
         input: &mut RefReadBuffer,
@@ -75,7 +75,7 @@ impl Encryptor for Box<SynchronousStreamCipher + 'static> {
     }
 }
 
-impl Decryptor for Box<SynchronousStreamCipher + 'static> {
+impl Decryptor for Box<dyn SynchronousStreamCipher + 'static> {
     fn decrypt(
         &mut self,
         input: &mut RefReadBuffer,

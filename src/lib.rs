@@ -37,6 +37,7 @@ pub mod hmac;
 pub mod mac;
 pub mod pbkdf2;
 pub mod poly1305;
+pub mod salsa20;
 pub mod sha2;
 pub mod sha3;
 mod simd;

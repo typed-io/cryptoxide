@@ -11,8 +11,7 @@
 // except according to those terms.
 
 use std;
-use std::ptr;
-use std::{io, mem};
+use std::{io, ptr};
 
 use buffer::BufferResult::{BufferOverflow, BufferUnderflow};
 use buffer::{BufferResult, ReadBuffer, WriteBuffer};
@@ -92,78 +91,42 @@ pub fn write_u32v_le(dst: &mut [u8], input: &[u32]) {
     }
 }
 
-/// Read a vector of bytes into a vector of u64s. The values are read in big-endian format.
-pub fn read_u64v_be(dst: &mut [u64], input: &[u8]) {
-    assert!(dst.len() * 8 == input.len());
-    unsafe {
-        let mut x: *mut u64 = dst.get_unchecked_mut(0);
-        let mut y: *const u8 = input.get_unchecked(0);
-        for _ in 0..dst.len() {
-            let mut tmp: u64 = mem::uninitialized();
-            ptr::copy_nonoverlapping(y, &mut tmp as *mut _ as *mut u8, 8);
-            *x = u64::from_be(tmp);
-            x = x.offset(1);
-            y = y.offset(8);
+macro_rules! read_array_type {
+    ($C: ident, $T: ident, $F: ident) => {
+        /// Read an array of bytes into an array of $T. The values are read with $F for endianness.
+        pub fn $C(dst: &mut [$T], input: &[u8]) {
+            const SZ: usize = std::mem::size_of::<$T>();
+            assert!(dst.len() * SZ == input.len());
+
+            unsafe {
+                let mut x: *mut $T = dst.get_unchecked_mut(0);
+                let mut y: *const u8 = input.get_unchecked(0);
+
+                for _ in 0..dst.len() {
+                    let mut tmp = [0u8; SZ];
+                    ptr::copy_nonoverlapping(y, &mut tmp as *mut _ as *mut u8, SZ);
+                    *x = $T::$F(tmp);
+                    x = x.offset(1);
+                    y = y.offset(SZ as isize);
+                }
+            }
         }
-    }
+    };
 }
 
-/// Read a vector of bytes into a vector of u64s. The values are read in little-endian format.
-pub fn read_u64v_le(dst: &mut [u64], input: &[u8]) {
-    assert!(dst.len() * 8 == input.len());
-    unsafe {
-        let mut x: *mut u64 = dst.get_unchecked_mut(0);
-        let mut y: *const u8 = input.get_unchecked(0);
-        for _ in 0..dst.len() {
-            let mut tmp: u64 = mem::uninitialized();
-            ptr::copy_nonoverlapping(y, &mut tmp as *mut _ as *mut u8, 8);
-            *x = u64::from_le(tmp);
-            x = x.offset(1);
-            y = y.offset(8);
-        }
-    }
-}
-
-/// Read a vector of bytes into a vector of u32s. The values are read in big-endian format.
-pub fn read_u32v_be(dst: &mut [u32], input: &[u8]) {
-    assert!(dst.len() * 4 == input.len());
-    unsafe {
-        let mut x: *mut u32 = dst.get_unchecked_mut(0);
-        let mut y: *const u8 = input.get_unchecked(0);
-        for _ in 0..dst.len() {
-            let mut tmp: u32 = mem::uninitialized();
-            ptr::copy_nonoverlapping(y, &mut tmp as *mut _ as *mut u8, 4);
-            *x = u32::from_be(tmp);
-            x = x.offset(1);
-            y = y.offset(4);
-        }
-    }
-}
-
-/// Read a vector of bytes into a vector of u32s. The values are read in little-endian format.
-pub fn read_u32v_le(dst: &mut [u32], input: &[u8]) {
-    assert!(dst.len() * 4 == input.len());
-    unsafe {
-        let mut x: *mut u32 = dst.get_unchecked_mut(0);
-        let mut y: *const u8 = input.get_unchecked(0);
-        for _ in 0..dst.len() {
-            let mut tmp: u32 = mem::uninitialized();
-            ptr::copy_nonoverlapping(y, &mut tmp as *mut _ as *mut u8, 4);
-            *x = u32::from_le(tmp);
-            x = x.offset(1);
-            y = y.offset(4);
-        }
-    }
-}
+read_array_type!(read_u64v_be, u64, from_be_bytes);
+read_array_type!(read_u64v_le, u64, from_le_bytes);
+read_array_type!(read_u32v_be, u32, from_be_bytes);
+read_array_type!(read_u32v_le, u32, from_le_bytes);
 
 /// Read the value of a vector of bytes as a u32 value in little-endian format.
 pub fn read_u32_le(input: &[u8]) -> u32 {
     assert!(input.len() == 4);
+    let mut tmp = [0u8; 4];
     unsafe {
-        let mut tmp: u32 = mem::uninitialized();
         ptr::copy_nonoverlapping(input.get_unchecked(0), &mut tmp as *mut _ as *mut u8, 4);
-        u32::from_le(tmp)
     }
+    u32::from_le_bytes(tmp)
 }
 
 /*

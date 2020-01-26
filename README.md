@@ -1,6 +1,5 @@
 # Cryptoxide
 
-[![Actions Status](https://xxx.execute-api.us-west-2.amazonaws.com/production/badge/typed-io/cryptoxide)](https://xxx.execute-api.us-west-2.amazonaws.com/production/results/typed-io/cryptoxide)
 [![Build Status](https://travis-ci.org/typed-io/cryptoxide.svg?branch=master)](https://travis-ci.org/typed-io/cryptoxide)
 ![MIT or APACHE-2 licensed](https://img.shields.io/badge/licensed-MIT%20or%20APACHE--2-blue.svg)
 

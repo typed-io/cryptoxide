@@ -247,8 +247,6 @@ impl Mac for Poly1305 {
 
 #[cfg(test)]
 mod test {
-    use std::iter::repeat;
-
     use mac::Mac;
     use poly1305::Poly1305;
 
@@ -339,8 +337,8 @@ mod test {
 
         let mut tpoly = Poly1305::new(&total_key);
         for i in 0..256 {
-            let key: Vec<u8> = repeat(i as u8).take(32).collect();
-            let msg: Vec<u8> = repeat(i as u8).take(256).collect();
+            let key = [i as u8; 32];
+            let msg = [i as u8; 256];
             let mut mac = [0u8; 16];
             poly1305(&key[..], &msg[0..i], &mut mac);
             tpoly.input(&mac);

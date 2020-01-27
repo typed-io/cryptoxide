@@ -139,148 +139,105 @@ fn keccak_f(state: &mut [u8]) {
     write_u64v_le(state, &s);
 }
 
-/// SHA-3 Modes.
-#[allow(non_camel_case_types)]
-#[derive(Debug, Copy, Clone)]
-pub enum Sha3Mode {
-    Sha3_224,
-    Sha3_256,
-    Sha3_384,
-    Sha3_512,
-    Shake128,
-    Shake256,
-    Keccak224,
-    Keccak256,
-    Keccak384,
-    Keccak512,
+mod constants {
+    pub trait Const {
+        const DIGEST_LENGTH: usize;
+        const IS_KECCAK: bool;
+        const CAPACITY: usize;
+        const BLOCK_SIZE: usize;
+    }
+
+    macro_rules! sha3_const {
+        ($C: ident, $DIGEST_LENGTH: expr, $IS_KECCAK: expr) => {
+            #[allow(non_camel_case_types)]
+            pub(super) struct $C;
+            impl Const for $C {
+                const DIGEST_LENGTH: usize = $DIGEST_LENGTH;
+                const IS_KECCAK: bool = $IS_KECCAK;
+                const CAPACITY: usize = $DIGEST_LENGTH * 2;
+                const BLOCK_SIZE: usize = super::B - ($DIGEST_LENGTH * 2);
+            }
+        };
+    }
+
+    /*
+    macro_rules! shake_const {
+        ($C: ident, $CAPACITY: expr) => {
+            #[allow(non_camel_case_types)]
+            pub(super) struct $C;
+            impl Const for $C {
+                const DIGEST_LENGTH: usize = 0;
+                const IS_KECCAK: bool = false;
+                const CAPACITY: usize = $CAPACITY;
+                const BLOCK_SIZE: usize = 0xfffff; // hum
+            }
+        };
+    }
+    */
+
+    sha3_const!(Sha3_224, 28, false);
+    sha3_const!(Sha3_256, 32, false);
+    sha3_const!(Sha3_384, 48, false);
+    sha3_const!(Sha3_512, 64, false);
+    sha3_const!(Keccak224, 28, true);
+    sha3_const!(Keccak256, 32, true);
+    sha3_const!(Keccak384, 48, true);
+    sha3_const!(Keccak512, 64, true);
+
+    //shake_const!(Shake128, 32);
+    //shake_const!(Shake256, 64);
 }
 
-impl Sha3Mode {
-    /// Return the expected hash size in bytes specified for `mode`, or 0
-    /// for modes with variable output as for shake functions.
-    pub fn digest_length(&self) -> usize {
-        match *self {
-            Sha3Mode::Sha3_224 | Sha3Mode::Keccak224 => 28,
-            Sha3Mode::Sha3_256 | Sha3Mode::Keccak256 => 32,
-            Sha3Mode::Sha3_384 | Sha3Mode::Keccak384 => 48,
-            Sha3Mode::Sha3_512 | Sha3Mode::Keccak512 => 64,
-            Sha3Mode::Shake128 | Sha3Mode::Shake256 => 0,
-        }
-    }
+use core::marker::PhantomData;
 
-    /// Return `true` if `mode` is a SHAKE mode.
-    pub fn is_shake(&self) -> bool {
-        match *self {
-            Sha3Mode::Shake128 | Sha3Mode::Shake256 => true,
-            _ => false,
-        }
-    }
-
-    /// Return `true` if `mode` is a Keccak mode.
-    pub fn is_keccak(&self) -> bool {
-        match *self {
-            Sha3Mode::Keccak224
-            | Sha3Mode::Keccak256
-            | Sha3Mode::Keccak384
-            | Sha3Mode::Keccak512 => true,
-            _ => false,
-        }
-    }
-
-    /// Return the capacity in bytes.
-    fn capacity(&self) -> usize {
-        match *self {
-            Sha3Mode::Sha3_224 | Sha3Mode::Keccak224 => 56,
-            Sha3Mode::Sha3_256 | Sha3Mode::Keccak256 => 64,
-            Sha3Mode::Sha3_384 | Sha3Mode::Keccak384 => 96,
-            Sha3Mode::Sha3_512 | Sha3Mode::Keccak512 => 128,
-            Sha3Mode::Shake128 => 32,
-            Sha3Mode::Shake256 => 64,
-        }
-    }
-}
-
-pub struct Sha3 {
+struct Engine<E> {
     state: [u8; B], // B bytes
-    mode: Sha3Mode,
+    mode: PhantomData<E>,
     can_absorb: bool,  // Can absorb
     can_squeeze: bool, // Can squeeze
     offset: usize,     // Enqueued bytes in state for absorb phase
                        // Squeeze offset for squeeze phase
 }
 
-impl Sha3 {
+impl<E> Clone for Engine<E> {
+    fn clone(&self) -> Self {
+        Self {
+            state: self.state.clone(),
+            mode: self.mode,
+            can_absorb: self.can_absorb,
+            can_squeeze: self.can_squeeze,
+            offset: self.offset,
+        }
+    }
+}
+
+impl<E: constants::Const> Engine<E> {
+    fn rate(&self) -> usize {
+        B - E::CAPACITY
+    }
+
     /// New SHA-3 instanciated from specified SHA-3 `mode`.
-    pub fn new(mode: Sha3Mode) -> Sha3 {
-        Sha3 {
+    pub fn new() -> Self {
+        Self {
             state: [0; B],
-            mode: mode,
+            mode: PhantomData,
             can_absorb: true,
             can_squeeze: true,
             offset: 0,
         }
     }
 
-    /// New SHA3-224 instance.
-    pub fn sha3_224() -> Sha3 {
-        Sha3::new(Sha3Mode::Sha3_224)
-    }
-
-    /// New SHA3-256 instance.
-    pub fn sha3_256() -> Sha3 {
-        Sha3::new(Sha3Mode::Sha3_256)
-    }
-
-    /// New SHA3-384 instance.
-    pub fn sha3_384() -> Sha3 {
-        Sha3::new(Sha3Mode::Sha3_384)
-    }
-
-    /// New SHA3-512 instance.
-    pub fn sha3_512() -> Sha3 {
-        Sha3::new(Sha3Mode::Sha3_512)
-    }
-
-    /// New SHAKE-128 instance.
-    pub fn shake_128() -> Sha3 {
-        Sha3::new(Sha3Mode::Shake128)
-    }
-
-    /// New SHAKE-256 instance.
-    pub fn shake_256() -> Sha3 {
-        Sha3::new(Sha3Mode::Shake256)
-    }
-
-    /// New Keccak224 instance.
-    pub fn keccak224() -> Sha3 {
-        Sha3::new(Sha3Mode::Keccak224)
-    }
-
-    /// New Keccak256 instance.
-    pub fn keccak256() -> Sha3 {
-        Sha3::new(Sha3Mode::Keccak256)
-    }
-
-    /// New Keccak384 instance.
-    pub fn keccak384() -> Sha3 {
-        Sha3::new(Sha3Mode::Keccak384)
-    }
-
-    /// New Keccak512 instance.
-    pub fn keccak512() -> Sha3 {
-        Sha3::new(Sha3Mode::Keccak512)
-    }
-
     fn finalize(&mut self) {
         assert!(self.can_absorb);
 
-        let output_bits = self.output_bits();
+        let output_bits = E::DIGEST_LENGTH * 8;
 
-        let ds_len = if self.mode.is_keccak() {
+        let ds_len = if E::IS_KECCAK {
             0
         } else if output_bits != 0 {
             2
         } else {
+            // TODO: for SHAKE
             4
         };
 
@@ -325,22 +282,16 @@ impl Sha3 {
         let mut p = vec::from_elem(0, p_len);
 
         if ds_len != 0 {
-            set_domain_sep(self.output_bits(), &mut p);
+            set_domain_sep(E::DIGEST_LENGTH * 8, &mut p);
         }
 
         set_pad(ds_len, &mut p);
 
-        self.input(&p);
+        self.process(&p);
         self.can_absorb = false;
     }
 
-    fn rate(&self) -> usize {
-        B - self.mode.capacity()
-    }
-}
-
-impl Digest for Sha3 {
-    fn input(&mut self, data: &[u8]) {
+    fn process(&mut self, data: &[u8]) {
         if !self.can_absorb {
             panic!("Invalid state, absorb phase already finalized.");
         }
@@ -370,7 +321,14 @@ impl Digest for Sha3 {
         }
     }
 
-    fn result(&mut self, out: &mut [u8]) {
+    fn reset(&mut self) {
+        self.can_absorb = true;
+        self.can_squeeze = true;
+        self.offset = 0;
+        zero(&mut self.state);
+    }
+
+    fn output(&mut self, out: &mut [u8]) {
         if !self.can_squeeze {
             panic!("Nothing left to squeeze.");
         }
@@ -380,10 +338,11 @@ impl Digest for Sha3 {
         }
 
         let r = self.rate();
-        let out_len = self.mode.digest_length();
+        let out_len = E::DIGEST_LENGTH;
         if out_len != 0 {
             assert!(self.offset < out_len);
         } else {
+            // FIXME: only for SHAKE
             assert!(self.offset < r);
         }
 
@@ -421,28 +380,197 @@ impl Digest for Sha3 {
             self.can_squeeze = false;
         }
     }
-
-    fn reset(&mut self) {
-        self.can_absorb = true;
-        self.can_squeeze = true;
-        self.offset = 0;
-
-        zero(&mut self.state);
-    }
-
-    fn output_bits(&self) -> usize {
-        self.mode.digest_length() * 8
-    }
-
-    fn block_size(&self) -> usize {
-        B - self.mode.capacity()
-    }
 }
 
-impl Copy for Sha3 {}
+/*
+/// New SHAKE-128 instance.
+pub fn shake_128() -> Sha3 {
+    Sha3::new(Sha3Mode::Shake128)
+}
 
-impl Clone for Sha3 {
-    fn clone(&self) -> Self {
-        *self
+/// New SHAKE-256 instance.
+pub fn shake_256() -> Sha3 {
+    Sha3::new(Sha3Mode::Shake256)
+}
+*/
+use self::constants::Const;
+
+macro_rules! sha3_impl {
+    ($C: ident) => {
+        /// A $C context
+        #[derive(Clone)]
+        pub struct $C(Engine<constants::$C>);
+
+        impl $C {
+            pub fn new() -> Self {
+                Self(Engine::new())
+            }
+        }
+
+        impl Digest for $C {
+            fn input(&mut self, data: &[u8]) {
+                self.0.process(data)
+            }
+
+            fn result(&mut self, out: &mut [u8]) {
+                self.0.output(out)
+            }
+
+            fn reset(&mut self) {
+                self.0.reset()
+            }
+
+            fn output_bits(&self) -> usize {
+                constants::$C::DIGEST_LENGTH * 8
+            }
+
+            fn block_size(&self) -> usize {
+                self.0.rate()
+            }
+        }
+    };
+}
+
+sha3_impl!(Sha3_224);
+sha3_impl!(Sha3_256);
+sha3_impl!(Sha3_384);
+sha3_impl!(Sha3_512);
+
+sha3_impl!(Keccak224);
+sha3_impl!(Keccak256);
+sha3_impl!(Keccak384);
+sha3_impl!(Keccak512);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use digest::Digest;
+
+    struct Test {
+        input: &'static str,
+        output_str: &'static str,
+    }
+
+    fn test_hash<D: Digest>(mut sh: D, tests: &[Test]) {
+        // Test that it works when accepting the message all at once
+        for t in tests.iter() {
+            sh.input_str(t.input);
+
+            let out_str = sh.result_str();
+            assert_eq!(&out_str[..], t.output_str);
+
+            sh.reset();
+        }
+
+        // Test that it works when accepting the message in pieces
+        for t in tests.iter() {
+            let len = t.input.len();
+            let mut left = len;
+            while left > 0 {
+                let take = (left + 1) / 2;
+                sh.input_str(&t.input[len - left..take + len - left]);
+                left = left - take;
+            }
+
+            let out_str = sh.result_str();
+            assert_eq!(&out_str[..], t.output_str);
+
+            sh.reset();
+        }
+    }
+
+    #[test]
+    fn test_sha3_224() {
+        let wikipedia_tests = [
+            Test {
+                input: "",
+                output_str: "6b4e03423667dbb73b6e15454f0eb1abd4597f9a1b078e3f5b5a6bc7",
+            },
+            Test {
+                input: "The quick brown fox jumps over the lazy dog",
+                output_str: "d15dadceaa4d5d7bb3b48f446421d542e08ad8887305e28d58335795",
+            },
+            Test {
+                input: "The quick brown fox jumps over the lazy dog.",
+                output_str: "2d0708903833afabdd232a20201176e8b58c5be8a6fe74265ac54db0",
+            },
+        ];
+        test_hash(Sha3_224::new(), &wikipedia_tests[..]);
+    }
+
+    #[test]
+    fn test_sha3_256() {
+        let wikipedia_tests = [
+            Test {
+                input: "",
+                output_str: "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a",
+            },
+            Test {
+                input: "The quick brown fox jumps over the lazy dog",
+                output_str: "69070dda01975c8c120c3aada1b282394e7f032fa9cf32f4cb2259a0897dfc04",
+            },
+            Test {
+                input: "The quick brown fox jumps over the lazy dog.",
+                output_str: "a80f839cd4f83f6c3dafc87feae470045e4eb0d366397d5c6ce34ba1739f734d",
+            },
+        ];
+        test_hash(Sha3_256::new(), &wikipedia_tests[..]);
+    }
+
+    #[test]
+    fn test_sha3_384() {
+        let wikipedia_tests = [
+            Test {
+                input: "",
+                output_str: "0c63a75b845e4f7d01107d852e4c2485c51a50aaaa94fc61995e71bbee983a2ac3713831264adb47fb6bd1e058d5f004",
+            },
+            Test {
+                input: "The quick brown fox jumps over the lazy dog",
+                output_str: "7063465e08a93bce31cd89d2e3ca8f602498696e253592ed26f07bf7e703cf328581e1471a7ba7ab119b1a9ebdf8be41",
+            },
+            Test {
+                input: "The quick brown fox jumps over the lazy dog.",
+                output_str: "1a34d81695b622df178bc74df7124fe12fac0f64ba5250b78b99c1273d4b080168e10652894ecad5f1f4d5b965437fb9",
+            },
+        ];
+        test_hash(Sha3_384::new(), &wikipedia_tests[..]);
+    }
+
+    #[test]
+    fn test_sha3_512() {
+        let wikipedia_tests = [
+            Test {
+                input: "",
+                output_str: "a69f73cca23a9ac5c8b567dc185a756e97c982164fe25859e0d1dcc1475c80a615b2123af1f5f94c11e3e9402c3ac558f500199d95b6d3e301758586281dcd26"
+            },
+            Test {
+                input: "The quick brown fox jumps over the lazy dog",
+                output_str: "01dedd5de4ef14642445ba5f5b97c15e47b9ad931326e4b0727cd94cefc44fff23f07bf543139939b49128caf436dc1bdee54fcb24023a08d9403f9b4bf0d450",
+            },
+            Test {
+                input: "The quick brown fox jumps over the lazy dog.",
+                output_str: "18f4f4bd419603f95538837003d9d254c26c23765565162247483f65c50303597bc9ce4d289f21d1c2f1f458828e33dc442100331b35e7eb031b5d38ba6460f8"
+            },
+        ];
+        test_hash(Sha3_512::new(), &wikipedia_tests[..]);
+    }
+
+    #[test]
+    fn test_keccak_512() {
+        let wikipedia_tests = [
+            Test {
+                input: "",
+                output_str: "0eab42de4c3ceb9235fc91acffe746b29c29a8c366b7c60e4e67c466f36a4304c00fa9caf9d87976ba469bcbe06713b435f091ef2769fb160cdab33d3670680e",
+            },
+            Test {
+                input: "The quick brown fox jumps over the lazy dog",
+                output_str: "d135bb84d0439dbac432247ee573a23ea7d3c9deb2a968eb31d47c4fb45f1ef4422d6c531b5b9bd6f449ebcc449ea94d0a8f05f62130fda612da53c79659f609",
+            },
+            Test {
+                input: "The quick brown fox jumps over the lazy dog.",
+                output_str: "ab7192d2b11f51c7dd744e7b3441febf397ca07bf812cceae122ca4ded6387889064f8db9230f173f6d1ab6e24b6e50f065b039f799f5592360a6558eb52d760"
+            },
+        ];
+        test_hash(Keccak512::new(), &wikipedia_tests[..]);
     }
 }

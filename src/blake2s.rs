@@ -333,11 +333,11 @@ impl Blake2s {
 }
 
 impl Digest for Blake2s {
-    fn reset(&mut self) {
-        Blake2s::reset(self);
-    }
     fn input(&mut self, msg: &[u8]) {
         self.update(msg);
+    }
+    fn reset(&mut self) {
+        Blake2s::reset(self);
     }
     fn result(&mut self, out: &mut [u8]) {
         self.finalize(out);

@@ -1266,7 +1266,7 @@ mod tests {
             sh.input_str(t.input);
 
             let out_str = sh.result_str();
-            assert!(&out_str[..] == t.output_str);
+            assert_eq!(&out_str[..], t.output_str);
 
             sh.reset();
         }
@@ -1282,7 +1282,7 @@ mod tests {
             }
 
             let out_str = sh.result_str();
-            assert!(&out_str[..] == t.output_str);
+            assert_eq!(&out_str[..], t.output_str);
 
             sh.reset();
         }

@@ -34,11 +34,11 @@ static CHARS: &'static [u8] = b"0123456789abcdef";
  */
 pub trait Digest {
     /**
-     * Provide message data.
+     * Append message data in the digest state.
      *
      * # Arguments
      *
-     * * input - A vector of message data
+     * * input - some message data
      */
     fn input(&mut self, input: &[u8]);
 

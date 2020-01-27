@@ -35,6 +35,8 @@ macro_rules! write_type {
 
 write_type!(write_u64_be, u64, to_be_bytes);
 write_type!(write_u64_le, u64, to_le_bytes);
+write_type!(write_u32_be, u32, to_be_bytes);
+write_type!(write_u32_le, u32, to_le_bytes);
 
 /// Write a vector of u64s into a vector of bytes. The values are written in little-endian format.
 pub fn write_u64v_le(dst: &mut [u8], input: &[u64]) {
@@ -48,28 +50,6 @@ pub fn write_u64v_le(dst: &mut [u8], input: &[u64]) {
             x = x.offset(8);
             y = y.offset(1);
         }
-    }
-}
-
-/// Write a u32 into a vector, which must be 4 bytes long. The value is written in big-endian
-/// format.
-pub fn write_u32_be(dst: &mut [u8], mut input: u32) {
-    assert!(dst.len() == 4);
-    input = input.to_be();
-    unsafe {
-        let tmp = &input as *const _ as *const u8;
-        ptr::copy_nonoverlapping(tmp, dst.get_unchecked_mut(0), 4);
-    }
-}
-
-/// Write a u32 into a vector, which must be 4 bytes long. The value is written in little-endian
-/// format.
-pub fn write_u32_le(dst: &mut [u8], mut input: u32) {
-    assert!(dst.len() == 4);
-    input = input.to_le();
-    unsafe {
-        let tmp = &input as *const _ as *const u8;
-        ptr::copy_nonoverlapping(tmp, dst.get_unchecked_mut(0), 4);
     }
 }
 

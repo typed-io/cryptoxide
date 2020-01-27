@@ -71,8 +71,8 @@ assert_eq!(hex,
  */
 
 use cryptoutil::{
-    read_u32v_be, read_u64v_be, write_u128_be, write_u32_be, write_u64_be, FixedBuffer,
-    FixedBuffer128, FixedBuffer64, StandardPadding,
+    read_u32v_be, read_u64v_be, write_u128_be, write_u32_be, write_u32v_be, write_u64_be,
+    write_u64v_be, FixedBuffer, FixedBuffer128, FixedBuffer64, StandardPadding,
 };
 use digest::Digest;
 
@@ -876,15 +876,7 @@ impl Digest for Sha512 {
 
     fn result(&mut self, out: &mut [u8]) {
         self.engine.finish();
-
-        write_u64_be(&mut out[0..8], self.engine.state.h[0]);
-        write_u64_be(&mut out[8..16], self.engine.state.h[1]);
-        write_u64_be(&mut out[16..24], self.engine.state.h[2]);
-        write_u64_be(&mut out[24..32], self.engine.state.h[3]);
-        write_u64_be(&mut out[32..40], self.engine.state.h[4]);
-        write_u64_be(&mut out[40..48], self.engine.state.h[5]);
-        write_u64_be(&mut out[48..56], self.engine.state.h[6]);
-        write_u64_be(&mut out[56..64], self.engine.state.h[7]);
+        write_u64v_be(&mut out[0..64], &self.engine.state.h);
     }
 
     fn reset(&mut self) {
@@ -935,13 +927,7 @@ impl Digest for Sha384 {
 
     fn result(&mut self, out: &mut [u8]) {
         self.engine.finish();
-
-        write_u64_be(&mut out[0..8], self.engine.state.h[0]);
-        write_u64_be(&mut out[8..16], self.engine.state.h[1]);
-        write_u64_be(&mut out[16..24], self.engine.state.h[2]);
-        write_u64_be(&mut out[24..32], self.engine.state.h[3]);
-        write_u64_be(&mut out[32..40], self.engine.state.h[4]);
-        write_u64_be(&mut out[40..48], self.engine.state.h[5]);
+        write_u64v_be(&mut out[0..48], &self.engine.state.h[0..6]);
     }
 
     fn reset(&mut self) {
@@ -992,11 +978,7 @@ impl Digest for Sha512Trunc256 {
 
     fn result(&mut self, out: &mut [u8]) {
         self.engine.finish();
-
-        write_u64_be(&mut out[0..8], self.engine.state.h[0]);
-        write_u64_be(&mut out[8..16], self.engine.state.h[1]);
-        write_u64_be(&mut out[16..24], self.engine.state.h[2]);
-        write_u64_be(&mut out[24..32], self.engine.state.h[3]);
+        write_u64v_be(&mut out[0..32], &self.engine.state.h[0..4]);
     }
 
     fn reset(&mut self) {
@@ -1048,9 +1030,7 @@ impl Digest for Sha512Trunc224 {
     fn result(&mut self, out: &mut [u8]) {
         self.engine.finish();
 
-        write_u64_be(&mut out[0..8], self.engine.state.h[0]);
-        write_u64_be(&mut out[8..16], self.engine.state.h[1]);
-        write_u64_be(&mut out[16..24], self.engine.state.h[2]);
+        write_u64v_be(&mut out[0..24], &self.engine.state.h[0..3]);
         write_u32_be(&mut out[24..28], (self.engine.state.h[3] >> 32) as u32);
     }
 
@@ -1174,8 +1154,7 @@ impl Engine256 {
         let self_state = &mut self.state;
         self.buffer
             .standard_padding(8, |input: &[u8]| self_state.process_block(input));
-        write_u32_be(self.buffer.next(4), (self.length_bits >> 32) as u32);
-        write_u32_be(self.buffer.next(4), self.length_bits as u32);
+        write_u64_be(self.buffer.next(8), self.length_bits);
         self_state.process_block(self.buffer.full_buffer());
 
         self.finished = true;
@@ -1206,15 +1185,7 @@ impl Digest for Sha256 {
 
     fn result(&mut self, out: &mut [u8]) {
         self.engine.finish();
-
-        write_u32_be(&mut out[0..4], self.engine.state.h[0]);
-        write_u32_be(&mut out[4..8], self.engine.state.h[1]);
-        write_u32_be(&mut out[8..12], self.engine.state.h[2]);
-        write_u32_be(&mut out[12..16], self.engine.state.h[3]);
-        write_u32_be(&mut out[16..20], self.engine.state.h[4]);
-        write_u32_be(&mut out[20..24], self.engine.state.h[5]);
-        write_u32_be(&mut out[24..28], self.engine.state.h[6]);
-        write_u32_be(&mut out[28..32], self.engine.state.h[7]);
+        write_u32v_be(&mut out[0..32], &self.engine.state.h);
     }
 
     fn reset(&mut self) {
@@ -1258,13 +1229,7 @@ impl Digest for Sha224 {
 
     fn result(&mut self, out: &mut [u8]) {
         self.engine.finish();
-        write_u32_be(&mut out[0..4], self.engine.state.h[0]);
-        write_u32_be(&mut out[4..8], self.engine.state.h[1]);
-        write_u32_be(&mut out[8..12], self.engine.state.h[2]);
-        write_u32_be(&mut out[12..16], self.engine.state.h[3]);
-        write_u32_be(&mut out[16..20], self.engine.state.h[4]);
-        write_u32_be(&mut out[20..24], self.engine.state.h[5]);
-        write_u32_be(&mut out[24..28], self.engine.state.h[6]);
+        write_u32v_be(&mut out[0..28], &self.engine.state.h[0..7]);
     }
 
     fn reset(&mut self) {

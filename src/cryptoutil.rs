@@ -19,8 +19,7 @@ use symmetriccipher::{SymmetricCipherError, SynchronousStreamCipher};
 
 macro_rules! write_type {
     ($C: ident, $T: ident, $F: ident) => {
-        /// Write a u64 into a vector, which must be 8 bytes long. The value is written in big-endian
-        /// format.
+        /// Write a $T into a vector, which must be of the correct size. The value is written using $F for endianness
         pub fn $C(dst: &mut [u8], input: $T) {
             const SZ: usize = std::mem::size_of::<$T>();
             assert!(dst.len() == SZ);
@@ -40,35 +39,28 @@ write_type!(write_u64_le, u64, to_le_bytes);
 write_type!(write_u32_be, u32, to_be_bytes);
 write_type!(write_u32_le, u32, to_le_bytes);
 
-/// Write a vector of u64s into a vector of bytes. The values are written in little-endian format.
-pub fn write_u64v_le(dst: &mut [u8], input: &[u64]) {
-    assert!(dst.len() == 8 * input.len());
-    unsafe {
-        let mut x: *mut u8 = dst.get_unchecked_mut(0);
-        let mut y: *const u64 = input.get_unchecked(0);
-        for _ in 0..input.len() {
-            let tmp = (*y).to_le();
-            ptr::copy_nonoverlapping(&tmp as *const _ as *const u8, x, 8);
-            x = x.offset(8);
-            y = y.offset(1);
+macro_rules! write_array_type {
+    ($C: ident, $T: ident, $F: ident) => {
+        /// Write a $T into a vector, which must be of the correct size. The value is written using $F for endianness
+        pub fn $C(dst: &mut [u8], input: &[$T]) {
+            const SZ: usize = std::mem::size_of::<$T>();
+            assert!(dst.len() == SZ * input.len());
+            unsafe {
+                let mut x: *mut u8 = dst.get_unchecked_mut(0);
+                for v in input.iter() {
+                    let tmp = v.$F();
+                    ptr::copy_nonoverlapping(&tmp as *const u8, x, SZ);
+                    x = x.offset(SZ as isize);
+                }
+            }
         }
-    }
+    };
 }
 
-/// Write a vector of u32s into a vector of bytes. The values are written in little-endian format.
-pub fn write_u32v_le(dst: &mut [u8], input: &[u32]) {
-    assert!(dst.len() == 4 * input.len());
-    unsafe {
-        let mut x: *mut u8 = dst.get_unchecked_mut(0);
-        let mut y: *const u32 = input.get_unchecked(0);
-        for _ in 0..input.len() {
-            let tmp = (*y).to_le();
-            ptr::copy_nonoverlapping(&tmp as *const _ as *const u8, x, 4);
-            x = x.offset(4);
-            y = y.offset(1);
-        }
-    }
-}
+write_array_type!(write_u64v_le, u64, to_le_bytes);
+write_array_type!(write_u64v_be, u64, to_be_bytes);
+write_array_type!(write_u32v_le, u32, to_le_bytes);
+write_array_type!(write_u32v_be, u32, to_be_bytes);
 
 macro_rules! read_array_type {
     ($C: ident, $T: ident, $F: ident) => {
@@ -406,7 +398,6 @@ impl<T: FixedBuffer> StandardPadding for T {
 
 #[cfg(test)]
 pub mod test {
-    use std;
     use std::iter::repeat;
 
     use digest::Digest;

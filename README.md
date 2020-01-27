@@ -30,36 +30,36 @@ Notable differences with the original sources:
 rustup target add aarch64-apple-ios # or any target below
 ```
 
-| Target                               | `test` |
-|--------------------------------------|:------:|
-| `aarch64-unknown-linux-gnu`          |   ✓    |
-| `aarch64-linux-android`              |   ✓    |
-| `aarch64-apple-ios`                  |   ✓    |
-| `arm-unknown-linux-gnueabi`          |   ✓    |
-| `arm-linux-androideabi`              |   ✓    |
-| `armv7-unknown-linux-gnueabihf`      |   ✓    |
-| `armv7-linux-androideabi`            |   ✓    |
-| `armv7-apple-ios`                    |   ✓    |
-| `armv7s-apple-ios`                   |   ✓    |
-| `i686-unknown-linux-gnu`             |   ✓    |
-| `i686-unknown-linux-musl`            |   ✓    |
-| `i686-unknown-freebsd`               |   ✓    |
-| `i686-apple-ios`                     |   ✓    |
-| `i686-apple-darwin`                  |   ✓    |
-| `i686-linux-android`                 |   ✓    |
-| `x86_64-unknown-linux-gnu`           |   ✓    |
-| `x86_64-unknown-linux-musl`          |   ✓    |
-| `x86_64-linux-android`               |   ✓    |
-| `x86_64-apple-darwin`                |   ✓    |
-| `x86_64-apple-ios`                   |   ✓    |
-| `x86_64-unknown-freebsd`             |   ✓    |
-| `wasm32-unknown-emscripten`          |   ✓    |
-| `wasm32-unknown-unknown`             |   ✓    |
+| Target                          | `test` |
+| ------------------------------- | :----: |
+| `aarch64-unknown-linux-gnu`     |   ✓    |
+| `aarch64-linux-android`         |   ✓    |
+| `aarch64-apple-ios`             |   ✓    |
+| `arm-unknown-linux-gnueabi`     |   ✓    |
+| `arm-linux-androideabi`         |   ✓    |
+| `armv7-unknown-linux-gnueabihf` |   ✓    |
+| `armv7-linux-androideabi`       |   ✓    |
+| `armv7-apple-ios`               |   ✓    |
+| `armv7s-apple-ios`              |   ✓    |
+| `i686-unknown-linux-gnu`        |   ✓    |
+| `i686-unknown-linux-musl`       |   ✓    |
+| `i686-unknown-freebsd`          |   ✓    |
+| `i686-apple-ios`                |   ✓    |
+| `i686-apple-darwin`             |   ✓    |
+| `i686-linux-android`            |   ✓    |
+| `x86_64-unknown-linux-gnu`      |   ✓    |
+| `x86_64-unknown-linux-musl`     |   ✓    |
+| `x86_64-linux-android`          |   ✓    |
+| `x86_64-apple-darwin`           |   ✓    |
+| `x86_64-apple-ios`              |   ✓    |
+| `x86_64-unknown-freebsd`        |   ✓    |
+| `wasm32-unknown-emscripten`     |   ✓    |
+| `wasm32-unknown-unknown`        |   ✓    |
 
 ## supported compiler versions
 
 | Rust    | `test` |
-|---------|:------:|
+| ------- | :----: |
 | stable  |   ✓    |
 | beta    |   ✓    |
 | nightly |   ✓    |

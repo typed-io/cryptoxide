@@ -11,10 +11,10 @@
 //! ```
 //!
 
+use core::ops::{Add, Mul, Sub};
 use curve25519::{curve25519, ge_scalarmult_base, sc_muladd, sc_reduce, Fe, GeP2, GeP3};
 use digest::Digest;
 use sha2::Sha512;
-use std::ops::{Add, Mul, Sub};
 use util::fixed_time_eq;
 
 pub const SEED_LENGTH: usize = 32;

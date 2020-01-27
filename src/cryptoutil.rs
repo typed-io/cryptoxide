@@ -10,8 +10,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std;
-use std::{io, ptr};
+use core::{cmp, mem::size_of, ptr};
 
 use buffer::BufferResult::{BufferOverflow, BufferUnderflow};
 use buffer::{BufferResult, ReadBuffer, WriteBuffer};
@@ -21,7 +20,7 @@ macro_rules! write_type {
     ($C: ident, $T: ident, $F: ident) => {
         /// Write a $T into a vector, which must be of the correct size. The value is written using $F for endianness
         pub fn $C(dst: &mut [u8], input: $T) {
-            const SZ: usize = std::mem::size_of::<$T>();
+            const SZ: usize = size_of::<$T>();
             assert!(dst.len() == SZ);
             let as_bytes = input.$F();
             unsafe {
@@ -43,7 +42,7 @@ macro_rules! write_array_type {
     ($C: ident, $T: ident, $F: ident) => {
         /// Write a $T into a vector, which must be of the correct size. The value is written using $F for endianness
         pub fn $C(dst: &mut [u8], input: &[$T]) {
-            const SZ: usize = std::mem::size_of::<$T>();
+            const SZ: usize = size_of::<$T>();
             assert!(dst.len() == SZ * input.len());
             unsafe {
                 let mut x: *mut u8 = dst.get_unchecked_mut(0);
@@ -66,7 +65,7 @@ macro_rules! read_array_type {
     ($C: ident, $T: ident, $F: ident) => {
         /// Read an array of bytes into an array of $T. The values are read with $F for endianness.
         pub fn $C(dst: &mut [$T], input: &[u8]) {
-            const SZ: usize = std::mem::size_of::<$T>();
+            const SZ: usize = size_of::<$T>();
             assert!(dst.len() * SZ == input.len());
 
             unsafe {
@@ -157,37 +156,6 @@ pub fn zero(dst: &mut [u8]) {
     }
 }
 
-/// An extension trait to implement a few useful serialization
-/// methods on types that implement Write
-pub trait WriteExt {
-    fn write_u8(&mut self, val: u8) -> io::Result<()>;
-    fn write_u32_le(&mut self, val: u32) -> io::Result<()>;
-    fn write_u32_be(&mut self, val: u32) -> io::Result<()>;
-    fn write_u64_le(&mut self, val: u64) -> io::Result<()>;
-    fn write_u64_be(&mut self, val: u64) -> io::Result<()>;
-}
-
-impl<T> WriteExt for T
-where
-    T: io::Write,
-{
-    fn write_u8(&mut self, val: u8) -> io::Result<()> {
-        self.write_all(&[val])
-    }
-    fn write_u32_le(&mut self, val: u32) -> io::Result<()> {
-        self.write_all(&val.to_le_bytes())
-    }
-    fn write_u32_be(&mut self, val: u32) -> io::Result<()> {
-        self.write_all(&val.to_be_bytes())
-    }
-    fn write_u64_le(&mut self, val: u64) -> io::Result<()> {
-        self.write_all(&val.to_le_bytes())
-    }
-    fn write_u64_be(&mut self, val: u64) -> io::Result<()> {
-        self.write_all(&val.to_be_bytes())
-    }
-}
-
 /// `symm_enc_or_dec()` implements the necessary functionality to turn a `SynchronousStreamCipher` into
 /// an Encryptor or Decryptor
 pub fn symm_enc_or_dec<S: SynchronousStreamCipher, R: ReadBuffer, W: WriteBuffer>(
@@ -195,7 +163,7 @@ pub fn symm_enc_or_dec<S: SynchronousStreamCipher, R: ReadBuffer, W: WriteBuffer
     input: &mut R,
     output: &mut W,
 ) -> Result<BufferResult, SymmetricCipherError> {
-    let count = std::cmp::min(input.remaining(), output.remaining());
+    let count = cmp::min(input.remaining(), output.remaining());
     c.process(input.take_next(count), output.take_next(count));
     if input.is_empty() {
         Ok(BufferUnderflow)
@@ -399,6 +367,7 @@ impl<T: FixedBuffer> StandardPadding for T {
 #[cfg(test)]
 pub mod test {
     use std::iter::repeat;
+    use std::vec::Vec;
 
     use digest::Digest;
 

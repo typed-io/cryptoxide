@@ -5,6 +5,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use alloc::boxed::Box;
 use buffer::{BufferResult, RefReadBuffer, RefWriteBuffer};
 use cryptoutil::symm_enc_or_dec;
 

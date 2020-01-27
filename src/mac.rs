@@ -8,6 +8,7 @@
  * The mac module defines the Message Authentication Code (`Mac`) trait.
  */
 
+use alloc::vec::Vec;
 use util::fixed_time_eq;
 
 /**

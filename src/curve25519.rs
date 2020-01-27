@@ -1,7 +1,7 @@
 //! Curve25519 elliptic curve
 
-use std::cmp::{min, Eq, PartialEq};
-use std::ops::{Add, Mul, Sub};
+use core::cmp::{min, Eq, PartialEq};
+use core::ops::{Add, Mul, Sub};
 use util::fixed_time_eq;
 
 /*
@@ -2229,6 +2229,7 @@ pub fn curve25519_base(x: &[u8]) -> [u8; 32] {
 
 #[cfg(test)]
 mod tests {
+    use alloc::vec::Vec;
     use curve25519::{curve25519_base, Fe};
 
     #[test]

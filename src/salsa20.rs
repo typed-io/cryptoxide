@@ -9,7 +9,7 @@ use cryptoutil::{read_u32_le, symm_enc_or_dec, write_u32_le, xor_keystream};
 use simd::u32x4;
 use symmetriccipher::{Decryptor, Encryptor, SymmetricCipherError, SynchronousStreamCipher};
 
-use std::cmp;
+use core::cmp;
 
 #[derive(Clone, Copy)]
 struct SalsaState {
@@ -277,6 +277,7 @@ pub fn hsalsa20(key: &[u8], nonce: &[u8], out: &mut [u8]) {
 
 #[cfg(test)]
 mod test {
+    use alloc::vec::Vec;
     use std::iter::repeat;
 
     use salsa20::Salsa20;

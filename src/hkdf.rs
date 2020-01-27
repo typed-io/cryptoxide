@@ -9,8 +9,9 @@
 //! This module implements the HMAC-based Extract-and-Expand Key
 //! Derivation Function as specified by <https://tools.ietf.org/html/rfc5869>.
 
+use alloc::vec::Vec;
+use core::iter::repeat;
 use cryptoutil::copy_memory;
-use std::iter::repeat;
 
 use digest::Digest;
 use hmac::Hmac;
@@ -71,6 +72,7 @@ pub fn hkdf_expand<D: Digest>(mut digest: D, prk: &[u8], info: &[u8], okm: &mut 
 #[cfg(test)]
 mod test {
     use std::iter::repeat;
+    use std::vec::Vec;
 
     use digest::Digest;
     use hkdf::{hkdf_expand, hkdf_extract};

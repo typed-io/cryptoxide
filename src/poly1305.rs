@@ -11,7 +11,7 @@
 // This is a port of Andrew Moons poly1305-donna
 // https://github.com/floodyberry/poly1305-donna
 
-use std::cmp::min;
+use core::cmp::min;
 
 use cryptoutil::{read_u32_le, write_u32_le};
 use mac::{Mac, MacResult};

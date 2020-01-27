@@ -23,6 +23,16 @@
 //! As with everything cryptographic implementations, please make sure it suits your security requirements,
 //! and review and audit before using.
 //!
+
+#![no_std]
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(test)]
+#[macro_use]
+extern crate std;
+
 pub mod blake2b;
 pub mod blake2s;
 pub mod buffer;

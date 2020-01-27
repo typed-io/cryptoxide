@@ -9,6 +9,9 @@ description = "pure implementation of various common modern cryptographic algori
 keywords = [ "Crypto", "Cryptography", "Modern", "Pure" ]
 categories = [ "cryptography" ]
 
+[lib]
+doctest = false
+
 [build-dependencies]
 
 [dependencies]

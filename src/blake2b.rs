@@ -6,10 +6,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use alloc::vec::Vec;
+use core::iter::repeat;
 use cryptoutil::{copy_memory, read_u64v_le, write_u64v_le};
 use digest::Digest;
 use mac::{Mac, MacResult};
-use std::iter::repeat;
 use util::secure_memset;
 
 static IV: [u64; 8] = [
@@ -141,25 +142,18 @@ impl Blake2b {
     }
 
     fn apply_param(&mut self) {
-        use cryptoutil::WriteExt;
-        use std::io::Write;
-
         let mut param_bytes: [u8; 64] = [0; 64];
-        {
-            let mut writer: &mut [u8] = &mut param_bytes;
-            writer.write_u8(self.param.digest_length).unwrap();
-            writer.write_u8(self.param.key_length).unwrap();
-            writer.write_u8(self.param.fanout).unwrap();
-            writer.write_u8(self.param.depth).unwrap();
-            writer.write_u32_le(self.param.leaf_length).unwrap();
-            writer.write_u64_le(self.param.node_offset).unwrap();
-            writer.write_u8(self.param.node_depth).unwrap();
-            writer.write_u8(self.param.inner_length).unwrap();
-            writer.write_all(&self.param.reserved).unwrap();
-            writer.write_all(&self.param.salt).unwrap();
-            writer.write_all(&self.param.personal).unwrap();
-        }
-
+        param_bytes[0] = self.param.digest_length;
+        param_bytes[1] = self.param.key_length;
+        param_bytes[2] = self.param.fanout;
+        param_bytes[3] = self.param.depth;
+        param_bytes[4..8].copy_from_slice(&self.param.leaf_length.to_le_bytes());
+        param_bytes[8..16].copy_from_slice(&self.param.node_offset.to_le_bytes());
+        param_bytes[16] = self.param.node_depth;
+        param_bytes[17] = self.param.inner_length;
+        param_bytes[18..32].copy_from_slice(&self.param.reserved);
+        param_bytes[32..32 + BLAKE2B_SALTBYTES].copy_from_slice(&self.param.salt);
+        param_bytes[32 + BLAKE2B_SALTBYTES..64].copy_from_slice(&self.param.personal);
         let mut param_words: [u64; 8] = [0; 8];
         read_u64v_le(&mut param_words, &param_bytes);
         for (h, param_word) in self.h.iter_mut().zip(param_words.iter()) {
@@ -426,6 +420,7 @@ impl Mac for Blake2b {
 mod mac_tests {
     use blake2b::Blake2b;
     use mac::Mac;
+    use std::vec::Vec;
 
     #[test]
     fn test_blake2b_mac() {

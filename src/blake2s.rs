@@ -6,10 +6,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use alloc::vec::Vec;
+use core::iter::repeat;
 use cryptoutil::{copy_memory, read_u32v_le, write_u32v_le};
 use digest::Digest;
 use mac::{Mac, MacResult};
-use std::iter::repeat;
 use util::secure_memset;
 
 static IV: [u32; 8] = [
@@ -130,23 +131,17 @@ impl Blake2s {
     }
 
     fn apply_param(&mut self) {
-        use cryptoutil::WriteExt;
-        use std::io::Write;
-
         let mut param_bytes: [u8; 32] = [0; 32];
-        {
-            let mut writer: &mut [u8] = &mut param_bytes;
-            writer.write_u8(self.param.digest_length).unwrap();
-            writer.write_u8(self.param.key_length).unwrap();
-            writer.write_u8(self.param.fanout).unwrap();
-            writer.write_u8(self.param.depth).unwrap();
-            writer.write_u32_le(self.param.leaf_length).unwrap();
-            writer.write_all(&self.param.node_offset).unwrap();
-            writer.write_u8(self.param.node_depth).unwrap();
-            writer.write_u8(self.param.inner_length).unwrap();
-            writer.write_all(&self.param.salt).unwrap();
-            writer.write_all(&self.param.personal).unwrap();
-        }
+        param_bytes[0] = self.param.digest_length;
+        param_bytes[1] = self.param.key_length;
+        param_bytes[2] = self.param.fanout;
+        param_bytes[3] = self.param.depth;
+        param_bytes[4..8].copy_from_slice(&self.param.leaf_length.to_le_bytes());
+        param_bytes[8..14].copy_from_slice(&self.param.node_offset);
+        param_bytes[14] = self.param.node_depth;
+        param_bytes[15] = self.param.inner_length;
+        param_bytes[16..16 + BLAKE2S_SALTBYTES].copy_from_slice(&self.param.salt);
+        param_bytes[16 + BLAKE2S_SALTBYTES..32].copy_from_slice(&self.param.personal);
 
         let mut param_words: [u32; 8] = [0; 8];
         read_u32v_le(&mut param_words, &param_bytes);
@@ -402,9 +397,9 @@ impl Mac for Blake2s {
 
 #[cfg(test)]
 mod digest_tests {
-    //use cryptoutil::test::test_digest_1million_random;
     use blake2s::Blake2s;
     use digest::Digest;
+    use std::vec::Vec;
 
     struct Test {
         input: Vec<u8>,
@@ -493,6 +488,7 @@ mod digest_tests {
 mod mac_tests {
     use blake2s::Blake2s;
     use mac::Mac;
+    use std::vec::Vec;
 
     #[test]
     fn test_blake2s_mac() {

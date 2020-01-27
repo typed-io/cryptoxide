@@ -8,8 +8,9 @@
  * This module implements the Hmac function - a Message Authentication Code using a Digest.
  */
 
-use std::iter::repeat;
+use core::iter::repeat;
 
+use alloc::vec::Vec;
 use cryptoutil;
 use digest::Digest;
 use mac::{Mac, MacResult};
@@ -122,6 +123,7 @@ impl<D: Digest> Mac for Hmac<D> {
 #[cfg(test)]
 mod test {
     use std::iter::repeat;
+    use std::vec::Vec;
 
     use hmac::Hmac;
     use mac::Mac;

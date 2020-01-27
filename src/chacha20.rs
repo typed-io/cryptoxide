@@ -11,7 +11,7 @@
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
-use std::cmp;
+use core::cmp;
 
 use buffer::{BufferResult, RefReadBuffer, RefWriteBuffer};
 use cryptoutil::{read_u32_le, symm_enc_or_dec, write_u32_le, xor_keystream, xor_keystream_mut};
@@ -322,6 +322,7 @@ impl Decryptor for ChaCha20 {
 #[cfg(test)]
 mod test {
     use std::iter::repeat;
+    use std::vec::Vec;
 
     use chacha20::ChaCha20;
     use symmetriccipher::SynchronousStreamCipher;

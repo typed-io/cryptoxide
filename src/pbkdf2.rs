@@ -9,9 +9,10 @@
  * <http://tools.ietf.org/html/rfc2898>.
  */
 
+use alloc::vec::Vec;
+use core::iter::repeat;
 use cryptoutil::{copy_memory, write_u32_be};
 use mac::Mac;
-use std::iter::repeat;
 
 // Calculate a block of the output of size equal to the output_bytes of the underlying Mac function
 // `mac` - The Mac function to use

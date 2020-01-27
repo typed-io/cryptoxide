@@ -229,6 +229,7 @@ impl ChaCha20Poly1305 {
 #[cfg(test)]
 mod test {
     use chacha20poly1305::ChaCha20Poly1305;
+    use std::vec::Vec;
 
     struct TestVector {
         key: [u8; 32],

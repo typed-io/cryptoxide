@@ -21,7 +21,7 @@ impl SimdExt for fake::u32x4 {
 }
 
 mod fake {
-    use std::ops::{Add, BitAnd, BitOr, BitXor, Shl, Shr, Sub};
+    use core::ops::{Add, BitAnd, BitOr, BitXor, Shl, Shr, Sub};
 
     #[derive(Clone, Copy, PartialEq, Eq)]
     #[allow(non_camel_case_types)]

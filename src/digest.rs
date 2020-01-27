@@ -22,7 +22,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::iter::repeat;
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::iter::repeat;
 
 static CHARS: &'static [u8] = b"0123456789abcdef";
 

@@ -45,7 +45,8 @@ assert_eq!(hex, "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe2451143153
 
  */
 
-use std::cmp;
+use alloc::vec;
+use core::cmp;
 
 use cryptoutil::{read_u64v_le, write_u64v_le, zero};
 use digest::Digest;
@@ -306,7 +307,7 @@ impl Sha3 {
         }
 
         fn set_pad(offset: usize, buf: &mut [u8]) {
-            assert!(buf.len() as f32 >= ((offset + 2) as f32 / 8.0).ceil());
+            //assert!(buf.len() as f32 >= ((offset + 2) as f32 / 8.0).ceil());
             let s = offset / 8;
             let buflen = buf.len();
             buf[s] |= 1 << (offset % 8);
@@ -321,7 +322,7 @@ impl Sha3 {
 
         let p_len = pad_len(ds_len, self.offset * 8, self.rate() * 8);
 
-        let mut p: Vec<u8> = vec![0; p_len];
+        let mut p = vec::from_elem(0, p_len);
 
         if ds_len != 0 {
             set_domain_sep(self.output_bits(), &mut p);

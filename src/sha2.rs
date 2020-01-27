@@ -71,8 +71,8 @@ assert_eq!(hex,
  */
 
 use cryptoutil::{
-    add_bytes_to_bits, add_bytes_to_bits_tuple, read_u32v_be, read_u64v_be, write_u32_be,
-    write_u64_be, FixedBuffer, FixedBuffer128, FixedBuffer64, StandardPadding,
+    read_u32v_be, read_u64v_be, write_u128_be, write_u32_be, write_u64_be, FixedBuffer,
+    FixedBuffer128, FixedBuffer64, StandardPadding,
 };
 use digest::Digest;
 
@@ -806,7 +806,7 @@ pub const K64X2: [u64x2; 40] = [
 // necessary to perform the final calculations.
 #[derive(Copy, Clone)]
 struct Engine512 {
-    length_bits: (u64, u64),
+    length_bits: u128,
     buffer: FixedBuffer128,
     state: Engine512State,
     finished: bool,
@@ -815,7 +815,7 @@ struct Engine512 {
 impl Engine512 {
     fn new(h: &[u64; STATE_LEN]) -> Engine512 {
         Engine512 {
-            length_bits: (0, 0),
+            length_bits: 0,
             buffer: FixedBuffer128::new(),
             state: Engine512State::new(h),
             finished: false,
@@ -823,7 +823,7 @@ impl Engine512 {
     }
 
     fn reset(&mut self, h: &[u64; STATE_LEN]) {
-        self.length_bits = (0, 0);
+        self.length_bits = 0;
         self.buffer.reset();
         self.state.reset(h);
         self.finished = false;
@@ -831,8 +831,7 @@ impl Engine512 {
 
     fn input(&mut self, input: &[u8]) {
         assert!(!self.finished);
-        // Assumes that input.len() can be converted to u64 without overflow
-        self.length_bits = add_bytes_to_bits_tuple(self.length_bits, input.len() as u64);
+        self.length_bits += (input.len() as u128) << 3;
         let self_state = &mut self.state;
         self.buffer
             .input(input, |input: &[u8]| self_state.process_block(input));
@@ -846,12 +845,7 @@ impl Engine512 {
         let self_state = &mut self.state;
         self.buffer
             .standard_padding(16, |input: &[u8]| self_state.process_block(input));
-        match self.length_bits {
-            (hi, low) => {
-                write_u64_be(self.buffer.next(8), hi);
-                write_u64_be(self.buffer.next(8), low);
-            }
-        }
+        write_u128_be(self.buffer.next(16), self.length_bits);
         self_state.process_block(self.buffer.full_buffer());
 
         self.finished = true;
@@ -1166,8 +1160,7 @@ impl Engine256 {
 
     fn input(&mut self, input: &[u8]) {
         assert!(!self.finished);
-        // Assumes that input.len() can be converted to u64 without overflow
-        self.length_bits = add_bytes_to_bits(self.length_bits, input.len() as u64);
+        self.length_bits += (input.len() as u64) << 3;
         let self_state = &mut self.state;
         self.buffer
             .input(input, |input: &[u8]| self_state.process_block(input));

@@ -33,6 +33,8 @@ macro_rules! write_type {
     };
 }
 
+write_type!(write_u128_be, u128, to_be_bytes);
+//write_type!(write_u128_le, u128, to_le_bytes);
 write_type!(write_u64_be, u64, to_be_bytes);
 write_type!(write_u64_le, u64, to_le_bytes);
 write_type!(write_u32_be, u32, to_be_bytes);
@@ -207,67 +209,6 @@ pub fn symm_enc_or_dec<S: SynchronousStreamCipher, R: ReadBuffer, W: WriteBuffer
         Ok(BufferUnderflow)
     } else {
         Ok(BufferOverflow)
-    }
-}
-
-/// Convert the value in bytes to the number of bits, a tuple where the 1st item is the
-/// high-order value and the 2nd item is the low order value.
-fn to_bits(x: u64) -> (u64, u64) {
-    (x >> 61, x << 3)
-}
-
-/// Adds the specified number of bytes to the bit count. `panic!()` if this would cause numeric
-/// overflow.
-pub fn add_bytes_to_bits(bits: u64, bytes: u64) -> u64 {
-    let (new_high_bits, new_low_bits) = to_bits(bytes);
-
-    if new_high_bits > 0 {
-        panic!("Numeric overflow occured.")
-    }
-
-    bits.checked_add(new_low_bits)
-        .expect("Numeric overflow occured.")
-}
-
-/// Adds the specified number of bytes to the bit count, which is a tuple where the first element is
-/// the high order value. `panic!()` if this would cause numeric overflow.
-pub fn add_bytes_to_bits_tuple(bits: (u64, u64), bytes: u64) -> (u64, u64) {
-    let (new_high_bits, new_low_bits) = to_bits(bytes);
-    let (hi, low) = bits;
-
-    // Add the low order value - if there is no overflow, then add the high order values
-    // If the addition of the low order values causes overflow, add one to the high order values
-    // before adding them.
-    match low.checked_add(new_low_bits) {
-        Some(x) => {
-            if new_high_bits == 0 {
-                // This is the fast path - every other alternative will rarely occur in practice
-                // considering how large an input would need to be for those paths to be used.
-                return (hi, x);
-            } else {
-                match hi.checked_add(new_high_bits) {
-                    Some(y) => return (y, x),
-                    None => panic!("Numeric overflow occured."),
-                }
-            }
-        }
-        None => {
-            let z = match new_high_bits.checked_add(1) {
-                Some(w) => w,
-                None => panic!("Numeric overflow occured."),
-            };
-            match hi.checked_add(z) {
-                // This re-executes the addition that was already performed earlier when overflow
-                // occured, this time allowing the overflow to happen. Technically, this could be
-                // avoided by using the checked add intrinsic directly, but that involves using
-                // unsafe code and is not really worthwhile considering how infrequently code will
-                // run in practice. This is the reason that this function requires that the type T
-                // be UnsignedInt - overflow is not defined for Signed types. This function could
-                // be implemented for signed types as well if that were needed.
-                Some(y) => return (y, low.wrapping_add(new_low_bits)),
-                None => panic!("Numeric overflow occured."),
-            }
-        }
     }
 }
 
@@ -468,10 +409,6 @@ pub mod test {
     use std;
     use std::iter::repeat;
 
-    //use rand::IsaacRng;
-    //use rand::distributions::{IndependentSample, Range};
-
-    use cryptoutil::{add_bytes_to_bits, add_bytes_to_bits_tuple};
     use digest::Digest;
 
     /// Feed 1,000,000 'a's into the digest with varying input sizes and check that the result is
@@ -501,52 +438,5 @@ pub mod test {
         let result_str = digest.result_str();
 
         assert!(expected == &result_str[..]);
-    }
-
-    // A normal addition - no overflow occurs
-    #[test]
-    fn test_add_bytes_to_bits_ok() {
-        assert!(add_bytes_to_bits(100, 10) == 180);
-    }
-
-    // A simple failure case - adding 1 to the max value
-    #[test]
-    #[should_panic]
-    fn test_add_bytes_to_bits_overflow() {
-        add_bytes_to_bits(std::u64::MAX, 1);
-    }
-
-    // A normal addition - no overflow occurs (fast path)
-    #[test]
-    fn test_add_bytes_to_bits_tuple_ok() {
-        assert!(add_bytes_to_bits_tuple((5, 100), 10) == (5, 180));
-    }
-
-    // The low order value overflows into the high order value
-    #[test]
-    fn test_add_bytes_to_bits_tuple_ok2() {
-        assert!(add_bytes_to_bits_tuple((5, std::u64::MAX), 1) == (6, 7));
-    }
-
-    // The value to add is too large to be converted into bits without overflowing its type
-    #[test]
-    fn test_add_bytes_to_bits_tuple_ok3() {
-        assert!(add_bytes_to_bits_tuple((5, 0), 0x4000000000000001) == (7, 8));
-    }
-
-    // A simple failure case - adding 1 to the max value
-    #[test]
-    #[should_panic]
-    fn test_add_bytes_to_bits_tuple_overflow() {
-        add_bytes_to_bits_tuple((std::u64::MAX, std::u64::MAX), 1);
-    }
-
-    // The value to add is too large to convert to bytes without overflowing its type, but the high
-    // order value from this conversion overflows when added to the existing high order value
-    #[test]
-    #[should_panic]
-    fn test_add_bytes_to_bits_tuple_overflow2() {
-        let value: u64 = std::u64::MAX;
-        add_bytes_to_bits_tuple((value - 1, 0), 0x8000000000000000);
     }
 }

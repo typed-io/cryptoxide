@@ -28,23 +28,13 @@ main() {
         x86_64-apple-ios)
             rustup target install x86_64-apple-ios
             ;;
-	wasm32-unknown-unknown)
+        wasm32-unknown-unknown)
             rustup target install wasm32-unknown-unknown
             ;;
     esac
 
     # This fetches latest stable release
-    local tag=$(git ls-remote --tags --refs --exit-code https://github.com/japaric/cross \
-                       | cut -d/ -f3 \
-                       | grep -E '^v[0.1.0-9.]+$' \
-                       | $sort --version-sort \
-                       | tail -n1)
-    curl -LSfs https://japaric.github.io/trust/install.sh | \
-        sh -s -- \
-           --force \
-           --git japaric/cross \
-           --tag $tag \
-           --target $target
+    cargo install cross
 }
 
 main

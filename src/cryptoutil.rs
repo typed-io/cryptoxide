@@ -17,27 +17,24 @@ use buffer::BufferResult::{BufferOverflow, BufferUnderflow};
 use buffer::{BufferResult, ReadBuffer, WriteBuffer};
 use symmetriccipher::{SymmetricCipherError, SynchronousStreamCipher};
 
-/// Write a u64 into a vector, which must be 8 bytes long. The value is written in big-endian
-/// format.
-pub fn write_u64_be(dst: &mut [u8], mut input: u64) {
-    assert!(dst.len() == 8);
-    input = input.to_be();
-    unsafe {
-        let tmp = &input as *const _ as *const u8;
-        ptr::copy_nonoverlapping(tmp, dst.get_unchecked_mut(0), 8);
-    }
+macro_rules! write_type {
+    ($C: ident, $T: ident, $F: ident) => {
+        /// Write a u64 into a vector, which must be 8 bytes long. The value is written in big-endian
+        /// format.
+        pub fn $C(dst: &mut [u8], input: $T) {
+            const SZ: usize = std::mem::size_of::<$T>();
+            assert!(dst.len() == SZ);
+            let as_bytes = input.$F();
+            unsafe {
+                let tmp = &as_bytes as *const u8;
+                ptr::copy_nonoverlapping(tmp, dst.get_unchecked_mut(0), SZ);
+            }
+        }
+    };
 }
 
-/// Write a u64 into a vector, which must be 8 bytes long. The value is written in little-endian
-/// format.
-pub fn write_u64_le(dst: &mut [u8], mut input: u64) {
-    assert!(dst.len() == 8);
-    input = input.to_le();
-    unsafe {
-        let tmp = &input as *const _ as *const u8;
-        ptr::copy_nonoverlapping(tmp, dst.get_unchecked_mut(0), 8);
-    }
-}
+write_type!(write_u64_be, u64, to_be_bytes);
+write_type!(write_u64_le, u64, to_le_bytes);
 
 /// Write a vector of u64s into a vector of bytes. The values are written in little-endian format.
 pub fn write_u64v_le(dst: &mut [u8], input: &[u64]) {

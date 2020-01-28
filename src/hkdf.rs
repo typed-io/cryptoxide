@@ -153,12 +153,12 @@ mod test {
 
         for t in test_vectors.iter() {
             let mut prk: Vec<u8> = repeat(0).take(t.prk.len()).collect();
-            hkdf_extract(t.digest, &t.salt[..], &t.ikm[..], &mut prk);
+            hkdf_extract(t.digest.clone(), &t.salt[..], &t.ikm[..], &mut prk);
             assert!(prk == t.prk);
 
             let mut okm: Vec<u8> = repeat(0).take(t.okm.len()).collect();
             assert!(okm.len() == t.l);
-            hkdf_expand(t.digest, &prk[..], &t.info[..], &mut okm);
+            hkdf_expand(t.digest.clone(), &prk[..], &t.info[..], &mut okm);
             assert!(okm == t.okm);
         }
     }

@@ -655,7 +655,7 @@ pub fn sha512_digest_block(state: &mut [u64; 8], block: &[u8]) {
 
 // A structure that represents that state of a digest computation for the SHA-2 512 family
 // of digest functions
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 struct Engine512State {
     h: [u64; 8],
 }
@@ -804,7 +804,7 @@ pub const K64X2: [u64x2; 40] = [
 
 // A structure that keeps track of the state of the Sha-512 operation and contains the logic
 // necessary to perform the final calculations.
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 struct Engine512 {
     length_bits: u128,
     buffer: FixedBuffer128,
@@ -853,7 +853,7 @@ impl Engine512 {
 }
 
 /// The SHA-512 hash algorithm with the SHA-512 initial hash value.
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct Sha512 {
     engine: Engine512,
 }
@@ -904,7 +904,7 @@ static H512: [u64; STATE_LEN] = [
 ];
 
 /// The SHA-512 hash algorithm with the SHA-384 initial hash value. The result is truncated to 384 bits.
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct Sha384 {
     engine: Engine512,
 }
@@ -955,7 +955,7 @@ static H384: [u64; STATE_LEN] = [
 ];
 
 /// The SHA-512 hash algorithm with the SHA-512/256 initial hash value. The result is truncated to 256 bits.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Sha512Trunc256 {
     engine: Engine512,
 }
@@ -1006,7 +1006,7 @@ static H512_TRUNC_256: [u64; STATE_LEN] = [
 ];
 
 /// The SHA-512 hash algorithm with the SHA-512/224 initial hash value. The result is truncated to 224 bits.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Sha512Trunc224 {
     engine: Engine512,
 }
@@ -1060,7 +1060,7 @@ static H512_TRUNC_224: [u64; STATE_LEN] = [
 
 // A structure that represents that state of a digest computation for the SHA-2 512 family of digest
 // functions
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Engine256State {
     h: [u32; 8],
 }
@@ -1113,7 +1113,7 @@ pub const K32X4: [u32x4; 16] = [
 
 // A structure that keeps track of the state of the Sha-256 operation and contains the logic
 // necessary to perform the final calculations.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Engine256 {
     length_bits: u64,
     buffer: FixedBuffer64,
@@ -1162,7 +1162,7 @@ impl Engine256 {
 }
 
 /// The SHA-256 hash algorithm with the SHA-256 initial hash value.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Sha256 {
     engine: Engine256,
 }
@@ -1206,7 +1206,7 @@ static H256: [u32; STATE_LEN] = [
 ];
 
 /// The SHA-256 hash algorithm with the SHA-224 initial hash value. The result is truncated to 224 bits.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Sha224 {
     engine: Engine256,
 }

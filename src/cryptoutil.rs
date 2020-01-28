@@ -290,16 +290,10 @@ macro_rules! impl_fixed_buffer( ($name:ident, $size:expr) => (
 ));
 
 /// A fixed size buffer of 64 bytes useful for cryptographic operations.
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct FixedBuffer64 {
     buffer: [u8; 64],
     buffer_idx: usize,
-}
-
-impl Clone for FixedBuffer64 {
-    fn clone(&self) -> FixedBuffer64 {
-        *self
-    }
 }
 
 impl FixedBuffer64 {
@@ -315,16 +309,10 @@ impl FixedBuffer64 {
 impl_fixed_buffer!(FixedBuffer64, 64);
 
 /// A fixed size buffer of 128 bytes useful for cryptographic operations.
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct FixedBuffer128 {
     buffer: [u8; 128],
     buffer_idx: usize,
-}
-
-impl Clone for FixedBuffer128 {
-    fn clone(&self) -> FixedBuffer128 {
-        *self
-    }
 }
 
 impl FixedBuffer128 {

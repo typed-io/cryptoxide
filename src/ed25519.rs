@@ -235,7 +235,7 @@ pub fn verify(message: &[u8], public_key: &[u8], signature: &[u8]) -> bool {
 pub fn exchange(public_key: &[u8], private_key: &[u8]) -> [u8; 32] {
     let ed_y = Fe::from_bytes(&public_key);
     // Produce public key in Montgomery form.
-    let mont_x = edwards_to_montgomery_x(ed_y);
+    let mont_x = edwards_to_montgomery_x(&ed_y);
 
     // Produce private key from seed component (bytes 0 to 32)
     // of the Ed25519 extended private key (64 bytes).
@@ -253,8 +253,8 @@ pub fn exchange(public_key: &[u8], private_key: &[u8]) -> [u8; 32] {
     shared_mont_x
 }
 
-fn edwards_to_montgomery_x(ed_y: Fe) -> Fe {
-    let ed_z = Fe([1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+fn edwards_to_montgomery_x(ed_y: &Fe) -> Fe {
+    let ed_z = &Fe([1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     let temp_x = ed_z.add(ed_y);
     let temp_z = ed_z.sub(ed_y);
     let temp_z_inv = temp_z.invert();

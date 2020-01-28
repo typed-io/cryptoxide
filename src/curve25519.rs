@@ -12,7 +12,7 @@ t[0]+2^26 t[1]+2^51 t[2]+2^77 t[3]+2^102 t[4]+...+2^230 t[9].
 Bounds on each t[i] vary depending on context.
 */
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Fe(pub [i32; 10]);
 
 impl PartialEq for Fe {
@@ -53,6 +53,13 @@ fn load_3i(s: &[u8]) -> i64 {
 
 impl Add for Fe {
     type Output = Fe;
+    fn add(self, rhs: Fe) -> Fe {
+        &self + &rhs
+    }
+}
+
+impl Add for &Fe {
+    type Output = Fe;
 
     /*
     h = f + g
@@ -65,7 +72,7 @@ impl Add for Fe {
     Postconditions:
        |h| bounded by 1.1*2^26,1.1*2^25,1.1*2^26,1.1*2^25,etc.
     */
-    fn add(self, _rhs: Fe) -> Fe {
+    fn add(self, _rhs: &Fe) -> Fe {
         let Fe(f) = self;
         let Fe(g) = _rhs;
 
@@ -105,6 +112,13 @@ impl Add for Fe {
 
 impl Sub for Fe {
     type Output = Fe;
+    fn sub(self, rhs: Fe) -> Fe {
+        &self - &rhs
+    }
+}
+
+impl Sub for &Fe {
+    type Output = Fe;
 
     /*
     h = f - g
@@ -117,9 +131,9 @@ impl Sub for Fe {
     Postconditions:
        |h| bounded by 1.1*2^26,1.1*2^25,1.1*2^26,1.1*2^25,etc.
     */
-    fn sub(self, _rhs: Fe) -> Fe {
+    fn sub(self, rhs: &Fe) -> Fe {
         let Fe(f) = self;
-        let Fe(g) = _rhs;
+        let Fe(g) = rhs;
 
         let f0 = f[0];
         let f1 = f[1];
@@ -157,6 +171,13 @@ impl Sub for Fe {
 
 impl Mul for Fe {
     type Output = Fe;
+    fn mul(self, rhs: Fe) -> Fe {
+        &self * &rhs
+    }
+}
+
+impl Mul for &Fe {
+    type Output = Fe;
 
     /*
     h = f * g
@@ -190,7 +211,7 @@ impl Mul for Fe {
     With tighter constraints on inputs can squeeze carries into int32.
     */
     #[rustfmt::skip]
-    fn mul(self, _rhs: Fe) -> Fe {
+    fn mul(self, _rhs: &Fe) -> Fe {
         let Fe(f) = self;
         let Fe(g) = _rhs;
         let f0 = f[0];
@@ -981,7 +1002,7 @@ impl Fe {
     }
 
     pub fn invert(&self) -> Fe {
-        let z1 = *self;
+        let z1 = self.clone();
 
         /* qhasm: z2 = z1^2^1 */
         let z2 = z1.square();
@@ -991,60 +1012,60 @@ impl Fe {
         let z9 = z1 * z8;
 
         /* qhasm: z11 = z2*z9 */
-        let z11 = z2 * z9;
+        let z11 = &z2 * &z9;
 
         /* qhasm: z22 = z11^2^1 */
         let z22 = z11.square();
 
         /* qhasm: z_5_0 = z9*z22 */
-        let z_5_0 = z9 * z22;
+        let z_5_0 = &z9 * &z22;
 
         /* qhasm: z_10_5 = z_5_0^2^5 */
-        let z_10_5 = (0..5).fold(z_5_0, |z_5_n, _| z_5_n.square());
+        let z_10_5 = (0..5).fold(z_5_0.clone(), |z_5_n, _| z_5_n.square());
 
         /* qhasm: z_10_0 = z_10_5*z_5_0 */
-        let z_10_0 = z_10_5 * z_5_0;
+        let z_10_0 = &z_10_5 * &z_5_0;
 
         /* qhasm: z_20_10 = z_10_0^2^10 */
-        let z_20_10 = (0..10).fold(z_10_0, |x, _| x.square());
+        let z_20_10 = (0..10).fold(z_10_0.clone(), |x, _| x.square());
 
         /* qhasm: z_20_0 = z_20_10*z_10_0 */
-        let z_20_0 = z_20_10 * z_10_0;
+        let z_20_0 = &z_20_10 * &z_10_0;
 
         /* qhasm: z_40_20 = z_20_0^2^20 */
-        let z_40_20 = (0..20).fold(z_20_0, |x, _| x.square());
+        let z_40_20 = (0..20).fold(z_20_0.clone(), |x, _| x.square());
 
         /* qhasm: z_40_0 = z_40_20*z_20_0 */
-        let z_40_0 = z_40_20 * z_20_0;
+        let z_40_0 = &z_40_20 * &z_20_0;
 
         /* qhasm: z_50_10 = z_40_0^2^10 */
-        let z_50_10 = (0..10).fold(z_40_0, |x, _| x.square());
+        let z_50_10 = (0..10).fold(z_40_0.clone(), |x, _| x.square());
 
         /* qhasm: z_50_0 = z_50_10*z_10_0 */
-        let z_50_0 = z_50_10 * z_10_0;
+        let z_50_0 = &z_50_10 * &z_10_0;
 
         /* qhasm: z_100_50 = z_50_0^2^50 */
-        let z_100_50 = (0..50).fold(z_50_0, |x, _| x.square());
+        let z_100_50 = (0..50).fold(z_50_0.clone(), |x, _| x.square());
 
         /* qhasm: z_100_0 = z_100_50*z_50_0 */
-        let z_100_0 = z_100_50 * z_50_0;
+        let z_100_0 = &z_100_50 * &z_50_0;
 
         /* qhasm: z_200_100 = z_100_0^2^100 */
-        let z_200_100 = (0..100).fold(z_100_0, |x, _| x.square());
+        let z_200_100 = (0..100).fold(z_100_0.clone(), |x, _| x.square());
 
         /* qhasm: z_200_0 = z_200_100*z_100_0 */
         /* asm 1: fe_mul(>z_200_0=fe#3,<z_200_100=fe#4,<z_100_0=fe#3); */
         /* asm 2: fe_mul(>z_200_0=t2,<z_200_100=t3,<z_100_0=t2); */
-        let z_200_0 = z_200_100 * z_100_0;
+        let z_200_0 = &z_200_100 * &z_100_0;
 
         /* qhasm: z_250_50 = z_200_0^2^50 */
-        let z_250_50 = (0..50).fold(z_200_0, |x, _| x.square());
+        let z_250_50 = (0..50).fold(z_200_0.clone(), |x, _| x.square());
 
         /* qhasm: z_250_0 = z_250_50*z_50_0 */
-        let z_250_0 = z_250_50 * z_50_0;
+        let z_250_0 = &z_250_50 * &z_50_0;
 
         /* qhasm: z_255_5 = z_250_0^2^5 */
-        let z_255_5 = (0..5).fold(z_250_0, |x, _| x.square());
+        let z_255_5 = (0..5).fold(z_250_0.clone(), |x, _| x.square());
 
         /* qhasm: z_255_21 = z_255_5*z11 */
         /* asm 1: fe_mul(>z_255_21=fe#12,<z_255_5=fe#2,<z11=fe#1); */
@@ -1073,40 +1094,40 @@ impl Fe {
 
     fn pow25523(&self) -> Fe {
         let z2 = self.square();
-        let z8 = (0..2).fold(z2, |x, _| x.square());
-        let z9 = *self * z8;
-        let z11 = z2 * z9;
+        let z8 = (0..2).fold(z2.clone(), |x, _| x.square());
+        let z9 = self.clone() * z8;
+        let z11 = &z2 * &z9;
         let z22 = z11.square();
-        let z_5_0 = z9 * z22;
-        let z_10_5 = (0..5).fold(z_5_0, |x, _| x.square());
-        let z_10_0 = z_10_5 * z_5_0;
-        let z_20_10 = (0..10).fold(z_10_0, |x, _| x.square());
-        let z_20_0 = z_20_10 * z_10_0;
-        let z_40_20 = (0..20).fold(z_20_0, |x, _| x.square());
-        let z_40_0 = z_40_20 * z_20_0;
-        let z_50_10 = (0..10).fold(z_40_0, |x, _| x.square());
-        let z_50_0 = z_50_10 * z_10_0;
-        let z_100_50 = (0..50).fold(z_50_0, |x, _| x.square());
-        let z_100_0 = z_100_50 * z_50_0;
-        let z_200_100 = (0..100).fold(z_100_0, |x, _| x.square());
-        let z_200_0 = z_200_100 * z_100_0;
-        let z_250_50 = (0..50).fold(z_200_0, |x, _| x.square());
-        let z_250_0 = z_250_50 * z_50_0;
-        let z_252_2 = (0..2).fold(z_250_0, |x, _| x.square());
-        let z_252_3 = z_252_2 * *self;
+        let z_5_0 = &z9 * &z22;
+        let z_10_5 = (0..5).fold(z_5_0.clone(), |x, _| x.square());
+        let z_10_0 = &z_10_5 * &z_5_0;
+        let z_20_10 = (0..10).fold(z_10_0.clone(), |x, _| x.square());
+        let z_20_0 = &z_20_10 * &z_10_0;
+        let z_40_20 = (0..20).fold(z_20_0.clone(), |x, _| x.square());
+        let z_40_0 = &z_40_20 * &z_20_0;
+        let z_50_10 = (0..10).fold(z_40_0.clone(), |x, _| x.square());
+        let z_50_0 = &z_50_10 * &z_10_0;
+        let z_100_50 = (0..50).fold(z_50_0.clone(), |x, _| x.square());
+        let z_100_0 = &z_100_50 * &z_50_0;
+        let z_200_100 = (0..100).fold(z_100_0.clone(), |x, _| x.square());
+        let z_200_0 = &z_200_100 * &z_100_0;
+        let z_250_50 = (0..50).fold(z_200_0.clone(), |x, _| x.square());
+        let z_250_0 = &z_250_50 * &z_50_0;
+        let z_252_2 = (0..2).fold(z_250_0.clone(), |x, _| x.square());
+        let z_252_3 = z_252_2 * self.clone();
 
         z_252_3
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct GeP2 {
     x: Fe,
     y: Fe,
     z: Fe,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct GeP3 {
     x: Fe,
     y: Fe,
@@ -1114,7 +1135,7 @@ pub struct GeP3 {
     t: Fe,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct GeP1P1 {
     x: Fe,
     y: Fe,
@@ -1122,14 +1143,14 @@ pub struct GeP1P1 {
     t: Fe,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct GePrecomp {
     y_plus_x: Fe,
     y_minus_x: Fe,
     xy2d: Fe,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct GeCached {
     y_plus_x: Fe,
     y_minus_x: Fe,
@@ -1140,18 +1161,18 @@ pub struct GeCached {
 impl GeP1P1 {
     pub fn to_p2(&self) -> GeP2 {
         GeP2 {
-            x: self.x * self.t,
-            y: self.y * self.z,
-            z: self.z * self.t,
+            x: &self.x * &self.t,
+            y: &self.y * &self.z,
+            z: &self.z * &self.t,
         }
     }
 
     fn to_p3(&self) -> GeP3 {
         GeP3 {
-            x: self.x * self.t,
-            y: self.y * self.z,
-            z: self.z * self.t,
-            t: self.x * self.y,
+            x: &self.x * &self.t,
+            y: &self.y * &self.z,
+            z: &self.z * &self.t,
+            t: &self.x * &self.y,
         }
     }
 }
@@ -1159,16 +1180,16 @@ impl GeP1P1 {
 impl GeP2 {
     fn zero() -> GeP2 {
         GeP2 {
-            x: FE_ZERO,
-            y: FE_ONE,
-            z: FE_ONE,
+            x: FE_ZERO.clone(),
+            y: FE_ONE.clone(),
+            z: FE_ONE.clone(),
         }
     }
 
     pub fn to_bytes(&self) -> [u8; 32] {
         let recip = self.z.invert();
-        let x = self.x * recip;
-        let y = self.y * recip;
+        let x = &self.x * &recip;
+        let y = &self.y * &recip;
         let mut bs = y.to_bytes();
         bs[31] ^= (if x.is_negative() { 1 } else { 0 }) << 7;
         bs
@@ -1178,12 +1199,12 @@ impl GeP2 {
         let xx = self.x.square();
         let yy = self.y.square();
         let b = self.z.square_and_double();
-        let a = self.x + self.y;
+        let a = &self.x + &self.y;
         let aa = a.square();
-        let y3 = yy + xx;
-        let z3 = yy - xx;
-        let x3 = aa - y3;
-        let t3 = b - z3;
+        let y3 = &yy + &xx;
+        let z3 = &yy - &xx;
+        let x3 = &aa - &y3;
+        let t3 = &b - &z3;
 
         GeP1P1 {
             x: x3,
@@ -1235,21 +1256,17 @@ impl GeP2 {
         let aslide = GeP2::slide(a_scalar);
         let bslide = GeP2::slide(b_scalar);
 
-        let mut ai = [GeCached {
-            y_plus_x: FE_ZERO,
-            y_minus_x: FE_ZERO,
-            z: FE_ZERO,
-            t2d: FE_ZERO,
-        }; 8]; /* A,3A,5A,7A,9A,11A,13A,15A */
-        ai[0] = a_point.to_cached();
+        let a1 = a_point.to_cached();
         let a2 = a_point.dbl().to_p3();
-        ai[1] = (a2 + ai[0]).to_p3().to_cached();
-        ai[2] = (a2 + ai[1]).to_p3().to_cached();
-        ai[3] = (a2 + ai[2]).to_p3().to_cached();
-        ai[4] = (a2 + ai[3]).to_p3().to_cached();
-        ai[5] = (a2 + ai[4]).to_p3().to_cached();
-        ai[6] = (a2 + ai[5]).to_p3().to_cached();
-        ai[7] = (a2 + ai[6]).to_p3().to_cached();
+        let a3 = (&a2 + &a1).to_p3().to_cached();
+        let a5 = (&a2 + &a3).to_p3().to_cached();
+        let a7 = (&a2 + &a5).to_p3().to_cached();
+        let a9 = (&a2 + &a7).to_p3().to_cached();
+        let a11 = (&a2 + &a9).to_p3().to_cached();
+        let a13 = (&a2 + &a11).to_p3().to_cached();
+        let a15 = (&a2 + &a13).to_p3().to_cached();
+
+        let ai: [GeCached; 8] = [a1, a3, a5, a7, a9, a11, a13, a15];
 
         let mut r = GeP2::zero();
 
@@ -1267,15 +1284,15 @@ impl GeP2 {
         loop {
             let mut t = r.dbl();
             if aslide[i] > 0 {
-                t = t.to_p3() + ai[(aslide[i] / 2) as usize];
+                t = &t.to_p3() + &ai[(aslide[i] / 2) as usize];
             } else if aslide[i] < 0 {
-                t = t.to_p3() - ai[(-aslide[i] / 2) as usize];
+                t = &t.to_p3() - &ai[(-aslide[i] / 2) as usize];
             }
 
             if bslide[i] > 0 {
-                t = t.to_p3() + BI[(bslide[i] / 2) as usize];
+                t = &t.to_p3() + &BI[(bslide[i] / 2) as usize];
             } else if bslide[i] < 0 {
-                t = t.to_p3() - BI[(-bslide[i] / 2) as usize];
+                t = &t.to_p3() - &BI[(-bslide[i] / 2) as usize];
             }
 
             r = t.to_p2();
@@ -1291,31 +1308,31 @@ impl GeP2 {
 impl GeP3 {
     pub fn from_bytes_negate_vartime(s: &[u8]) -> Option<GeP3> {
         let y = Fe::from_bytes(s);
-        let z = FE_ONE;
+        let z = FE_ONE.clone();
         let y_squared = y.square();
-        let u = y_squared - FE_ONE;
-        let v = (y_squared * FE_D) + FE_ONE;
-        let v_raise_3 = v.square() * v;
-        let v_raise_7 = v_raise_3.square() * v;
-        let uv7 = v_raise_7 * u; // Is this commutative? u comes second in the code, but not in the notation...
+        let u = &y_squared - &FE_ONE;
+        let v = &(&y_squared * &FE_D) + &FE_ONE;
+        let v_raise_3 = &v.square() * &v;
+        let v_raise_7 = &v_raise_3.square() * &v;
+        let uv7 = &v_raise_7 * &u; // Is this commutative? u comes second in the code, but not in the notation...
 
-        let mut x = uv7.pow25523() * v_raise_3 * u;
+        let mut x = &(&uv7.pow25523() * &v_raise_3) * &u;
 
         let vxx = x.square() * v;
-        let check = vxx - u;
+        let check = &vxx - &u;
         if check.is_nonzero() {
             let check2 = vxx + u;
             if check2.is_nonzero() {
                 return None;
             }
-            x = x * FE_SQRTM1;
+            x = &x * &FE_SQRTM1;
         }
 
         if x.is_negative() == ((s[31] >> 7) != 0) {
             x = x.neg();
         }
 
-        let t = x * y;
+        let t = &x * &y;
 
         Some(GeP3 {
             x: x,
@@ -1327,27 +1344,27 @@ impl GeP3 {
 
     fn to_p2(&self) -> GeP2 {
         GeP2 {
-            x: self.x,
-            y: self.y,
-            z: self.z,
+            x: self.x.clone(),
+            y: self.y.clone(),
+            z: self.z.clone(),
         }
     }
 
     pub fn to_cached(&self) -> GeCached {
         GeCached {
-            y_plus_x: self.y + self.x,
-            y_minus_x: self.y - self.x,
-            z: self.z,
-            t2d: self.t * FE_D2,
+            y_plus_x: &self.y + &self.x,
+            y_minus_x: &self.y - &self.x,
+            z: self.z.clone(),
+            t2d: &self.t * &FE_D2,
         }
     }
 
     fn zero() -> GeP3 {
         GeP3 {
-            x: FE_ZERO,
-            y: FE_ONE,
-            z: FE_ONE,
-            t: FE_ZERO,
+            x: FE_ZERO.clone(),
+            y: FE_ONE.clone(),
+            z: FE_ONE.clone(),
+            t: FE_ZERO.clone(),
         }
     }
 
@@ -1357,8 +1374,8 @@ impl GeP3 {
 
     pub fn to_bytes(&self) -> [u8; 32] {
         let recip = self.z.invert();
-        let x = self.x * recip;
-        let y = self.y * recip;
+        let x = &self.x * &recip;
+        let y = &self.y * &recip;
         let mut bs = y.to_bytes();
         bs[31] ^= (if x.is_negative() { 1 } else { 0 }) << 7;
         bs
@@ -1367,19 +1384,26 @@ impl GeP3 {
 
 impl Add<GeCached> for GeP3 {
     type Output = GeP1P1;
+    fn add(self, rhs: GeCached) -> GeP1P1 {
+        &self + &rhs
+    }
+}
 
-    fn add(self, _rhs: GeCached) -> GeP1P1 {
-        let y1_plus_x1 = self.y + self.x;
-        let y1_minus_x1 = self.y - self.x;
-        let a = y1_plus_x1 * _rhs.y_plus_x;
-        let b = y1_minus_x1 * _rhs.y_minus_x;
-        let c = _rhs.t2d * self.t;
-        let zz = self.z * _rhs.z;
-        let d = zz + zz;
-        let x3 = a - b;
-        let y3 = a + b;
-        let z3 = d + c;
-        let t3 = d - c;
+impl Add<&GeCached> for &GeP3 {
+    type Output = GeP1P1;
+
+    fn add(self, _rhs: &GeCached) -> GeP1P1 {
+        let y1_plus_x1 = &self.y + &self.x;
+        let y1_minus_x1 = &self.y - &self.x;
+        let a = &y1_plus_x1 * &_rhs.y_plus_x;
+        let b = &y1_minus_x1 * &_rhs.y_minus_x;
+        let c = &_rhs.t2d * &self.t;
+        let zz = &self.z * &_rhs.z;
+        let d = &zz + &zz;
+        let x3 = &a - &b;
+        let y3 = &a + &b;
+        let z3 = &d + &c;
+        let t3 = &d - &c;
 
         GeP1P1 {
             x: x3,
@@ -1393,17 +1417,25 @@ impl Add<GeCached> for GeP3 {
 impl Add<GePrecomp> for GeP3 {
     type Output = GeP1P1;
 
-    fn add(self, _rhs: GePrecomp) -> GeP1P1 {
-        let y1_plus_x1 = self.y + self.x;
-        let y1_minus_x1 = self.y - self.x;
-        let a = y1_plus_x1 * _rhs.y_plus_x;
-        let b = y1_minus_x1 * _rhs.y_minus_x;
-        let c = _rhs.xy2d * self.t;
-        let d = self.z + self.z;
-        let x3 = a - b;
-        let y3 = a + b;
-        let z3 = d + c;
-        let t3 = d - c;
+    fn add(self, rhs: GePrecomp) -> GeP1P1 {
+        &self + &rhs
+    }
+}
+
+impl Add<&GePrecomp> for &GeP3 {
+    type Output = GeP1P1;
+
+    fn add(self, _rhs: &GePrecomp) -> GeP1P1 {
+        let y1_plus_x1 = &self.y + &self.x;
+        let y1_minus_x1 = &self.y - &self.x;
+        let a = &y1_plus_x1 * &_rhs.y_plus_x;
+        let b = &y1_minus_x1 * &_rhs.y_minus_x;
+        let c = &_rhs.xy2d * &self.t;
+        let d = &self.z + &self.z;
+        let x3 = &a - &b;
+        let y3 = &a + &b;
+        let z3 = &d + &c;
+        let t3 = &d - &c;
 
         GeP1P1 {
             x: x3,
@@ -1417,18 +1449,26 @@ impl Add<GePrecomp> for GeP3 {
 impl Sub<GeCached> for GeP3 {
     type Output = GeP1P1;
 
-    fn sub(self, _rhs: GeCached) -> GeP1P1 {
-        let y1_plus_x1 = self.y + self.x;
-        let y1_minus_x1 = self.y - self.x;
-        let a = y1_plus_x1 * _rhs.y_minus_x;
-        let b = y1_minus_x1 * _rhs.y_plus_x;
-        let c = _rhs.t2d * self.t;
-        let zz = self.z * _rhs.z;
-        let d = zz + zz;
-        let x3 = a - b;
-        let y3 = a + b;
-        let z3 = d - c;
-        let t3 = d + c;
+    fn sub(self, rhs: GeCached) -> GeP1P1 {
+        &self - &rhs
+    }
+}
+
+impl Sub<&GeCached> for &GeP3 {
+    type Output = GeP1P1;
+
+    fn sub(self, _rhs: &GeCached) -> GeP1P1 {
+        let y1_plus_x1 = &self.y + &self.x;
+        let y1_minus_x1 = &self.y - &self.x;
+        let a = &y1_plus_x1 * &_rhs.y_minus_x;
+        let b = &y1_minus_x1 * &_rhs.y_plus_x;
+        let c = &_rhs.t2d * &self.t;
+        let zz = &self.z * &_rhs.z;
+        let d = &zz + &zz;
+        let x3 = &a - &b;
+        let y3 = &a + &b;
+        let z3 = &d - &c;
+        let t3 = &d + &c;
 
         GeP1P1 {
             x: x3,
@@ -1442,17 +1482,25 @@ impl Sub<GeCached> for GeP3 {
 impl Sub<GePrecomp> for GeP3 {
     type Output = GeP1P1;
 
-    fn sub(self, _rhs: GePrecomp) -> GeP1P1 {
-        let y1_plus_x1 = self.y + self.x;
-        let y1_minus_x1 = self.y - self.x;
-        let a = y1_plus_x1 * _rhs.y_minus_x;
-        let b = y1_minus_x1 * _rhs.y_plus_x;
-        let c = _rhs.xy2d * self.t;
-        let d = self.z + self.z;
-        let x3 = a - b;
-        let y3 = a + b;
-        let z3 = d - c;
-        let t3 = d + c;
+    fn sub(self, rhs: GePrecomp) -> GeP1P1 {
+        &self - &rhs
+    }
+}
+
+impl Sub<&GePrecomp> for &GeP3 {
+    type Output = GeP1P1;
+
+    fn sub(self, _rhs: &GePrecomp) -> GeP1P1 {
+        let y1_plus_x1 = &self.y + &self.x;
+        let y1_minus_x1 = &self.y - &self.x;
+        let a = &y1_plus_x1 * &_rhs.y_minus_x;
+        let b = &y1_minus_x1 * &_rhs.y_plus_x;
+        let c = &_rhs.xy2d * &self.t;
+        let d = &self.z + &self.z;
+        let x3 = &a - &b;
+        let y3 = &a + &b;
+        let z3 = &d - &c;
+        let t3 = &d + &c;
 
         GeP1P1 {
             x: x3,
@@ -1474,9 +1522,9 @@ fn equal(b: u8, c: u8) -> i32 {
 impl GePrecomp {
     fn zero() -> GePrecomp {
         GePrecomp {
-            y_plus_x: FE_ONE,
-            y_minus_x: FE_ONE,
-            xy2d: FE_ZERO,
+            y_plus_x: FE_ONE.clone(),
+            y_minus_x: FE_ONE.clone(),
+            xy2d: FE_ZERO.clone(),
         }
     }
 
@@ -1499,8 +1547,8 @@ impl GePrecomp {
         t.maybe_set(&GE_PRECOMP_BASE[pos][6], equal(babs, 7));
         t.maybe_set(&GE_PRECOMP_BASE[pos][7], equal(babs, 8));
         let minus_t = GePrecomp {
-            y_plus_x: t.y_minus_x,
-            y_minus_x: t.y_plus_x,
+            y_plus_x: t.y_minus_x.clone(),
+            y_minus_x: t.y_plus_x.clone(),
             xy2d: t.xy2d.neg(),
         };
         t.maybe_set(&minus_t, bnegative as i32);
@@ -2176,10 +2224,10 @@ pub fn curve25519(n: &[u8], p: &[u8]) -> [u8; 32] {
     e[31] &= 127;
     e[31] |= 64;
     let x1 = Fe::from_bytes(p);
-    x2 = FE_ONE;
-    z2 = FE_ZERO;
-    x3 = x1;
-    z3 = FE_ONE;
+    x2 = FE_ONE.clone();
+    z2 = FE_ZERO.clone();
+    x3 = x1.clone();
+    z3 = FE_ONE.clone();
 
     swap = 0;
     // pos starts at 254 and goes down to 0
@@ -2191,24 +2239,24 @@ pub fn curve25519(n: &[u8], p: &[u8]) -> [u8; 32] {
         z2.maybe_swap_with(&mut z3, swap);
         swap = b;
 
-        let d = x3 - z3;
-        let b = x2 - z2;
-        let a = x2 + z2;
-        let c = x3 + z3;
-        let da = d * a;
-        let cb = c * b;
+        let d = &x3 - &z3;
+        let b = &x2 - &z2;
+        let a = &x2 + &z2;
+        let c = &x3 + &z3;
+        let da = &d * &a;
+        let cb = &c * &b;
         let bb = b.square();
         let aa = a.square();
-        let t0 = da + cb;
-        let t1 = da - cb;
-        let x4 = aa * bb;
-        let e = aa - bb;
+        let t0 = &da + &cb;
+        let t1 = &da - &cb;
+        let x4 = &aa * &bb;
+        let e = &aa - &bb;
         let t2 = t1.square();
         let t3 = e.mul_121666();
         let x5 = t0.square();
-        let t4 = bb + t3;
-        let z5 = x1 * t2;
-        let z4 = e * t4;
+        let t4 = &bb + &t3;
+        let z5 = &x1 * &t2;
+        let z4 = &e * &t4;
 
         z2 = z4;
         z3 = z5;
@@ -2249,10 +2297,10 @@ mod tests {
 
     #[test]
     fn swap_test() {
-        let mut f = Fe([10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
-        let mut g = Fe([11, 21, 31, 41, 51, 61, 71, 81, 91, 101]);
-        let f_initial = f;
-        let g_initial = g;
+        let f_initial = Fe([10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
+        let g_initial = Fe([11, 21, 31, 41, 51, 61, 71, 81, 91, 101]);
+        let mut f = f_initial.clone();
+        let mut g = g_initial.clone();
         f.maybe_swap_with(&mut g, 0);
         assert!(f == f_initial);
         assert!(g == g_initial);
@@ -2287,7 +2335,7 @@ mod tests {
     #[test]
     fn mul_commutes() {
         for (x, y) in CurveGen::new(1).zip(CurveGen::new(2)).take(40) {
-            assert!(x * y == y * x);
+            assert!(&x * &y == &y * &x);
         }
     }
 
@@ -2297,7 +2345,7 @@ mod tests {
             .zip(CurveGen::new(2).zip(CurveGen::new(3)))
             .take(40)
         {
-            assert!((x * y) * z == x * (y * z));
+            assert!(&(&x * &y) * &z == &x * &(&y * &z));
         }
     }
 
@@ -2311,7 +2359,7 @@ mod tests {
     #[test]
     fn square_by_mul() {
         for x in CurveGen::new(1).take(40) {
-            assert!(x * x == x.square());
+            assert!(&x * &x == x.square());
         }
     }
 

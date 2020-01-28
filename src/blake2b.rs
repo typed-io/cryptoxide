@@ -46,7 +46,7 @@ const BLAKE2B_SALTBYTES: usize = 16;
 const BLAKE2B_PERSONALBYTES: usize = 16;
 
 /// Blake2b Context
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct Blake2b {
     h: [u64; 8],
     t: [u64; 2],
@@ -61,13 +61,7 @@ pub struct Blake2b {
     param: Blake2bParam,
 }
 
-impl Clone for Blake2b {
-    fn clone(&self) -> Blake2b {
-        *self
-    }
-}
-
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 struct Blake2bParam {
     digest_length: u8,
     key_length: u8,
@@ -163,12 +157,13 @@ impl Blake2b {
 
     // init xors IV with input parameter block
     fn init_param(p: Blake2bParam, key: &[u8]) -> Blake2b {
-        let mut b = Blake2b::init0(p, p.digest_length, key);
+        let digest_length = p.digest_length;
+        let mut b = Blake2b::init0(p, digest_length, key);
         b.apply_param();
         b
     }
 
-    fn default_param(outlen: u8) -> Blake2bParam {
+    const fn default_param(outlen: u8) -> Blake2bParam {
         Blake2bParam {
             digest_length: outlen,
             key_length: 0,

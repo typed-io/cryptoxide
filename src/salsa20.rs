@@ -11,7 +11,7 @@ use symmetriccipher::{Decryptor, Encryptor, SymmetricCipherError, SynchronousStr
 
 use core::cmp;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct SalsaState {
     a: u32x4,
     b: u32x4,
@@ -19,17 +19,11 @@ struct SalsaState {
     d: u32x4,
 }
 
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct Salsa20 {
     state: SalsaState,
     output: [u8; 64],
     offset: usize,
-}
-
-impl Clone for Salsa20 {
-    fn clone(&self) -> Salsa20 {
-        *self
-    }
 }
 
 const S7: u32x4 = u32x4(7, 7, 7, 7);
@@ -171,7 +165,7 @@ impl Salsa20 {
     }
 
     fn hash(&mut self) {
-        let mut state = self.state;
+        let mut state = self.state.clone();
         for _ in 0..10 {
             columnround(&mut state);
             prepare_rowround!(state.a, state.b, state.c);
@@ -199,7 +193,7 @@ impl Salsa20 {
     }
 
     fn hsalsa20_hash(&mut self, out: &mut [u8]) {
-        let mut state = self.state;
+        let mut state = self.state.clone();
         for _ in 0..10 {
             columnround(&mut state);
             prepare_rowround!(state.a, state.b, state.c);

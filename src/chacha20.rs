@@ -18,7 +18,7 @@ use cryptoutil::{read_u32_le, symm_enc_or_dec, write_u32_le, xor_keystream, xor_
 use simd::u32x4;
 use symmetriccipher::{Decryptor, Encryptor, SymmetricCipherError, SynchronousStreamCipher};
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct ChaChaState {
     a: u32x4,
     b: u32x4,
@@ -27,17 +27,11 @@ struct ChaChaState {
 }
 
 /// ChaCha Context
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct ChaCha20 {
     state: ChaChaState,
     output: [u8; 64],
     offset: usize,
-}
-
-impl Clone for ChaCha20 {
-    fn clone(&self) -> ChaCha20 {
-        *self
-    }
 }
 
 macro_rules! swizzle {
@@ -190,7 +184,7 @@ impl ChaCha20 {
     }
 
     fn hchacha20(&mut self, out: &mut [u8]) -> () {
-        let mut state = self.state;
+        let mut state = self.state.clone();
 
         // Apply r/2 iterations of the same "double-round" function,
         // obtaining (z0, z1, ... z15) = doubleround r/2 (x0, x1, ... x15).
@@ -224,7 +218,7 @@ impl ChaCha20 {
 
     // put the the next 64 keystream bytes into self.output
     fn update(&mut self) {
-        let mut state = self.state;
+        let mut state = self.state.clone();
 
         for _ in 0..10 {
             round!(state);

@@ -32,6 +32,8 @@ main() {
             rustup target install wasm32-unknown-unknown
             ;;
     esac
+
+    cross --version || cargo install --force cross
 }
 
 main

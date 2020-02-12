@@ -1,6 +1,6 @@
 # Cryptoxide
 
-[![Build Status](https://travis-ci.org/typed-io/cryptoxide.svg?branch=master)](https://travis-ci.org/typed-io/cryptoxide)
+![Continuous integration](https://github.com/typed-io/cryptoxide/workflows/Continuous%20integration/badge.svg?branch=master)
 ![MIT or APACHE-2 licensed](https://img.shields.io/badge/licensed-MIT%20or%20APACHE--2-blue.svg)
 
 A pure Rust implementation of various modern cryptographic algorithms, which has no dependencies

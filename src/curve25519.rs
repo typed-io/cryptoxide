@@ -211,6 +211,7 @@ impl Mul for &Fe {
     With tighter constraints on inputs can squeeze carries into int32.
     */
     #[rustfmt::skip]
+    #[allow(clippy::suspicious_arithmetic_impl)]
     fn mul(self, _rhs: &Fe) -> Fe {
         let Fe(f) = self;
         let Fe(g) = _rhs;
@@ -1393,6 +1394,7 @@ impl Add<GeCached> for GeP3 {
 impl Add<&GeCached> for &GeP3 {
     type Output = GeP1P1;
 
+    #[allow(clippy::suspicious_arithmetic_impl)]
     fn add(self, _rhs: &GeCached) -> GeP1P1 {
         let y1_plus_x1 = &self.y + &self.x;
         let y1_minus_x1 = &self.y - &self.x;
@@ -1426,6 +1428,7 @@ impl Add<GePrecomp> for GeP3 {
 impl Add<&GePrecomp> for &GeP3 {
     type Output = GeP1P1;
 
+    #[allow(clippy::suspicious_arithmetic_impl)]
     fn add(self, _rhs: &GePrecomp) -> GeP1P1 {
         let y1_plus_x1 = &self.y + &self.x;
         let y1_minus_x1 = &self.y - &self.x;
@@ -1458,6 +1461,7 @@ impl Sub<GeCached> for GeP3 {
 impl Sub<&GeCached> for &GeP3 {
     type Output = GeP1P1;
 
+    #[allow(clippy::suspicious_arithmetic_impl)]
     fn sub(self, _rhs: &GeCached) -> GeP1P1 {
         let y1_plus_x1 = &self.y + &self.x;
         let y1_minus_x1 = &self.y - &self.x;
@@ -1491,6 +1495,7 @@ impl Sub<GePrecomp> for GeP3 {
 impl Sub<&GePrecomp> for &GeP3 {
     type Output = GeP1P1;
 
+    #[allow(clippy::suspicious_arithmetic_impl)]
     fn sub(self, _rhs: &GePrecomp) -> GeP1P1 {
         let y1_plus_x1 = &self.y + &self.x;
         let y1_minus_x1 = &self.y - &self.x;

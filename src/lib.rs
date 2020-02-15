@@ -24,6 +24,14 @@
 //! and review and audit before using.
 //!
 
+#![warn(clippy::all)]
+#![allow(clippy::unreadable_literal)]
+#![allow(clippy::new_without_default)]
+#![allow(clippy::let_and_return)]
+#![allow(clippy::redundant_field_names)]
+#![allow(clippy::wrong_self_convention)]
+#![allow(clippy::identity_op)]
+#![allow(clippy::many_single_char_names)]
 #![no_std]
 
 #[cfg(not(feature = "std"))]

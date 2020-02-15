@@ -95,8 +95,8 @@ mod test {
             TestVector {
                 digest: Sha256::new(),
                 ikm: repeat(0x0b).take(22).collect(),
-                salt: (0x00..0x0c + 1).collect(),
-                info: (0xf0..0xf9 + 1).collect(),
+                salt: (0x00..=0x0c).collect(),
+                info: (0xf0..=0xf9).collect(),
                 l: 42,
                 prk: vec![
                     0x07, 0x77, 0x09, 0x36, 0x2c, 0x2e, 0x32, 0xdf, 0x0d, 0xdc, 0x3f, 0x0d, 0xc4,
@@ -112,9 +112,9 @@ mod test {
             },
             TestVector {
                 digest: Sha256::new(),
-                ikm: (0x00..0x4f + 1).collect(),
-                salt: (0x60..0xaf + 1).collect(),
-                info: (0xb0..0xff + 1).map(|x| x as u8).collect(),
+                ikm: (0x00..=0x4f).collect(),
+                salt: (0x60..=0xaf).collect(),
+                info: (0xb0..=0xff).map(|x| x as u8).collect(),
                 l: 82,
                 prk: vec![
                     0x06, 0xa6, 0xb8, 0x8c, 0x58, 0x53, 0x36, 0x1a, 0x06, 0x10, 0x4c, 0x9c, 0xeb,

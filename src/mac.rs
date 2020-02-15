@@ -75,7 +75,7 @@ impl MacResult {
      * Get the code value. Be very careful using this method, since incorrect use of the code value
      * may permit timing attacks which defeat the security provided by the Mac function.
      */
-    pub fn code<'s>(&'s self) -> &'s [u8] {
+    pub fn code(&self) -> &[u8] {
         &self.code[..]
     }
 }

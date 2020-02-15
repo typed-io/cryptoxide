@@ -92,7 +92,7 @@ fn finalize_raw(inner: &mut Context) -> [u8; 16] {
     pad16(&mut inner.mac, inner.data_len);
     write_u64_le(&mut len_buf[0..8], inner.aad_len);
     write_u64_le(&mut len_buf[8..16], inner.data_len);
-    inner.mac.input(&mut len_buf);
+    inner.mac.input(&len_buf);
     inner.mac.raw_result(&mut len_buf);
     len_buf
 }
@@ -193,7 +193,7 @@ impl ChaCha20Poly1305 {
     /// Out_tag mutable slice need to 16 bytes exactly.
     pub fn encrypt(&mut self, input: &[u8], output: &mut [u8], out_tag: &mut [u8]) {
         assert!(input.len() == output.len());
-        assert!(self.finished == false);
+        assert!(!self.finished);
         assert!(out_tag.len() == 16);
 
         self.finished = true;
@@ -212,7 +212,7 @@ impl ChaCha20Poly1305 {
     pub fn decrypt(&mut self, input: &[u8], output: &mut [u8], tag: &[u8]) -> bool {
         assert!(tag.len() == 16);
         assert!(input.len() == output.len());
-        assert!(self.finished == false);
+        assert!(!self.finished);
 
         self.finished = true;
 

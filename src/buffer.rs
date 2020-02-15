@@ -313,16 +313,16 @@ impl WriteBuffer for OwnedWriteBuffer {
         self.pos = 0;
     }
 
-    fn peek_read_buffer<'a>(&'a mut self) -> RefReadBuffer<'a> {
+    fn peek_read_buffer(&mut self) -> RefReadBuffer<'_> {
         RefReadBuffer::new(&self.buff[..self.pos])
     }
 
-    fn take_next<'a>(&'a mut self, count: usize) -> &'a mut [u8] {
+    fn take_next(&mut self, count: usize) -> &mut [u8] {
         let r = &mut self.buff[self.pos..self.pos + count];
         self.pos += count;
         r
     }
-    fn take_read_buffer<'a>(&'a mut self) -> RefReadBuffer<'a> {
+    fn take_read_buffer(&mut self) -> RefReadBuffer<'_> {
         let r = RefReadBuffer::new(&self.buff[..self.pos]);
         self.pos = 0;
         r

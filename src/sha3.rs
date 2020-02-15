@@ -93,6 +93,7 @@ fn rotl64(v: u64, n: usize) -> u64 {
 }
 
 // Code based on Keccak-compact64.c from ref implementation.
+#[allow(clippy::needless_range_loop)]
 fn keccak_f(state: &mut [u8]) {
     assert!(state.len() == B);
 
@@ -110,7 +111,7 @@ fn keccak_f(state: &mut [u8]) {
         for x in 0..5 {
             t[0] = c[M5[x + 4]] ^ rotl64(c[M5[x + 1]], 1);
             for y in 0..5 {
-                s[y * 5 + x] = s[y * 5 + x] ^ t[0];
+                s[y * 5 + x] ^= t[0];
             }
         }
 
@@ -133,7 +134,7 @@ fn keccak_f(state: &mut [u8]) {
         }
 
         // Iota
-        s[0] = s[0] ^ RC[round];
+        s[0] ^= RC[round];
     }
 
     write_u64v_le(state, &s);
@@ -202,7 +203,7 @@ struct Engine<E> {
 impl<E> Clone for Engine<E> {
     fn clone(&self) -> Self {
         Self {
-            state: self.state.clone(),
+            state: self.state,
             mode: self.mode,
             can_absorb: self.can_absorb,
             can_squeeze: self.can_squeeze,
@@ -271,8 +272,8 @@ impl<E: constants::Const> Engine<E> {
             for i in (offset % 8) + 1..8 {
                 buf[s] &= !(1 << i);
             }
-            for i in s + 1..buf.len() {
-                buf[i] = 0;
+            for b in buf[s + 1..].iter_mut() {
+                *b = 0;
             }
             buf[buflen - 1] |= 0x80;
         }
@@ -307,7 +308,7 @@ impl<E: constants::Const> Engine<E> {
             let offset = self.offset;
             let nread = cmp::min(r - offset, in_len - in_pos);
             for i in 0..nread {
-                self.state[offset + i] = self.state[offset + i] ^ data[in_pos + i];
+                self.state[offset + i] ^= data[in_pos + i];
             }
             in_pos += nread;
 
@@ -357,9 +358,7 @@ impl<E: constants::Const> Engine<E> {
                 nread = cmp::min(nread, out_len - self.offset);
             }
 
-            for i in 0..nread {
-                out[in_pos + i] = self.state[offset + i];
-            }
+            out[in_pos..(nread + in_pos)].copy_from_slice(&self.state[offset..(nread + offset)]);
             in_pos += nread;
 
             if offset + nread != r {
@@ -469,7 +468,7 @@ mod tests {
             while left > 0 {
                 let take = (left + 1) / 2;
                 sh.input_str(&t.input[len - left..take + len - left]);
-                left = left - take;
+                left -= take;
             }
 
             let out_str = sh.result_str();

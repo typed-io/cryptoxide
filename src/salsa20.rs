@@ -63,14 +63,14 @@ macro_rules! add_rotate_xor {
     }};
 }
 
-fn columnround(state: &mut SalsaState) -> () {
+fn columnround(state: &mut SalsaState) {
     add_rotate_xor!(state.a, state.d, state.c, S7);
     add_rotate_xor!(state.b, state.a, state.d, S9);
     add_rotate_xor!(state.c, state.b, state.a, S13);
     add_rotate_xor!(state.d, state.c, state.b, S18);
 }
 
-fn rowround(state: &mut SalsaState) -> () {
+fn rowround(state: &mut SalsaState) {
     add_rotate_xor!(state.c, state.d, state.a, S7);
     add_rotate_xor!(state.b, state.c, state.d, S9);
     add_rotate_xor!(state.a, state.c, state.b, S13);
@@ -118,23 +118,16 @@ impl Salsa20 {
         //  * Key (x1, x2, x3, x4, x11, x12, x13, x14)
         //  * Input (x6, x7, x8, x9)
 
-        let key_tail; // (x11, x12, x13, x14)
-        if key.len() == 16 {
-            key_tail = key;
-        } else {
-            key_tail = &key[16..32];
-        }
+        // (x11, x12, x13, x14)
+        let key_tail = if key.len() == 16 { key } else { &key[16..32] };
 
-        let x8;
-        let x9; // (x8, x9)
-        if nonce.len() == 16 {
+        // (x8, x9)
+        let (x8, x9) = if nonce.len() == 16 {
             // HSalsa uses the full 16 byte nonce.
-            x8 = read_u32_le(&nonce[8..12]);
-            x9 = read_u32_le(&nonce[12..16]);
+            (read_u32_le(&nonce[8..12]), read_u32_le(&nonce[12..16]))
         } else {
-            x8 = 0;
-            x9 = 0;
-        }
+            (0, 0)
+        };
 
         SalsaState {
             a: u32x4(
@@ -179,8 +172,8 @@ impl Salsa20 {
         let lens = [
             x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15,
         ];
-        for i in 0..lens.len() {
-            write_u32_le(&mut self.output[i * 4..(i + 1) * 4], lens[i]);
+        for (i, lensi) in lens.iter().enumerate() {
+            write_u32_le(&mut self.output[i * 4..(i + 1) * 4], *lensi);
         }
 
         self.state.b = self.state.b + u32x4(1, 0, 0, 0);

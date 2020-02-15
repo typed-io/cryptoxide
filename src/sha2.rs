@@ -1278,7 +1278,7 @@ mod tests {
             while left > 0 {
                 let take = (left + 1) / 2;
                 sh.input_str(&t.input[len - left..take + len - left]);
-                left = left - take;
+                left -= take;
             }
 
             let out_str = sh.result_str();

@@ -140,7 +140,7 @@ impl Blake2s {
         let mut param_words: [u32; 8] = [0; 8];
         read_u32v_le(&mut param_words, &param_bytes);
         for (h, param_word) in self.h.iter_mut().zip(param_words.iter()) {
-            *h = *h ^ *param_word;
+            *h ^= *param_word;
         }
     }
 
@@ -414,7 +414,7 @@ mod digest_tests {
 
             let mut out = [0u8; 32];
             sh.result(&mut out);
-            assert!(&out[..] == &t.output[..]);
+            assert!(out[..] == t.output[..]);
 
             sh.reset();
 
@@ -429,7 +429,7 @@ mod digest_tests {
 
             let mut out = [0u8; 32];
             sh.result(&mut out);
-            assert!(&out[..] == &t.output[..]);
+            assert!(out[..] == t.output[..]);
 
             sh.reset();
         }

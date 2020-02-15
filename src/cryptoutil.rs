@@ -49,7 +49,7 @@ macro_rules! write_array_type {
                 for v in input.iter() {
                     let tmp = v.$F();
                     ptr::copy_nonoverlapping(&tmp as *const u8, x, SZ);
-                    x = x.offset(SZ as isize);
+                    x = x.add(SZ);
                 }
             }
         }
@@ -76,8 +76,8 @@ macro_rules! read_array_type {
                     let mut tmp = [0u8; SZ];
                     ptr::copy_nonoverlapping(y, &mut tmp as *mut _ as *mut u8, SZ);
                     *x = $T::$F(tmp);
-                    x = x.offset(1);
-                    y = y.offset(SZ as isize);
+                    x = x.add(1);
+                    y = y.add(SZ);
                 }
             }
         }
@@ -191,13 +191,13 @@ pub trait FixedBuffer {
 
     /// Get a slice of the buffer of the specified size. There must be at least that many bytes
     /// remaining in the buffer.
-    fn next<'s>(&'s mut self, len: usize) -> &'s mut [u8];
+    fn next(&mut self, len: usize) -> &mut [u8];
 
     /// Get the current buffer. The buffer must already be full. This clears the buffer as well.
-    fn full_buffer<'s>(&'s mut self) -> &'s [u8];
+    fn full_buffer(&mut self) -> &[u8];
 
     /// Get the current buffer.
-    fn current_buffer<'s>(&'s mut self) -> &'s [u8];
+    fn current_buffer(&mut self) -> &[u8];
 
     /// Get the current position of the buffer.
     fn position(&self) -> usize;
@@ -264,18 +264,18 @@ macro_rules! impl_fixed_buffer( ($name:ident, $size:expr) => (
             self.buffer_idx = idx;
         }
 
-        fn next<'s>(&'s mut self, len: usize) -> &'s mut [u8] {
+        fn next(&mut self, len: usize) -> &mut [u8] {
             self.buffer_idx += len;
             &mut self.buffer[self.buffer_idx - len..self.buffer_idx]
         }
 
-        fn full_buffer<'s>(&'s mut self) -> &'s [u8] {
+        fn full_buffer(&mut self) -> &[u8] {
             assert!(self.buffer_idx == $size);
             self.buffer_idx = 0;
             &self.buffer[..$size]
         }
 
-        fn current_buffer<'s>(&'s mut self) -> &'s [u8] {
+        fn current_buffer(&mut self) -> &[u8] {
             let tmp = self.buffer_idx;
             self.buffer_idx = 0;
             &self.buffer[..tmp]
@@ -367,7 +367,7 @@ pub mod test {
         expected: &str,
     ) {
         let total_size = 1000000;
-        let buffer: Vec<u8> = repeat('a' as u8).take(blocksize * 2).collect();
+        let buffer: Vec<u8> = repeat(b'a').take(blocksize * 2).collect();
         //let mut rng = IsaacRng::new_unseeded();
         //let range = Range::new(0, 2 * blocksize + 1);
         let mut count = 0;

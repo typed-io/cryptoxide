@@ -183,7 +183,7 @@ impl ChaCha20 {
         }
     }
 
-    fn hchacha20(&mut self, out: &mut [u8]) -> () {
+    fn hchacha20(&mut self, out: &mut [u8]) {
         let mut state = self.state.clone();
 
         // Apply r/2 iterations of the same "double-round" function,

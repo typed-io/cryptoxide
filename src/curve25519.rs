@@ -1,6 +1,6 @@
 //! Curve25519 elliptic curve
 
-use core::cmp::{min, Eq, PartialEq};
+use core::cmp::{min, Eq, Ordering, PartialEq};
 use core::ops::{Add, Mul, Sub};
 use util::fixed_time_eq;
 
@@ -1039,7 +1039,7 @@ impl Fe {
         let z_40_0 = &z_40_20 * &z_20_0;
 
         /* qhasm: z_50_10 = z_40_0^2^10 */
-        let z_50_10 = (0..10).fold(z_40_0.clone(), |x, _| x.square());
+        let z_50_10 = (0..10).fold(z_40_0, |x, _| x.square());
 
         /* qhasm: z_50_0 = z_50_10*z_10_0 */
         let z_50_0 = &z_50_10 * &z_10_0;
@@ -1059,13 +1059,13 @@ impl Fe {
         let z_200_0 = &z_200_100 * &z_100_0;
 
         /* qhasm: z_250_50 = z_200_0^2^50 */
-        let z_250_50 = (0..50).fold(z_200_0.clone(), |x, _| x.square());
+        let z_250_50 = (0..50).fold(z_200_0, |x, _| x.square());
 
         /* qhasm: z_250_0 = z_250_50*z_50_0 */
         let z_250_0 = &z_250_50 * &z_50_0;
 
         /* qhasm: z_255_5 = z_250_0^2^5 */
-        let z_255_5 = (0..5).fold(z_250_0.clone(), |x, _| x.square());
+        let z_255_5 = (0..5).fold(z_250_0, |x, _| x.square());
 
         /* qhasm: z_255_21 = z_255_5*z11 */
         /* asm 1: fe_mul(>z_255_21=fe#12,<z_255_5=fe#2,<z11=fe#1); */
@@ -1105,15 +1105,15 @@ impl Fe {
         let z_20_0 = &z_20_10 * &z_10_0;
         let z_40_20 = (0..20).fold(z_20_0.clone(), |x, _| x.square());
         let z_40_0 = &z_40_20 * &z_20_0;
-        let z_50_10 = (0..10).fold(z_40_0.clone(), |x, _| x.square());
+        let z_50_10 = (0..10).fold(z_40_0, |x, _| x.square());
         let z_50_0 = &z_50_10 * &z_10_0;
         let z_100_50 = (0..50).fold(z_50_0.clone(), |x, _| x.square());
         let z_100_0 = &z_100_50 * &z_50_0;
         let z_200_100 = (0..100).fold(z_100_0.clone(), |x, _| x.square());
         let z_200_0 = &z_200_100 * &z_100_0;
-        let z_250_50 = (0..50).fold(z_200_0.clone(), |x, _| x.square());
+        let z_250_50 = (0..50).fold(z_200_0, |x, _| x.square());
         let z_250_0 = &z_250_50 * &z_50_0;
-        let z_252_2 = (0..2).fold(z_250_0.clone(), |x, _| x.square());
+        let z_252_2 = (0..2).fold(z_250_0, |x, _| x.square());
         let z_252_3 = z_252_2 * self.clone();
 
         z_252_3
@@ -1214,6 +1214,7 @@ impl GeP2 {
         }
     }
 
+    #[allow(clippy::needless_range_loop)]
     fn slide(a: &[u8]) -> [i8; 256] {
         let mut r = [0i8; 256];
         for i in 0..256 {
@@ -1283,16 +1284,16 @@ impl GeP2 {
 
         loop {
             let mut t = r.dbl();
-            if aslide[i] > 0 {
-                t = &t.to_p3() + &ai[(aslide[i] / 2) as usize];
-            } else if aslide[i] < 0 {
-                t = &t.to_p3() - &ai[(-aslide[i] / 2) as usize];
+            match aslide[i].cmp(&0) {
+                Ordering::Greater => t = &t.to_p3() + &ai[(aslide[i] / 2) as usize],
+                Ordering::Less => t = &t.to_p3() - &ai[(-aslide[i] / 2) as usize],
+                Ordering::Equal => {}
             }
 
-            if bslide[i] > 0 {
-                t = &t.to_p3() + &BI[(bslide[i] / 2) as usize];
-            } else if bslide[i] < 0 {
-                t = &t.to_p3() - &BI[(-bslide[i] / 2) as usize];
+            match bslide[i].cmp(&0) {
+                Ordering::Greater => t = &t.to_p3() + &BI[(bslide[i] / 2) as usize],
+                Ordering::Less => t = &t.to_p3() - &BI[(-bslide[i] / 2) as usize],
+                Ordering::Equal => {}
             }
 
             r = t.to_p2();
@@ -1578,11 +1579,11 @@ pub fn ge_scalarmult_base(a: &[u8]) -> GeP3 {
     /* es[63] is between 0 and 7 */
 
     let mut carry: i8 = 0;
-    for i in 0..63 {
-        es[i] += carry;
-        carry = es[i] + 8;
+    for esi in es[0..63].iter_mut() {
+        *esi += carry;
+        carry = *esi + 8;
         carry >>= 4;
-        es[i] -= carry << 4;
+        *esi -= carry << 4;
     }
     es[63] += carry;
     /* each es[i] is between -8 and 8 */
@@ -2333,6 +2334,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::eq_op)]
     fn mul_commutes() {
         for (x, y) in CurveGen::new(1).zip(CurveGen::new(2)).take(40) {
             assert!(&x * &y == &y * &x);

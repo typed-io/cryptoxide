@@ -6,8 +6,8 @@
 // except according to those terms.
 
 pub fn secure_memset(dst: &mut [u8], val: u8) {
-    for i in 0..dst.len() {
-        dst[i] = val;
+    for d in dst.iter_mut() {
+        *d = val;
     }
 }
 
@@ -21,7 +21,7 @@ pub fn fixed_time_eq(lhs: &[u8], rhs: &[u8]) -> bool {
         for i in 0..lhs.len() {
             let a = lhs[i];
             let b = rhs[i];
-            v = v | (a ^ b);
+            v |= a ^ b;
         }
         v == 0
     }

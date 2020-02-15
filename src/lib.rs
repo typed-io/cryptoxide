@@ -24,7 +24,6 @@
 //! and review and audit before using.
 //!
 
-#![allow(unknown_lints)]
 #![warn(clippy::all)]
 #![allow(clippy::unreadable_literal)]
 #![allow(clippy::new_without_default)]

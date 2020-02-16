@@ -376,7 +376,6 @@ mod test {
 
 #[cfg(all(test, feature = "with-bench"))]
 mod bench {
-    use aead::{AeadDecryptor, AeadEncryptor};
     use chacha20poly1305::ChaCha20Poly1305;
     use test::Bencher;
 

@@ -34,6 +34,12 @@
 #![allow(clippy::many_single_char_names)]
 #![no_std]
 
+#![cfg_attr(feature = "with-bench", feature(test))]
+
+#[cfg(test)]
+#[cfg(feature = "with-bench")]
+extern crate test;
+
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 

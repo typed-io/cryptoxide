@@ -36,3 +36,5 @@ poly1305 = ["mac"]
 
 curve25519 = []
 ed25519 = ["sha2", "curve25519"]
+
+with-bench = []

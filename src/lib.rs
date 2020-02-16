@@ -33,7 +33,6 @@
 #![allow(clippy::identity_op)]
 #![allow(clippy::many_single_char_names)]
 #![no_std]
-
 #![cfg_attr(feature = "with-bench", feature(test))]
 
 #[cfg(test)]

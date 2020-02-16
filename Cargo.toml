@@ -9,9 +9,30 @@ description = "pure implementation of various common modern cryptographic algori
 keywords = [ "Crypto", "Cryptography", "Modern", "Pure" ]
 categories = [ "cryptography" ]
 
+[badges]
+
 [lib]
 doctest = false
 
 [build-dependencies]
 
 [dependencies]
+
+[features]
+default = ["blake2", "sha2", "sha3", "chacha", "salsa", "hkdf", "hmac", "pbkdf2", "poly1305", "curve25519", "ed25519"]
+blake2 = ["digest", "mac"]
+sha2 = ["digest"]
+sha3 = ["digest"]
+digest = []
+
+chacha = []
+salsa = []
+
+mac = ["digest"]
+hkdf = ["digest", "hmac"]
+hmac = ["digest", "mac"]
+pbkdf2 = ["mac"]
+poly1305 = ["mac"]
+
+curve25519 = []
+ed25519 = ["sha2", "curve25519"]

@@ -41,23 +41,46 @@ extern crate alloc;
 #[macro_use]
 extern crate std;
 
+#[cfg(feature = "blake2")]
 pub mod blake2b;
+
+#[cfg(feature = "blake2")]
 pub mod blake2s;
-pub mod buffer;
+
+#[cfg(feature = "chacha")]
 pub mod chacha20;
+
+#[cfg(all(feature = "chacha", feature = "poly1305"))]
 pub mod chacha20poly1305;
-mod cryptoutil;
+
+#[cfg(feature = "curve25519")]
 pub mod curve25519;
 pub mod digest;
+
+#[cfg(feature = "ed25519")]
 pub mod ed25519;
+#[cfg(feature = "hkdf")]
 pub mod hkdf;
+#[cfg(feature = "hmac")]
 pub mod hmac;
+#[cfg(feature = "mac")]
 pub mod mac;
+#[cfg(feature = "pbkdf2")]
 pub mod pbkdf2;
+#[cfg(feature = "poly1305")]
 pub mod poly1305;
+
+#[cfg(feature = "salsa")]
 pub mod salsa20;
+
+#[cfg(feature = "sha2")]
 pub mod sha2;
+
+#[cfg(feature = "sha3")]
 pub mod sha3;
+
+pub mod buffer;
+mod cryptoutil;
 mod simd;
 pub mod symmetriccipher;
 pub mod util;

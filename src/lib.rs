@@ -53,6 +53,9 @@ pub mod blake2b;
 pub mod blake2s;
 
 #[cfg(feature = "chacha")]
+pub mod chacha;
+
+#[cfg(feature = "chacha")]
 pub mod chacha20;
 
 #[cfg(all(feature = "chacha", feature = "poly1305"))]

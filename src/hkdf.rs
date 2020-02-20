@@ -11,11 +11,11 @@
 
 use alloc::vec::Vec;
 use core::iter::repeat;
-use cryptoutil::copy_memory;
 
-use digest::Digest;
-use hmac::Hmac;
-use mac::Mac;
+use crate::cryptoutil::copy_memory;
+use crate::digest::Digest;
+use crate::hmac::Hmac;
+use crate::mac::Mac;
 
 /// Execute the HKDF-Extract function.  Applications MUST NOT use this for
 /// password hashing.
@@ -74,9 +74,9 @@ mod test {
     use std::iter::repeat;
     use std::vec::Vec;
 
-    use digest::Digest;
-    use hkdf::{hkdf_expand, hkdf_extract};
-    use sha2::Sha256;
+    use crate::digest::Digest;
+    use crate::hkdf::{hkdf_expand, hkdf_extract};
+    use crate::sha2::Sha256;
 
     struct TestVector<D: Digest> {
         digest: D,

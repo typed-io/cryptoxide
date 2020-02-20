@@ -6,12 +6,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use crate::cryptoutil::{copy_memory, read_u32v_le, write_u32v_le};
+use crate::digest::Digest;
+use crate::mac::{Mac, MacResult};
+use crate::util::secure_memset;
 use alloc::vec::Vec;
 use core::iter::repeat;
-use cryptoutil::{copy_memory, read_u32v_le, write_u32v_le};
-use digest::Digest;
-use mac::{Mac, MacResult};
-use util::secure_memset;
 
 static IV: [u32; 8] = [
     0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
@@ -392,8 +392,8 @@ impl Mac for Blake2s {
 
 #[cfg(test)]
 mod digest_tests {
-    use blake2s::Blake2s;
-    use digest::Digest;
+    use super::Blake2s;
+    use crate::digest::Digest;
     use std::vec::Vec;
 
     struct Test {
@@ -481,8 +481,8 @@ mod digest_tests {
 
 #[cfg(test)]
 mod mac_tests {
-    use blake2s::Blake2s;
-    use mac::Mac;
+    use super::Blake2s;
+    use crate::mac::Mac;
     use std::vec::Vec;
 
     #[test]
@@ -503,8 +503,8 @@ mod mac_tests {
 mod bench {
     use test::Bencher;
 
-    use blake2s::Blake2s;
-    use digest::Digest;
+    use super::Blake2s;
+    use crate::digest::Digest;
 
     #[bench]
     pub fn blake2s_10(bh: &mut Bencher) {

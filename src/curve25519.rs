@@ -1,8 +1,8 @@
 //! Curve25519 elliptic curve
 
+use crate::util::fixed_time_eq;
 use core::cmp::{min, Eq, Ordering, PartialEq};
 use core::ops::{Add, Mul, Sub};
-use util::fixed_time_eq;
 
 /*
 fe means field element.
@@ -2283,8 +2283,8 @@ pub fn curve25519_base(x: &[u8]) -> [u8; 32] {
 
 #[cfg(test)]
 mod tests {
+    use super::{curve25519_base, Fe};
     use alloc::vec::Vec;
-    use curve25519::{curve25519_base, Fe};
 
     #[test]
     fn from_to_bytes_preserves() {

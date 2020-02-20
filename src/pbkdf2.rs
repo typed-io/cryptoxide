@@ -9,10 +9,10 @@
  * <http://tools.ietf.org/html/rfc2898>.
  */
 
+use crate::cryptoutil::{copy_memory, write_u32_be};
+use crate::mac::Mac;
 use alloc::vec::Vec;
 use core::iter::repeat;
-use cryptoutil::{copy_memory, write_u32_be};
-use mac::Mac;
 
 // Calculate a block of the output of size equal to the output_bytes of the underlying Mac function
 // `mac` - The Mac function to use

@@ -6,12 +6,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use chacha20::ChaCha20;
-use cryptoutil::write_u64_le;
-use mac::Mac;
-use poly1305::Poly1305;
-use symmetriccipher::SynchronousStreamCipher;
-use util::fixed_time_eq;
+use crate::chacha20::ChaCha20;
+use crate::cryptoutil::write_u64_le;
+use crate::mac::Mac;
+use crate::poly1305::Poly1305;
+use crate::symmetriccipher::SynchronousStreamCipher;
+use crate::util::fixed_time_eq;
 
 /// Chacha20Poly1305 Incremental Context for Authenticated Data (AAD)
 #[derive(Clone)]
@@ -228,7 +228,7 @@ impl ChaCha20Poly1305 {
 
 #[cfg(test)]
 mod test {
-    use chacha20poly1305::ChaCha20Poly1305;
+    use super::ChaCha20Poly1305;
     use std::vec::Vec;
 
     struct TestVector {
@@ -376,7 +376,7 @@ mod test {
 
 #[cfg(all(test, feature = "with-bench"))]
 mod bench {
-    use chacha20poly1305::ChaCha20Poly1305;
+    use super::ChaCha20Poly1305;
     use test::Bencher;
 
     #[bench]

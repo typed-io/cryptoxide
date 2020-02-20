@@ -6,12 +6,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use crate::cryptoutil::{copy_memory, read_u64v_le, write_u64v_le};
+use crate::digest::Digest;
+use crate::mac::{Mac, MacResult};
+use crate::util::secure_memset;
 use alloc::vec::Vec;
 use core::iter::repeat;
-use cryptoutil::{copy_memory, read_u64v_le, write_u64v_le};
-use digest::Digest;
-use mac::{Mac, MacResult};
-use util::secure_memset;
 
 static IV: [u64; 8] = [
     0x6a09e667f3bcc908,
@@ -413,8 +413,8 @@ impl Mac for Blake2b {
 
 #[cfg(test)]
 mod mac_tests {
-    use blake2b::Blake2b;
-    use mac::Mac;
+    use super::Blake2b;
+    use crate::mac::Mac;
     use std::vec::Vec;
 
     #[test]
@@ -437,8 +437,8 @@ mod mac_tests {
 mod bench {
     use test::Bencher;
 
-    use blake2b::Blake2b;
-    use digest::Digest;
+    use super::Blake2b;
+    use crate::digest::Digest;
 
     #[bench]
     pub fn blake2b_10(bh: &mut Bencher) {

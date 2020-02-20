@@ -12,9 +12,9 @@
 
 use core::{cmp, mem::size_of, ptr};
 
-use buffer::BufferResult::{BufferOverflow, BufferUnderflow};
-use buffer::{BufferResult, ReadBuffer, WriteBuffer};
-use symmetriccipher::{SymmetricCipherError, SynchronousStreamCipher};
+use crate::buffer::BufferResult::{BufferOverflow, BufferUnderflow};
+use crate::buffer::{BufferResult, ReadBuffer, WriteBuffer};
+use crate::symmetriccipher::{SymmetricCipherError, SynchronousStreamCipher};
 
 macro_rules! write_type {
     ($C: ident, $T: ident, $F: ident) => {
@@ -357,7 +357,7 @@ pub mod test {
     use std::iter::repeat;
     use std::vec::Vec;
 
-    use digest::Digest;
+    use crate::digest::Digest;
 
     /// Feed 1,000,000 'a's into the digest with varying input sizes and check that the result is
     /// correct.

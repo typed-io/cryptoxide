@@ -70,13 +70,13 @@ assert_eq!(hex,
 
  */
 
-use cryptoutil::{
+use crate::cryptoutil::{
     read_u32v_be, read_u64v_be, write_u128_be, write_u32_be, write_u32v_be, write_u64_be,
     write_u64v_be, FixedBuffer, FixedBuffer128, FixedBuffer64, StandardPadding,
 };
-use digest::Digest;
+use crate::digest::Digest;
 
-use simd::{u32x4, u64x2};
+use crate::simd::{u32x4, u64x2};
 
 const STATE_LEN: usize = 8;
 const BLOCK_LEN: usize = 16;
@@ -1251,9 +1251,9 @@ static H224: [u32; STATE_LEN] = [
 
 #[cfg(test)]
 mod tests {
-    use cryptoutil::test::test_digest_1million_random;
-    use digest::Digest;
-    use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
+    use super::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
+    use crate::cryptoutil::test::test_digest_1million_random;
+    use crate::digest::Digest;
 
     struct Test {
         input: &'static str,
@@ -1431,9 +1431,9 @@ mod tests {
 
 #[cfg(all(test, feature = "with-bench"))]
 mod bench {
-    use digest::Digest;
-    use sha2::{sha256_digest_block_u32, sha512_digest_block_u64, Sha256, Sha512};
-    use sha2::{BLOCK_LEN, STATE_LEN};
+    use super::{sha256_digest_block_u32, sha512_digest_block_u64, Sha256, Sha512};
+    use super::{BLOCK_LEN, STATE_LEN};
+    use crate::digest::Digest;
     use test::Bencher;
 
     #[bench]

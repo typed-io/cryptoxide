@@ -13,8 +13,8 @@
 
 use core::cmp::min;
 
-use cryptoutil::{read_u32_le, write_u32_le};
-use mac::{Mac, MacResult};
+use crate::cryptoutil::{read_u32_le, write_u32_le};
+use crate::mac::{Mac, MacResult};
 
 /// `Poly1305` Context
 ///
@@ -248,8 +248,8 @@ impl Mac for Poly1305 {
 
 #[cfg(test)]
 mod test {
-    use mac::Mac;
-    use poly1305::Poly1305;
+    use crate::mac::Mac;
+    use crate::poly1305::Poly1305;
 
     fn poly1305(key: &[u8], msg: &[u8], mac: &mut [u8]) {
         let mut poly = Poly1305::new(key);
@@ -373,8 +373,8 @@ mod test {
 
 #[cfg(all(test, feature = "with-bench"))]
 mod bench {
-    use mac::Mac;
-    use poly1305::Poly1305;
+    use crate::mac::Mac;
+    use crate::poly1305::Poly1305;
     use test::Bencher;
 
     #[bench]

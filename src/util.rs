@@ -29,7 +29,7 @@ pub fn fixed_time_eq(lhs: &[u8], rhs: &[u8]) -> bool {
 
 #[cfg(test)]
 mod test {
-    use util::fixed_time_eq;
+    use crate::util::fixed_time_eq;
 
     #[test]
     pub fn test_fixed_time_eq() {

@@ -26,7 +26,13 @@ Notable differences with the original sources:
 
 ## Running benches
 
+normally:
+
     cargo +nightly bench --features with-bench
+
+or with all the cpu capability enabled:
+
+    RUSTFLAGS="-C target_cpu=native" cargo +nightly bench --features with-bench
 
 ## supported compiler versions
 

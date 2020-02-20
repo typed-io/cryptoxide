@@ -13,10 +13,10 @@
 // except according to those terms.
 use core::cmp;
 
+use crate::buffer::{BufferResult, RefReadBuffer, RefWriteBuffer};
 use crate::chacha::ChaChaEngine as ChaChaState;
-use buffer::{BufferResult, RefReadBuffer, RefWriteBuffer};
-use cryptoutil::{symm_enc_or_dec, xor_keystream, xor_keystream_mut};
-use symmetriccipher::{Decryptor, Encryptor, SymmetricCipherError, SynchronousStreamCipher};
+use crate::cryptoutil::{symm_enc_or_dec, xor_keystream, xor_keystream_mut};
+use crate::symmetriccipher::{Decryptor, Encryptor, SymmetricCipherError, SynchronousStreamCipher};
 
 /// ChaCha Context
 #[derive(Clone)]
@@ -168,8 +168,8 @@ mod test {
     use std::iter::repeat;
     use std::vec::Vec;
 
-    use chacha20::ChaCha20;
-    use symmetriccipher::SynchronousStreamCipher;
+    use super::ChaCha20;
+    use crate::symmetriccipher::SynchronousStreamCipher;
 
     #[test]
     fn test_chacha20_256_tls_vectors() {
@@ -438,8 +438,8 @@ mod test {
 
 #[cfg(all(test, feature = "with-bench"))]
 mod bench {
-    use chacha20::ChaCha20;
-    use symmetriccipher::SynchronousStreamCipher;
+    use super::ChaCha20;
+    use crate::symmetriccipher::SynchronousStreamCipher;
     use test::Bencher;
 
     #[bench]

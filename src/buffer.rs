@@ -9,7 +9,7 @@
 use alloc::vec::Vec;
 use core::cmp;
 
-use cryptoutil;
+use crate::cryptoutil;
 
 #[derive(Clone, Copy)]
 pub enum BufferResult {

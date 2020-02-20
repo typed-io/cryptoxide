@@ -48,8 +48,8 @@ assert_eq!(hex, "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe2451143153
 use alloc::vec;
 use core::cmp;
 
-use cryptoutil::{read_u64v_le, write_u64v_le, zero};
-use digest::Digest;
+use crate::cryptoutil::{read_u64v_le, write_u64v_le, zero};
+use crate::digest::Digest;
 
 const B: usize = 200;
 const NROUNDS: usize = 24;
@@ -443,7 +443,7 @@ sha3_impl!(Keccak512);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use digest::Digest;
+    use crate::digest::Digest;
 
     struct Test {
         input: &'static str,

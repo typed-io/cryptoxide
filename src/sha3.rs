@@ -29,10 +29,10 @@ An example of using `SHA3-256` is:
 
 ```rust
 use self::cryptoxide::digest::Digest;
-use self::cryptoxide::sha3::Sha3;
+use self::cryptoxide::sha3::Sha3_256;
 
 // create a SHA3-256 object
-let mut hasher = Sha3::sha3_256();
+let mut hasher = Sha3_256::new();
 
 // write input message
 hasher.input_str("abc");

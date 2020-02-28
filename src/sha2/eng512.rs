@@ -90,7 +90,7 @@ fn digest_round(ae: u64x2, bf: u64x2, cg: u64x2, dh: u64x2, wk0: u64) -> u64x2 {
 }
 
 /// Process a block with the SHA-512 algorithm.
-pub(super) fn digest_block_u64(state: &mut [u64; 8], block: &[u64; 16]) {
+fn digest_block_u64(state: &mut [u64; STATE_LEN], block: &[u64; BLOCK_LEN]) {
     let k = &K64X2;
 
     macro_rules! schedule {
@@ -199,7 +199,7 @@ pub(super) fn digest_block_u64(state: &mut [u64; 8], block: &[u64; 16]) {
 // the SHA-2 64 bits family of digest functions
 #[derive(Clone)]
 pub(super) struct Engine {
-    h: [u64; 8],
+    h: [u64; STATE_LEN],
 }
 
 impl Engine {

@@ -118,7 +118,7 @@ fn digest_round_x2(cdgh: u32x4, abef: u32x4, wk: u32x4) -> u32x4 {
 }
 
 /// Process a block with the SHA-256 algorithm.
-pub(super) fn digest_block_u32(state: &mut [u32; 8], block: &[u32; 16]) {
+fn digest_block_u32(state: &mut [u32; STATE_LEN], block: &[u32; BLOCK_LEN]) {
     let k = &K32X4;
 
     macro_rules! schedule {
@@ -188,7 +188,7 @@ pub(super) fn digest_block_u32(state: &mut [u32; 8], block: &[u32; 16]) {
 // the SHA-2 32 bits family of digest functions
 #[derive(Clone)]
 pub(super) struct Engine {
-    h: [u32; 8],
+    h: [u32; STATE_LEN],
 }
 
 impl Engine {

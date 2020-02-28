@@ -16,12 +16,12 @@ fn sha512load(v0: u64x2, v1: u64x2) -> u64x2 {
 fn schedule_x2(v0: u64x2, v1: u64x2, v4to5: u64x2, v7: u64x2) -> u64x2 {
     // sigma 0
     fn sigma0(x: u64) -> u64 {
-        ((x << 63) | (x >> 1)) ^ ((x << 56) | (x >> 8)) ^ (x >> 7)
+        x.rotate_left(63) ^ x.rotate_left(56) ^ (x >> 7)
     }
 
     // sigma 1
     fn sigma1(x: u64) -> u64 {
-        ((x << 45) | (x >> 19)) ^ ((x << 3) | (x >> 61)) ^ (x >> 6)
+        x.rotate_left(45) ^ x.rotate_left(3) ^ (x >> 6)
     }
 
     let u64x2(w1, w0) = v0;

@@ -73,6 +73,8 @@ assert_eq!(hex,
 mod eng256;
 mod eng512;
 mod initials;
+mod reference256;
+mod reference512;
 
 use crate::cryptoutil::{
     write_u128_be, write_u64_be, FixedBuffer, FixedBuffer128, FixedBuffer64, StandardPadding,

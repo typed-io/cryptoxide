@@ -1,3 +1,4 @@
+use crate::cryptoutil::read_u64v_be;
 use crate::simd::u64x2;
 
 /// Not an intrinsic, but works like an unaligned load.
@@ -84,7 +85,7 @@ fn digest_round(ae: u64x2, bf: u64x2, cg: u64x2, dh: u64x2, wk0: u64) -> u64x2 {
 }
 
 /// Process a block with the SHA-512 algorithm.
-pub(super) fn digest_block_u64(state: &mut [u64; 8], block: &[u64; 16]) {
+pub(crate) fn digest_block_u64(state: &mut [u64; 8], block: &[u64; 16]) {
     let k = &K64X2;
 
     macro_rules! schedule {
@@ -189,9 +190,19 @@ pub(super) fn digest_block_u64(state: &mut [u64; 8], block: &[u64; 16]) {
     state[7] = state[7].wrapping_add(h);
 }
 
+pub(crate) fn digest_block(state: &mut [u64; 8], mut block: &[u8]) {
+    let mut block2 = [0u64; 16];
+
+    while block.len() > 0 {
+        read_u64v_be(&mut block2[..], &block[0..128]);
+        digest_block_u64(state, &block2);
+        block = &block[128..];
+    }
+}
+
 /// Constants necessary for SHA-512 family of digests.
 #[rustfmt::skip]
-pub const K64: [u64; 80] = [
+const K64: [u64; 80] = [
     0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f, 0xe9b5dba58189dbbc,
     0x3956c25bf348b538, 0x59f111f1b605d019, 0x923f82a4af194f9b, 0xab1c5ed5da6d8118,
     0xd807aa98a3030242, 0x12835b0145706fbe, 0x243185be4ee4b28c, 0x550c7dc3d5ffb4e2,
@@ -215,7 +226,7 @@ pub const K64: [u64; 80] = [
 ];
 
 /// Constants necessary for SHA-512 family of digests.
-pub const K64X2: [u64x2; 40] = [
+const K64X2: [u64x2; 40] = [
     u64x2(K64[1], K64[0]),
     u64x2(K64[3], K64[2]),
     u64x2(K64[5], K64[4]),

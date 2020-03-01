@@ -209,7 +209,7 @@ pub trait FixedBuffer {
     fn size(&self) -> usize;
 }
 
-macro_rules! impl_fixed_buffer( ($name:ident, $size:expr) => (
+macro_rules! impl_fixed_buffer( ($name:ident, $size:expr, $shift:expr) => (
     impl FixedBuffer for $name {
         fn input<F: FnMut(&[u8])>(&mut self, input: &[u8], mut func: F) {
             let mut i = 0;
@@ -239,9 +239,11 @@ macro_rules! impl_fixed_buffer( ($name:ident, $size:expr) => (
 
             // While we have at least a full buffer size chunks's worth of data, process that data
             // without copying it into the buffer
-            while input.len() - i >= size {
-                func(&input[i..i + size]);
-                i += size;
+            if input.len() - i >= size {
+                let remaining = input.len() - i;
+                let block_bytes = (remaining >> $shift) << $shift;
+                func(&input[i..i + block_bytes]);
+                i += block_bytes;
             }
 
             // Copy any input data into the buffer. At this point in the method, the ammount of
@@ -306,7 +308,7 @@ impl FixedBuffer64 {
     }
 }
 
-impl_fixed_buffer!(FixedBuffer64, 64);
+impl_fixed_buffer!(FixedBuffer64, 64, 6);
 
 /// A fixed size buffer of 128 bytes useful for cryptographic operations.
 #[derive(Clone)]
@@ -325,7 +327,7 @@ impl FixedBuffer128 {
     }
 }
 
-impl_fixed_buffer!(FixedBuffer128, 128);
+impl_fixed_buffer!(FixedBuffer128, 128, 7);
 
 /// The `StandardPadding` trait adds a method useful for various hash algorithms to a `FixedBuffer`
 /// struct.

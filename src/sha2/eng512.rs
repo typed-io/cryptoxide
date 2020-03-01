@@ -1,10 +1,10 @@
-use crate::cryptoutil::{read_u64v_be, write_u32_be, write_u64v_be};
+use crate::cryptoutil::{write_u32_be, write_u64v_be};
 
 pub(super) const STATE_LEN: usize = 8;
 pub(super) const BLOCK_LEN: usize = 16;
 pub(super) const BLOCK_LEN_BYTES: usize = BLOCK_LEN * core::mem::size_of::<u64>();
 
-pub use super::reference512::*;
+use super::impl512::*;
 
 // A structure that represents that state of a digest computation for
 // the SHA-2 64 bits family of digest functions
@@ -22,18 +22,10 @@ impl Engine {
         self.h = *h;
     }
 
-    /// Process a block with the SHA-2 64bits algorithm.
-    #[allow(dead_code)]
-    pub fn block(&mut self, block: &[u64; BLOCK_LEN]) {
-        digest_block_u64(&mut self.h, block);
-    }
-
-    /// Process a block in bytes with the SHA-2 64bits algorithm.
-    pub fn block_byteslice(&mut self, block: &[u8]) {
-        assert_eq!(block.len(), BLOCK_LEN_BYTES);
-        let mut block2 = [0u64; BLOCK_LEN];
-        read_u64v_be(&mut block2[..], block);
-        digest_block_u64(&mut self.h, &block2);
+    /// Process a block in bytes with the SHA-2 32bits algorithm.
+    pub fn blocks(&mut self, block: &[u8]) {
+        assert_eq!(block.len() % BLOCK_LEN_BYTES, 0);
+        digest_block(&mut self.h, block);
     }
 
     #[allow(dead_code)]

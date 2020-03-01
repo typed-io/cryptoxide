@@ -72,9 +72,9 @@ assert_eq!(hex,
 
 mod eng256;
 mod eng512;
+mod impl256;
+mod impl512;
 mod initials;
-mod reference256;
-mod reference512;
 
 use crate::cryptoutil::{
     write_u128_be, write_u64_be, FixedBuffer, FixedBuffer128, FixedBuffer64, StandardPadding,
@@ -168,7 +168,7 @@ impl Engine512 {
         self.length_bits += (input.len() as u128) << 3;
         let self_state = &mut self.state;
         self.buffer
-            .input(input, |input: &[u8]| self_state.block_byteslice(input));
+            .input(input, |input: &[u8]| self_state.blocks(input));
     }
 
     fn finish(&mut self) {
@@ -178,9 +178,9 @@ impl Engine512 {
 
         let self_state = &mut self.state;
         self.buffer
-            .standard_padding(16, |input: &[u8]| self_state.block_byteslice(input));
+            .standard_padding(16, |input: &[u8]| self_state.blocks(input));
         write_u128_be(self.buffer.next(16), self.length_bits);
-        self_state.block_byteslice(self.buffer.full_buffer());
+        self_state.blocks(self.buffer.full_buffer());
 
         self.finished = true;
     }
@@ -218,7 +218,7 @@ impl Engine256 {
         self.length_bits += (input.len() as u64) << 3;
         let self_state = &mut self.state;
         self.buffer
-            .input(input, |input: &[u8]| self_state.block_byteslice(input));
+            .input(input, |input: &[u8]| self_state.blocks(input));
     }
 
     fn finish(&mut self) {
@@ -228,9 +228,9 @@ impl Engine256 {
 
         let self_state = &mut self.state;
         self.buffer
-            .standard_padding(8, |input: &[u8]| self_state.block_byteslice(input));
+            .standard_padding(8, |input: &[u8]| self_state.blocks(input));
         write_u64_be(self.buffer.next(8), self.length_bits);
-        self_state.block_byteslice(self.buffer.full_buffer());
+        self_state.blocks(self.buffer.full_buffer());
 
         self.finished = true;
     }
@@ -280,6 +280,23 @@ mod tests {
 
             sh.reset();
         }
+
+        // Test that an arbitrary large message has the same result as one with small piece
+        let mut v = [0u8; 512];
+        for i in 0..v.len() {
+            v[i] = i as u8;
+        }
+        sh.input(&v[..]);
+        let out_str = sh.result_str();
+        sh.reset();
+
+        for i in 0..v.len() / 16 {
+            sh.input(&v[i * 16..i * 16 + 16]);
+        }
+        let out_str2 = sh.result_str();
+
+        assert_eq!(&out_str, &out_str2);
+        //assert_eq!(0, 1);
     }
 
     #[test]
@@ -434,9 +451,9 @@ mod bench {
     #[bench]
     pub fn sha256_block(bh: &mut Bencher) {
         let mut state = eng256::Engine::new(&[0u32; eng256::STATE_LEN]);
-        let words = [1u32; eng256::BLOCK_LEN];
+        let block = [1u8; 64];
         bh.iter(|| {
-            state.block(&words);
+            state.blocks(&block);
         });
         bh.bytes = 64u64;
     }
@@ -444,9 +461,9 @@ mod bench {
     #[bench]
     pub fn sha512_block(bh: &mut Bencher) {
         let mut state = eng512::Engine::new(&[0u64; eng512::STATE_LEN]);
-        let words = [1u64; eng512::BLOCK_LEN];
+        let block = [1u8; 128];
         bh.iter(|| {
-            state.block(&words);
+            state.blocks(&block);
         });
         bh.bytes = 128u64;
     }
@@ -464,7 +481,7 @@ mod bench {
     #[bench]
     pub fn sha256_1k(bh: &mut Bencher) {
         let mut sh = Sha256::new();
-        let bytes = [1u8; 1024];
+        let bytes = [1u8; 1000];
         bh.iter(|| {
             sh.input(&bytes);
         });

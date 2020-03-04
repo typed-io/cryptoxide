@@ -143,6 +143,7 @@ pub struct EngineB {
 
 impl EngineB {
     pub const BLOCK_BYTES: usize = b::BLOCK_BYTES;
+    pub const BLOCK_BYTES_NATIVE: u64 = b::BLOCK_BYTES as u64;
     pub const MAX_OUTLEN: usize = b::MAX_OUTLEN;
     pub const MAX_KEYLEN: usize = b::MAX_KEYLEN;
 
@@ -181,6 +182,7 @@ pub struct EngineS {
 
 impl EngineS {
     pub const BLOCK_BYTES: usize = s::BLOCK_BYTES;
+    pub const BLOCK_BYTES_NATIVE: u32 = s::BLOCK_BYTES as u32;
     pub const MAX_OUTLEN: usize = s::MAX_OUTLEN;
     pub const MAX_KEYLEN: usize = s::MAX_KEYLEN;
 

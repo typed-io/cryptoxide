@@ -18,7 +18,7 @@ use core::iter::repeat;
 #[derive(Clone)]
 pub struct Blake2s {
     eng: Engine,
-    buf: [u8; 2 * Engine::BLOCK_BYTES],
+    buf: [u8; Engine::BLOCK_BYTES],
     buflen: usize,
     digest_length: u8,
     computed: bool, // whether the final digest has been computed
@@ -39,7 +39,7 @@ impl Blake2s {
         assert!(outlen > 0 && outlen <= Engine::MAX_OUTLEN);
         assert!(key.len() <= Engine::MAX_KEYLEN);
 
-        let mut buf = [0u8; 2 * Engine::BLOCK_BYTES];
+        let mut buf = [0u8; Engine::BLOCK_BYTES];
 
         let eng = Engine::new(outlen, key.len());
         let buflen = if key.len() > 0 {
@@ -59,61 +59,43 @@ impl Blake2s {
     }
 
     fn update(&mut self, mut input: &[u8]) {
-        while !input.is_empty() {
-            let left = self.buflen;
-            let fill = 2 * Engine::BLOCK_BYTES - left;
+        if input.len() == 0 {
+            return;
+        }
+        let fill = Engine::BLOCK_BYTES - self.buflen;
 
-            if input.len() > fill {
-                copy_memory(&input[0..fill], &mut self.buf[left..]); // Fill buffer
-                self.buflen += fill;
-                self.eng.increment_counter(Engine::BLOCK_BYTES as u32);
+        if input.len() > fill {
+            copy_memory(&input[0..fill], &mut self.buf[self.buflen..]);
+            self.buflen = 0;
+            self.eng.increment_counter(Engine::BLOCK_BYTES_NATIVE);
+            self.eng
+                .compress(&self.buf[0..Engine::BLOCK_BYTES], LastBlock::No);
+
+            input = &input[fill..];
+
+            while input.len() > Engine::BLOCK_BYTES {
+                self.eng.increment_counter(Engine::BLOCK_BYTES_NATIVE);
                 self.eng
-                    .compress(&self.buf[0..Engine::BLOCK_BYTES], LastBlock::No);
-
-                let mut halves = self.buf.chunks_mut(Engine::BLOCK_BYTES);
-                let first_half = halves.next().unwrap();
-                let second_half = halves.next().unwrap();
-                copy_memory(second_half, first_half);
-
-                self.buflen -= Engine::BLOCK_BYTES;
-                input = &input[fill..input.len()];
-            } else {
-                // inlen <= fill
-                copy_memory(input, &mut self.buf[left..]);
-                self.buflen += input.len();
-                break;
+                    .compress(&input[0..Engine::BLOCK_BYTES], LastBlock::No);
+                input = &input[Engine::BLOCK_BYTES..];
             }
         }
+        copy_memory(input, &mut self.buf[self.buflen..]);
+        self.buflen += input.len();
     }
 
     fn finalize(&mut self, out: &mut [u8]) {
         assert!(out.len() == self.digest_length as usize);
         if !self.computed {
-            if self.buflen > Engine::BLOCK_BYTES {
-                self.eng.increment_counter(Engine::BLOCK_BYTES as u32);
-                self.eng
-                    .compress(&self.buf[0..Engine::BLOCK_BYTES], LastBlock::No);
-                self.buflen -= Engine::BLOCK_BYTES;
-
-                let mut halves = self.buf.chunks_mut(Engine::BLOCK_BYTES);
-                let first_half = halves.next().unwrap();
-                let second_half = halves.next().unwrap();
-                copy_memory(second_half, first_half);
-            }
-
-            let incby = self.buflen as u32;
-            self.eng.increment_counter(incby);
-            for b in self.buf[self.buflen..].iter_mut() {
-                *b = 0;
-            }
+            self.eng.increment_counter(self.buflen as u32);
+            secure_memset(&mut self.buf[self.buflen..], 0);
             self.eng
                 .compress(&self.buf[0..Engine::BLOCK_BYTES], LastBlock::Yes);
 
             write_u32v_le(&mut self.buf[0..32], &self.eng.h);
             self.computed = true;
         }
-        let outlen = out.len();
-        copy_memory(&self.buf[0..outlen], out);
+        copy_memory(&self.buf[0..out.len()], out);
     }
 
     /// Reset the context to the state after calling `new`
@@ -233,7 +215,7 @@ mod digest_tests {
 
             let mut out = [0u8; 32];
             sh.result(&mut out);
-            assert!(out[..] == t.output[..]);
+            assert_eq!(&out[..], &t.output[..]);
 
             match t.key {
                 Some(ref key) => sh.reset_with_key(&key),

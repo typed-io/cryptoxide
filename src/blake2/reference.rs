@@ -58,13 +58,14 @@ macro_rules! compressbody {
             round!($conmod, 11, vs, ms);
         }
 
-        for (h_elem, (v_low, v_high)) in $engine
-            .h
-            .iter_mut()
-            .zip(vs[0..8].iter().zip(vs[8..16].iter()))
-        {
-            *h_elem = *h_elem ^ *v_low ^ *v_high;
-        }
+        $engine.h[0] ^= vs[0] ^ vs[8];
+        $engine.h[1] ^= vs[1] ^ vs[9];
+        $engine.h[2] ^= vs[2] ^ vs[10];
+        $engine.h[3] ^= vs[3] ^ vs[11];
+        $engine.h[4] ^= vs[4] ^ vs[12];
+        $engine.h[5] ^= vs[5] ^ vs[13];
+        $engine.h[6] ^= vs[6] ^ vs[14];
+        $engine.h[7] ^= vs[7] ^ vs[15];
     }};
 }
 

@@ -8,45 +8,48 @@ use core::arch::x86::*;
 #[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::*;
 
-/// Blake2b Context
-#[derive(Clone)]
-pub struct EngineB {
-    pub h: [u64; 8],
-    t: [u64; 2],
+#[inline(always)]
+unsafe fn rotate16_epi64(r: __m128i) -> __m128i {
+    let r16 = _mm_setr_epi8(2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 14, 15, 8, 9);
+    _mm_shuffle_epi8(r, r16)
 }
 
 #[inline(always)]
-unsafe fn _mm_roti_epi64(r: __m128i, c: u32) -> __m128i {
-    if c == 32 {
-        _mm_shuffle_epi32(r, _MM_SHUFFLE(2, 3, 0, 1))
-    } else if c == 24 {
-        let r24 = _mm_setr_epi8(3, 4, 5, 6, 7, 0, 1, 2, 11, 12, 13, 14, 15, 8, 9, 10);
-        _mm_shuffle_epi8(r, r24)
-    } else if c == 16 {
-        let r16 = _mm_setr_epi8(2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 14, 15, 8, 9);
-        _mm_shuffle_epi8(r, r16)
-    } else if c == 63 {
-        _mm_xor_si128(_mm_srli_epi64(r, 63), _mm_slli_epi64(r, 64 - 63))
-    } else {
-        unreachable!()
-    }
+unsafe fn rotate24_epi64(r: __m128i) -> __m128i {
+    let r24 = _mm_setr_epi8(3, 4, 5, 6, 7, 0, 1, 2, 11, 12, 13, 14, 15, 8, 9, 10);
+    _mm_shuffle_epi8(r, r24)
 }
 
 #[inline(always)]
-unsafe fn _mm_roti_epi32(r: __m128i, c: u32) -> __m128i {
-    if c == 8 {
-        let r8 = _mm_set_epi8(12, 15, 14, 13, 8, 11, 10, 9, 4, 7, 6, 5, 0, 3, 2, 1);
-        _mm_shuffle_epi8(r, r8)
-    } else if c == 16 {
-        let r16 = _mm_set_epi8(13, 12, 15, 14, 9, 8, 11, 10, 5, 4, 7, 6, 1, 0, 3, 2);
-        _mm_shuffle_epi8(r, r16)
-    } else if c == 7 {
-        _mm_xor_si128(_mm_srli_epi32(r, 7), _mm_slli_epi32(r, 32 - 7))
-    } else if c == 12 {
-        _mm_xor_si128(_mm_srli_epi32(r, 12), _mm_slli_epi32(r, 32 - 12))
-    } else {
-        unreachable!()
-    }
+unsafe fn rotate32_epi64(r: __m128i) -> __m128i {
+    _mm_shuffle_epi32(r, _MM_SHUFFLE(2, 3, 0, 1))
+}
+
+#[inline(always)]
+unsafe fn rotate63_epi64(r: __m128i) -> __m128i {
+    _mm_xor_si128(_mm_srli_epi64(r, 63), _mm_slli_epi64(r, 64 - 63))
+}
+
+#[inline(always)]
+unsafe fn rotate7_epi32(r: __m128i) -> __m128i {
+    _mm_xor_si128(_mm_srli_epi32(r, 7), _mm_slli_epi32(r, 32 - 7))
+}
+
+#[inline(always)]
+unsafe fn rotate8_epi32(r: __m128i) -> __m128i {
+    let r8 = _mm_set_epi8(12, 15, 14, 13, 8, 11, 10, 9, 4, 7, 6, 5, 0, 3, 2, 1);
+    _mm_shuffle_epi8(r, r8)
+}
+
+#[inline(always)]
+unsafe fn rotate12_epi32(r: __m128i) -> __m128i {
+    _mm_xor_si128(_mm_srli_epi32(r, 12), _mm_slli_epi32(r, 32 - 12))
+}
+
+#[inline(always)]
+unsafe fn rotate16_epi32(r: __m128i) -> __m128i {
+    let r16 = _mm_set_epi8(13, 12, 15, 14, 9, 8, 11, 10, 5, 4, 7, 6, 1, 0, 3, 2);
+    _mm_shuffle_epi8(r, r16)
 }
 
 #[allow(non_snake_case)]
@@ -62,6 +65,8 @@ unsafe fn compress_b(
     t: *const __m128i,
     f: __m128i,
 ) {
+    debug_assert!(h.align_offset(16) == 0);
+
     let m0 = _mm_loadu_si128(block);
     let m1 = _mm_loadu_si128(block.add(1));
     let m2 = _mm_loadu_si128(block.add(2));
@@ -71,41 +76,46 @@ unsafe fn compress_b(
     let m6 = _mm_loadu_si128(block.add(6));
     let m7 = _mm_loadu_si128(block.add(7));
 
-    let mut row1l = _mm_loadu_si128(h);
-    let mut row1h = _mm_loadu_si128(h.add(1));
-    let mut row2l = _mm_loadu_si128(h.add(2));
-    let mut row2h = _mm_loadu_si128(h.add(3));
+    let mut row1l = _mm_load_si128(h);
+    let mut row1h = _mm_load_si128(h.add(1));
+    let mut row2l = _mm_load_si128(h.add(2));
+    let mut row2h = _mm_load_si128(h.add(3));
     let mut row3l = _mm_loadu_si128(iv);
     let mut row3h = _mm_loadu_si128(iv.add(1));
     let mut row4l = _mm_xor_si128(_mm_loadu_si128(iv.add(2)), _mm_loadu_si128(t));
     let mut row4h = _mm_xor_si128(_mm_loadu_si128(iv.add(3)), f);
 
-    macro_rules! xG {
-        ($b0: ident, $b1: ident, $r1: expr, $r2: expr) => {
+    let orig_a0 = row1l;
+    let orig_a1 = row1h;
+    let orig_b0 = row2l;
+    let orig_b1 = row2h;
+
+    macro_rules! G {
+        ($b0: ident, $b1: ident, $rot1: expr, $rot2: expr) => {
             row1l = _mm_add_epi64(_mm_add_epi64(row1l, $b0), row2l);
             row1h = _mm_add_epi64(_mm_add_epi64(row1h, $b1), row2h);
             row4l = _mm_xor_si128(row4l, row1l);
             row4h = _mm_xor_si128(row4h, row1h);
-            row4l = _mm_roti_epi64(row4l, $r1);
-            row4h = _mm_roti_epi64(row4h, $r1);
+            row4l = $rot1(row4l);
+            row4h = $rot1(row4h);
             row3l = _mm_add_epi64(row3l, row4l);
             row3h = _mm_add_epi64(row3h, row4h);
             row2l = _mm_xor_si128(row2l, row3l);
             row2h = _mm_xor_si128(row2h, row3h);
-            row2l = _mm_roti_epi64(row2l, $r2);
-            row2h = _mm_roti_epi64(row2h, $r2);
+            row2l = $rot2(row2l);
+            row2h = $rot2(row2h);
         };
     }
 
     macro_rules! G1 {
         ($b0: ident, $b1: ident) => {
-            xG!($b0, $b1, b::R1, b::R2);
+            G!($b0, $b1, rotate32_epi64, rotate24_epi64);
         };
     }
 
     macro_rules! G2 {
         ($b0: ident, $b1: ident) => {
-            xG!($b0, $b1, b::R3, b::R4);
+            G!($b0, $b1, rotate16_epi64, rotate63_epi64);
         };
     }
 
@@ -152,7 +162,7 @@ unsafe fn compress_b(
             UNDIAGONALIZE!();
         };
     }
-    macro_rules! load_0 {
+    macro_rules! load0 {
         () => {
             (
                 _mm_unpacklo_epi64(m0, m1),
@@ -166,7 +176,7 @@ unsafe fn compress_b(
             )
         };
     }
-    macro_rules! load_1 {
+    macro_rules! load1 {
         () => {
             (
                 _mm_unpacklo_epi64(m7, m2),
@@ -181,7 +191,7 @@ unsafe fn compress_b(
         };
     }
 
-    macro_rules! load_2 {
+    macro_rules! load2 {
         () => {
             (
                 _mm_alignr_epi8(m6, m5, 8),
@@ -196,7 +206,7 @@ unsafe fn compress_b(
         };
     }
 
-    macro_rules! load_3 {
+    macro_rules! load3 {
         () => {
             (
                 _mm_unpackhi_epi64(m3, m1),
@@ -211,7 +221,7 @@ unsafe fn compress_b(
         };
     }
 
-    macro_rules! load_4 {
+    macro_rules! load4 {
         () => {
             (
                 _mm_unpackhi_epi64(m4, m2),
@@ -226,7 +236,7 @@ unsafe fn compress_b(
         };
     }
 
-    macro_rules! load_5 {
+    macro_rules! load5 {
         () => {
             (
                 _mm_unpacklo_epi64(m1, m3),
@@ -241,7 +251,7 @@ unsafe fn compress_b(
         };
     }
 
-    macro_rules! load_6 {
+    macro_rules! load6 {
         () => {
             (
                 _mm_blend_epi16(m6, m0, 0xF0),
@@ -256,7 +266,7 @@ unsafe fn compress_b(
         };
     }
 
-    macro_rules! load_7 {
+    macro_rules! load7 {
         () => {
             (
                 _mm_unpackhi_epi64(m6, m3),
@@ -271,7 +281,7 @@ unsafe fn compress_b(
         };
     }
 
-    macro_rules! load_8 {
+    macro_rules! load8 {
         () => {
             (
                 _mm_unpacklo_epi64(m3, m7),
@@ -286,7 +296,7 @@ unsafe fn compress_b(
         };
     }
 
-    macro_rules! load_9 {
+    macro_rules! load9 {
         () => {
             (
                 _mm_unpacklo_epi64(m5, m4),
@@ -301,57 +311,28 @@ unsafe fn compress_b(
         };
     }
 
-    macro_rules! load_10 {
-        () => {
-            (
-                _mm_unpacklo_epi64(m0, m1),
-                _mm_unpacklo_epi64(m2, m3),
-                _mm_unpackhi_epi64(m0, m1),
-                _mm_unpackhi_epi64(m2, m3),
-                _mm_unpacklo_epi64(m4, m5),
-                _mm_unpacklo_epi64(m6, m7),
-                _mm_unpackhi_epi64(m4, m5),
-                _mm_unpackhi_epi64(m6, m7),
-            )
-        };
-    }
+    ROUND!(load0!());
+    ROUND!(load1!());
+    ROUND!(load2!());
+    ROUND!(load3!());
+    ROUND!(load4!());
+    ROUND!(load5!());
+    ROUND!(load6!());
+    ROUND!(load7!());
+    ROUND!(load8!());
+    ROUND!(load9!());
+    ROUND!(load0!());
+    ROUND!(load1!());
 
-    macro_rules! load_11 {
-        () => {
-            (
-                _mm_unpacklo_epi64(m7, m2),
-                _mm_unpackhi_epi64(m4, m6),
-                _mm_unpacklo_epi64(m5, m4),
-                _mm_alignr_epi8(m3, m7, 8),
-                _mm_shuffle_epi32(m0, _MM_SHUFFLE(1, 0, 3, 2)),
-                _mm_unpackhi_epi64(m5, m2),
-                _mm_unpacklo_epi64(m6, m1),
-                _mm_unpackhi_epi64(m3, m1),
-            )
-        };
-    }
-
-    ROUND!(load_0!());
-    ROUND!(load_1!());
-    ROUND!(load_2!());
-    ROUND!(load_3!());
-    ROUND!(load_4!());
-    ROUND!(load_5!());
-    ROUND!(load_6!());
-    ROUND!(load_7!());
-    ROUND!(load_8!());
-    ROUND!(load_9!());
-    ROUND!(load_10!());
-    ROUND!(load_11!());
-
+    // now xor the original state with the and current state, store it back into the state (h)
     row1l = _mm_xor_si128(row3l, row1l);
     row1h = _mm_xor_si128(row3h, row1h);
-    _mm_storeu_si128(h, _mm_xor_si128(_mm_loadu_si128(h), row1l));
-    _mm_storeu_si128(h.add(1), _mm_xor_si128(_mm_loadu_si128(h.add(1)), row1h));
+    _mm_store_si128(h, _mm_xor_si128(orig_a0, row1l));
+    _mm_store_si128(h.add(1), _mm_xor_si128(orig_a1, row1h));
     row2l = _mm_xor_si128(row4l, row2l);
     row2h = _mm_xor_si128(row4h, row2h);
-    _mm_storeu_si128(h.add(2), _mm_xor_si128(_mm_loadu_si128(h.add(2)), row2l));
-    _mm_storeu_si128(h.add(3), _mm_xor_si128(_mm_loadu_si128(h.add(3)), row2h));
+    _mm_store_si128(h.add(2), _mm_xor_si128(orig_b0, row2l));
+    _mm_store_si128(h.add(3), _mm_xor_si128(orig_b1, row2h));
 }
 
 #[inline(always)]
@@ -361,33 +342,33 @@ unsafe fn compress_s(h: *mut __m128i, block: *const __m128i, iv: *const __m128i,
     let m2 = _mm_loadu_si128(block.add(2));
     let m3 = _mm_loadu_si128(block.add(3));
 
-    let mut row1 = _mm_loadu_si128(h);
-    let mut row2 = _mm_loadu_si128(h.add(1));
+    let mut row1 = _mm_load_si128(h);
+    let mut row2 = _mm_load_si128(h.add(1));
     let mut row3 = _mm_loadu_si128(iv);
     let mut row4 = _mm_xor_si128(_mm_loadu_si128(iv.add(1)), t);
-    let ff0 = row1;
-    let ff1 = row2;
+    let orig_a = row1;
+    let orig_b = row2;
 
-    macro_rules! xG {
-        ($b: ident, $r1: expr, $r2: expr) => {
+    macro_rules! G {
+        ($b: ident, $rol1: expr, $rol2: expr) => {
             row1 = _mm_add_epi32(_mm_add_epi32(row1, $b), row2);
             row4 = _mm_xor_si128(row4, row1);
-            row4 = _mm_roti_epi32(row4, $r1);
+            row4 = $rol1(row4);
             row3 = _mm_add_epi32(row3, row4);
             row2 = _mm_xor_si128(row2, row3);
-            row2 = _mm_roti_epi32(row2, $r2);
+            row2 = $rol2(row2);
         };
     }
 
     macro_rules! G1 {
         ($b: ident) => {
-            xG!($b, s::R1, s::R2);
+            G!($b, rotate16_epi32, rotate12_epi32);
         };
     }
 
     macro_rules! G2 {
         ($b: ident) => {
-            xG!($b, s::R3, s::R4);
+            G!($b, rotate8_epi32, rotate7_epi32);
         };
     }
 
@@ -419,7 +400,7 @@ unsafe fn compress_s(h: *mut __m128i, block: *const __m128i, iv: *const __m128i,
         };
     }
 
-    macro_rules! load_0 {
+    macro_rules! load0 {
         () => {
             (
                 _mm_castps_si128(_mm_shuffle_ps(
@@ -446,7 +427,7 @@ unsafe fn compress_s(h: *mut __m128i, block: *const __m128i, iv: *const __m128i,
         };
     }
 
-    macro_rules! load_1 {
+    macro_rules! load1 {
         () => {
             (
                 {
@@ -477,7 +458,7 @@ unsafe fn compress_s(h: *mut __m128i, block: *const __m128i, iv: *const __m128i,
         };
     }
 
-    macro_rules! load_2 {
+    macro_rules! load2 {
         () => {
             (
                 {
@@ -508,7 +489,7 @@ unsafe fn compress_s(h: *mut __m128i, block: *const __m128i, iv: *const __m128i,
         };
     }
 
-    macro_rules! load_3 {
+    macro_rules! load3 {
         () => {
             (
                 {
@@ -537,7 +518,7 @@ unsafe fn compress_s(h: *mut __m128i, block: *const __m128i, iv: *const __m128i,
         };
     }
 
-    macro_rules! load_4 {
+    macro_rules! load4 {
         () => {
             (
                 {
@@ -566,7 +547,7 @@ unsafe fn compress_s(h: *mut __m128i, block: *const __m128i, iv: *const __m128i,
         };
     }
 
-    macro_rules! load_5 {
+    macro_rules! load5 {
         () => {
             (
                 {
@@ -594,7 +575,7 @@ unsafe fn compress_s(h: *mut __m128i, block: *const __m128i, iv: *const __m128i,
         };
     }
 
-    macro_rules! load_6 {
+    macro_rules! load6 {
         () => {
             (
                 {
@@ -622,7 +603,7 @@ unsafe fn compress_s(h: *mut __m128i, block: *const __m128i, iv: *const __m128i,
         };
     }
 
-    macro_rules! load_7 {
+    macro_rules! load7 {
         () => {
             (
                 {
@@ -651,7 +632,7 @@ unsafe fn compress_s(h: *mut __m128i, block: *const __m128i, iv: *const __m128i,
         };
     }
 
-    macro_rules! load_8 {
+    macro_rules! load8 {
         () => {
             (
                 {
@@ -677,7 +658,7 @@ unsafe fn compress_s(h: *mut __m128i, block: *const __m128i, iv: *const __m128i,
             )
         };
     }
-    macro_rules! load_9 {
+    macro_rules! load9 {
         () => {
             (
                 {
@@ -707,19 +688,27 @@ unsafe fn compress_s(h: *mut __m128i, block: *const __m128i, iv: *const __m128i,
         };
     }
 
-    ROUND!(0, load_0!());
-    ROUND!(1, load_1!());
-    ROUND!(2, load_2!());
-    ROUND!(3, load_3!());
-    ROUND!(4, load_4!());
-    ROUND!(5, load_5!());
-    ROUND!(6, load_6!());
-    ROUND!(7, load_7!());
-    ROUND!(8, load_8!());
-    ROUND!(9, load_9!());
+    ROUND!(0, load0!());
+    ROUND!(1, load1!());
+    ROUND!(2, load2!());
+    ROUND!(3, load3!());
+    ROUND!(4, load4!());
+    ROUND!(5, load5!());
+    ROUND!(6, load6!());
+    ROUND!(7, load7!());
+    ROUND!(8, load8!());
+    ROUND!(9, load9!());
 
-    _mm_storeu_si128(h, _mm_xor_si128(ff0, _mm_xor_si128(row1, row3)));
-    _mm_storeu_si128(h.add(1), _mm_xor_si128(ff1, _mm_xor_si128(row2, row4)));
+    _mm_store_si128(h, _mm_xor_si128(orig_a, _mm_xor_si128(row1, row3)));
+    _mm_store_si128(h.add(1), _mm_xor_si128(orig_b, _mm_xor_si128(row2, row4)));
+}
+
+/// Blake2b Context
+#[derive(Clone)]
+#[repr(align(32))]
+pub struct EngineB {
+    pub h: [u64; 8],
+    t: [u64; 2],
 }
 
 impl EngineB {
@@ -771,6 +760,7 @@ impl EngineB {
 
 /// Blake2s Context
 #[derive(Clone)]
+#[repr(align(32))]
 pub struct EngineS {
     pub h: [u32; 8],
     t: [u32; 2],

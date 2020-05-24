@@ -217,6 +217,23 @@ mod mac_tests {
     use std::vec::Vec;
 
     #[test]
+    fn test_reset_with_key_same_as_new_keyed_if_empty() {
+        const KEY: &[u8] = &[];
+        const INPUT: &[u8] = &[];
+        let mut m = Blake2b::new_keyed(32, &KEY);
+        m.input(&INPUT);
+
+        let mac1 = m.result();
+
+        m.reset_with_key(&KEY);
+        m.input(&INPUT);
+
+        let mac2 = m.result();
+
+        assert_eq!(mac1.code(), mac2.code());
+    }
+
+    #[test]
     fn test_blake2b_mac() {
         let key: Vec<u8> = (0..64).map(|i| i).collect();
         let mut m = Blake2b::new_keyed(64, &key[..]);

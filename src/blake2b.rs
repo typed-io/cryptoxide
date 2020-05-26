@@ -112,8 +112,14 @@ impl Blake2b {
         self.eng.reset(self.digest_length as usize, key.len());
         self.computed = false;
         secure_memset(&mut self.buf[..], 0);
-        self.buf[0..key.len()].copy_from_slice(key);
-        self.buflen = Engine::BLOCK_BYTES;
+
+        if !key.is_empty() {
+            self.buf[0..key.len()].copy_from_slice(key);
+            self.buflen = Engine::BLOCK_BYTES;
+        } else {
+            self.buf = [0; Engine::BLOCK_BYTES];
+            self.buflen = 0;
+        }
     }
 
     pub fn blake2b(out: &mut [u8], input: &[u8], key: &[u8]) {
@@ -215,6 +221,23 @@ mod mac_tests {
     use super::Blake2b;
     use crate::mac::Mac;
     use std::vec::Vec;
+
+    #[test]
+    fn test_reset_with_key_same_as_new_keyed_if_empty() {
+        const KEY: &[u8] = &[];
+        const INPUT: &[u8] = &[];
+        let mut m = Blake2b::new_keyed(32, &KEY);
+        m.input(&INPUT);
+
+        let mac1 = m.result();
+
+        m.reset_with_key(&KEY);
+        m.input(&INPUT);
+
+        let mac2 = m.result();
+
+        assert_eq!(mac1.code(), mac2.code());
+    }
 
     #[test]
     fn test_blake2b_mac() {

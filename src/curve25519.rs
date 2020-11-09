@@ -6081,3 +6081,19 @@ static GE_PRECOMP_BASE: [[GePrecomp; 8]; 32] = [
         },
     ],
 ];
+
+#[cfg(all(test, feature = "with-bench"))]
+mod bench {
+    use super::*;
+    use test::Bencher;
+    #[bench]
+    pub fn mul_curve_base(bh: &mut Bencher) {
+        bh.iter(|| curve25519_base(&[3u8; 32]));
+    }
+
+    #[bench]
+    pub fn mul_curve(bh: &mut Bencher) {
+        let p = curve25519_base(&[3u8; 32]);
+        bh.iter(|| curve25519(&[4u8; 32], &p));
+    }
+}

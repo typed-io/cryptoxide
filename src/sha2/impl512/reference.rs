@@ -193,7 +193,7 @@ pub(crate) fn digest_block_u64(state: &mut [u64; 8], block: &[u64; 16]) {
 pub(crate) fn digest_block(state: &mut [u64; 8], mut block: &[u8]) {
     let mut block2 = [0u64; 16];
 
-    while block.len() > 0 {
+    while !block.is_empty() {
         read_u64v_be(&mut block2[..], &block[0..128]);
         digest_block_u64(state, &block2);
         block = &block[128..];

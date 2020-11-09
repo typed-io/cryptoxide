@@ -283,8 +283,8 @@ mod tests {
 
         // Test that an arbitrary large message has the same result as one with small piece
         let mut v = [0u8; 512];
-        for i in 0..v.len() {
-            v[i] = i as u8;
+        for (i, vi) in v.iter_mut().enumerate() {
+            *vi = i as u8;
         }
         sh.input(&v[..]);
         let out_str = sh.result_str();

@@ -42,7 +42,7 @@ impl Blake2s {
         let mut buf = [0u8; Engine::BLOCK_BYTES];
 
         let eng = Engine::new(outlen, key.len());
-        let buflen = if key.len() > 0 {
+        let buflen = if !key.is_empty() {
             buf[0..key.len()].copy_from_slice(key);
             Engine::BLOCK_BYTES
         } else {
@@ -59,7 +59,7 @@ impl Blake2s {
     }
 
     fn update(&mut self, mut input: &[u8]) {
-        if input.len() == 0 {
+        if input.is_empty() {
             return;
         }
         let fill = Engine::BLOCK_BYTES - self.buflen;
@@ -294,7 +294,7 @@ mod mac_tests {
 
     #[test]
     fn test_blake2s_mac() {
-        let key: Vec<u8> = (0..32).map(|i| i).collect();
+        let key: Vec<u8> = (0..32).collect();
         let mut m = Blake2s::new_keyed(32, &key[..]);
         m.input(&[1, 2, 4, 8]);
         let expected = [

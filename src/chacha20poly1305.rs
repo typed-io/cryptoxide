@@ -10,7 +10,6 @@ use crate::chacha20::ChaCha20;
 use crate::cryptoutil::write_u64_le;
 use crate::mac::Mac;
 use crate::poly1305::Poly1305;
-use crate::symmetriccipher::SynchronousStreamCipher;
 use crate::util::fixed_time_eq;
 
 /// Chacha20Poly1305 Incremental Context for Authenticated Data (AAD)

@@ -4,10 +4,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::buffer::{BufferResult, RefReadBuffer, RefWriteBuffer};
-use crate::cryptoutil::{read_u32_le, symm_enc_or_dec, write_u32_le, xor_keystream};
+use crate::cryptoutil::{read_u32_le, write_u32_le, xor_keystream};
 use crate::simd::u32x4;
-use crate::symmetriccipher::{Decryptor, Encryptor, SymmetricCipherError, SynchronousStreamCipher};
 
 use core::cmp;
 
@@ -202,10 +200,7 @@ impl Salsa20 {
             write_u32_le(&mut out[i * 4..(i + 1) * 4], lens[i]);
         }
     }
-}
-
-impl SynchronousStreamCipher for Salsa20 {
-    fn process(&mut self, input: &[u8], output: &mut [u8]) {
+    pub fn process(&mut self, input: &[u8], output: &mut [u8]) {
         assert!(input.len() == output.len());
         let len = input.len();
         let mut i = 0;
@@ -229,28 +224,6 @@ impl SynchronousStreamCipher for Salsa20 {
     }
 }
 
-impl Encryptor for Salsa20 {
-    fn encrypt(
-        &mut self,
-        input: &mut RefReadBuffer,
-        output: &mut RefWriteBuffer,
-        _: bool,
-    ) -> Result<BufferResult, SymmetricCipherError> {
-        symm_enc_or_dec(self, input, output)
-    }
-}
-
-impl Decryptor for Salsa20 {
-    fn decrypt(
-        &mut self,
-        input: &mut RefReadBuffer,
-        output: &mut RefWriteBuffer,
-        _: bool,
-    ) -> Result<BufferResult, SymmetricCipherError> {
-        symm_enc_or_dec(self, input, output)
-    }
-}
-
 pub fn hsalsa20(key: &[u8], nonce: &[u8], out: &mut [u8]) {
     assert!(key.len() == 32);
     assert!(nonce.len() == 16);
@@ -268,7 +241,6 @@ mod test {
     use std::iter::repeat;
 
     use super::Salsa20;
-    use crate::symmetriccipher::SynchronousStreamCipher;
 
     use crate::digest::Digest;
     use crate::sha2::Sha256;

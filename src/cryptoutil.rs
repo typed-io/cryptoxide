@@ -10,11 +10,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::{cmp, mem::size_of, ptr};
-
-use crate::buffer::BufferResult::{BufferOverflow, BufferUnderflow};
-use crate::buffer::{BufferResult, ReadBuffer, WriteBuffer};
-use crate::symmetriccipher::{SymmetricCipherError, SynchronousStreamCipher};
+use core::{mem::size_of, ptr};
 
 macro_rules! write_type {
     ($C: ident, $T: ident, $F: ident) => {
@@ -153,22 +149,6 @@ pub fn copy_memory(src: &[u8], dst: &mut [u8]) {
 pub fn zero(dst: &mut [u8]) {
     unsafe {
         ptr::write_bytes(dst.as_mut_ptr(), 0, dst.len());
-    }
-}
-
-/// `symm_enc_or_dec()` implements the necessary functionality to turn a `SynchronousStreamCipher` into
-/// an Encryptor or Decryptor
-pub fn symm_enc_or_dec<S: SynchronousStreamCipher, R: ReadBuffer, W: WriteBuffer>(
-    c: &mut S,
-    input: &mut R,
-    output: &mut W,
-) -> Result<BufferResult, SymmetricCipherError> {
-    let count = cmp::min(input.remaining(), output.remaining());
-    c.process(input.take_next(count), output.take_next(count));
-    if input.is_empty() {
-        Ok(BufferUnderflow)
-    } else {
-        Ok(BufferOverflow)
     }
 }
 

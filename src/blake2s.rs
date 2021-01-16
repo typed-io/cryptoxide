@@ -38,7 +38,7 @@ use core::iter::repeat;
 
 /// Blake2s Context
 #[derive(Clone)]
-pub struct Blake2s {
+pub struct Blake2s<const BITS: usize> {
     eng: Engine,
     buf: [u8; Engine::BLOCK_BYTES],
     buflen: usize,
@@ -46,24 +46,24 @@ pub struct Blake2s {
     computed: bool, // whether the final digest has been computed
 }
 
-impl Blake2s {
+impl<const BITS: usize> Blake2s<BITS> {
     /// Create a new Blake2s context with a specific output size in bytes
     ///
     /// the size need to be between 0 (non included) and 32 bytes (included)
-    pub fn new(outlen: usize) -> Self {
-        assert!(outlen > 0 && outlen <= Engine::MAX_OUTLEN);
-        Self::new_keyed(outlen, &[])
+    pub fn new() -> Self {
+        assert!(BITS > 0 && (BITS / 8) <= Engine::MAX_OUTLEN);
+        Self::new_keyed(&[])
     }
 
     /// Similar to `new` but also takes a variable size key
     /// to tweak the context initialization
-    pub fn new_keyed(outlen: usize, key: &[u8]) -> Self {
-        assert!(outlen > 0 && outlen <= Engine::MAX_OUTLEN);
+    pub fn new_keyed(key: &[u8]) -> Self {
+        assert!(BITS > 0 && (BITS / 8) <= Engine::MAX_OUTLEN);
         assert!(key.len() <= Engine::MAX_KEYLEN);
 
         let mut buf = [0u8; Engine::BLOCK_BYTES];
 
-        let eng = Engine::new(outlen, key.len());
+        let eng = Engine::new(BITS / 8, key.len());
         let buflen = if !key.is_empty() {
             buf[0..key.len()].copy_from_slice(key);
             Engine::BLOCK_BYTES
@@ -75,7 +75,7 @@ impl Blake2s {
             eng,
             buf,
             buflen,
-            digest_length: outlen as u8,
+            digest_length: (BITS / 8) as u8,
             computed: false,
         }
     }
@@ -145,10 +145,10 @@ impl Blake2s {
     }
 
     pub fn blake2s(out: &mut [u8], input: &[u8], key: &[u8]) {
-        let mut hasher: Blake2s = if !key.is_empty() {
-            Blake2s::new_keyed(out.len(), key)
+        let mut hasher: Self = if !key.is_empty() {
+            Blake2s::new_keyed(key)
         } else {
-            Blake2s::new(out.len())
+            Blake2s::new()
         };
 
         hasher.update(input);
@@ -156,7 +156,9 @@ impl Blake2s {
     }
 }
 
-impl Digest for Blake2s {
+impl<const BITS: usize> Digest for Blake2s<BITS> {
+    const OUTPUT_BITS: usize = BITS;
+
     fn input(&mut self, msg: &[u8]) {
         self.update(msg);
     }
@@ -166,15 +168,12 @@ impl Digest for Blake2s {
     fn result(&mut self, out: &mut [u8]) {
         self.finalize(out);
     }
-    fn output_bits(&self) -> usize {
-        8 * (self.digest_length as usize)
-    }
     fn block_size(&self) -> usize {
         Engine::BLOCK_BYTES
     }
 }
 
-impl Mac for Blake2s {
+impl<const BITS: usize> Mac for Blake2s<BITS> {
     fn input(&mut self, data: &[u8]) {
         self.update(data);
     }
@@ -213,8 +212,8 @@ mod digest_tests {
     fn test_hash(tests: &[Test]) {
         for t in tests {
             let mut sh = match t.key {
-                Some(ref key) => Blake2s::new_keyed(32, &key),
-                None => Blake2s::new(32),
+                Some(ref key) => Blake2s::<256>::new_keyed(&key),
+                None => Blake2s::new(),
             };
 
             // Test that it works when accepting the message all at once
@@ -304,7 +303,7 @@ mod mac_tests {
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
             24, 25, 26, 27, 28, 29, 30, 31,
         ];
-        let mut m = Blake2s::new_keyed(32, &key[..]);
+        let mut m = Blake2s::<256>::new_keyed(&key[..]);
         m.input(&[1, 2, 4, 8]);
         let expected = [
             0x0e, 0x88, 0xf6, 0x8a, 0xaa, 0x5c, 0x4e, 0xd8, 0xf7, 0xed, 0x28, 0xf8, 0x04, 0x45,

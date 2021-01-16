@@ -33,7 +33,7 @@ use crate::mac::Mac;
 /// * prk - The output buffer to fill with a `digest.output_bytes()` length
 ///         pseudo random key.
 pub fn hkdf_extract<D: Digest>(mut digest: D, salt: &[u8], ikm: &[u8], prk: &mut [u8]) {
-    assert!(prk.len() == digest.output_bytes());
+    assert!(prk.len() == D::OUTPUT_BYTES);
     digest.reset();
 
     let mut mac = Hmac::new(digest, salt);

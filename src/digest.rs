@@ -33,6 +33,8 @@ const CHARS: &'static [u8; 16] = b"0123456789abcdef";
  * family of digest functions.
  */
 pub trait Digest {
+    const OUTPUT_BITS: usize;
+    const OUTPUT_BYTES: usize = (Self::OUTPUT_BITS + 7) / 8;
     /**
      * Append message data in the digest state.
      *
@@ -58,18 +60,6 @@ pub trait Digest {
     fn reset(&mut self);
 
     /**
-     * Get the output size in bits.
-     */
-    fn output_bits(&self) -> usize;
-
-    /**
-     * Get the output size in bytes.
-     */
-    fn output_bytes(&self) -> usize {
-        (self.output_bits() + 7) / 8
-    }
-
-    /**
      * Get the block size in bytes.
      */
     fn block_size(&self) -> usize;
@@ -90,7 +80,7 @@ pub trait Digest {
      * String in hexadecimal format.
      */
     fn result_str(&mut self) -> String {
-        let mut buf: Vec<u8> = repeat(0).take((self.output_bits() + 7) / 8).collect();
+        let mut buf: Vec<u8> = repeat(0).take(Self::OUTPUT_BYTES).collect();
         self.result(&mut buf);
 
         // inline buf[..].to_hex()

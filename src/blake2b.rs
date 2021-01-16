@@ -38,32 +38,31 @@ use core::iter::repeat;
 
 /// Blake2b Context
 #[derive(Clone)]
-pub struct Blake2b {
+pub struct Blake2b<const BITS: usize> {
     eng: Engine,
     buf: [u8; Engine::BLOCK_BYTES],
     buflen: usize,
-    digest_length: u8,
     computed: bool, // whether the final digest has been computed
 }
 
-impl Blake2b {
+impl<const BITS: usize> Blake2b<BITS> {
     /// Create a new Blake2b context with a specific output size in bytes
     ///
     /// the size need to be between 0 (non included) and 64 bytes (included)
-    pub fn new(outlen: usize) -> Self {
-        assert!(outlen > 0 && outlen <= Engine::MAX_OUTLEN);
-        Self::new_keyed(outlen, &[])
+    pub fn new() -> Self {
+        assert!(BITS > 0 && ((BITS + 7) / 8) <= Engine::MAX_OUTLEN);
+        Self::new_keyed(&[])
     }
 
     /// Similar to `new` but also takes a variable size key
     /// to tweak the context initialization
-    pub fn new_keyed(outlen: usize, key: &[u8]) -> Self {
-        assert!(outlen > 0 && outlen <= Engine::MAX_OUTLEN);
+    pub fn new_keyed(key: &[u8]) -> Self {
+        assert!(BITS > 0 && ((BITS + 7) / 8) <= Engine::MAX_OUTLEN);
         assert!(key.len() <= Engine::MAX_KEYLEN);
 
         let mut buf = [0u8; Engine::BLOCK_BYTES];
 
-        let eng = Engine::new(outlen, key.len());
+        let eng = Engine::new((BITS + 7) / 8, key.len());
         let buflen = if !key.is_empty() {
             buf[0..key.len()].copy_from_slice(key);
             Engine::BLOCK_BYTES
@@ -75,7 +74,6 @@ impl Blake2b {
             eng,
             buf,
             buflen,
-            digest_length: outlen as u8,
             computed: false,
         }
     }
@@ -107,7 +105,7 @@ impl Blake2b {
     }
 
     fn finalize(&mut self, out: &mut [u8]) {
-        assert!(out.len() == self.digest_length as usize);
+        assert!(out.len() == ((BITS + 7) / 8));
         if !self.computed {
             self.eng.increment_counter(self.buflen as u64);
             zero(&mut self.buf[self.buflen..]);
@@ -122,7 +120,7 @@ impl Blake2b {
 
     /// Reset the context to the state after calling `new`
     pub fn reset(&mut self) {
-        self.eng.reset(self.digest_length as usize, 0);
+        self.eng.reset((BITS + 7) / 8, 0);
         self.computed = false;
         self.buflen = 0;
         zero(&mut self.buf[..]);
@@ -131,7 +129,7 @@ impl Blake2b {
     pub fn reset_with_key(&mut self, key: &[u8]) {
         assert!(key.len() <= Engine::MAX_KEYLEN);
 
-        self.eng.reset(self.digest_length as usize, key.len());
+        self.eng.reset((BITS + 7) / 8, key.len());
         self.computed = false;
         zero(&mut self.buf[..]);
 
@@ -145,10 +143,10 @@ impl Blake2b {
     }
 
     pub fn blake2b(out: &mut [u8], input: &[u8], key: &[u8]) {
-        let mut hasher: Blake2b = if !key.is_empty() {
-            Blake2b::new_keyed(out.len(), key)
+        let mut hasher: Self = if !key.is_empty() {
+            Blake2b::new_keyed(key)
         } else {
-            Blake2b::new(out.len())
+            Blake2b::new()
         };
 
         hasher.update(input);
@@ -156,7 +154,8 @@ impl Blake2b {
     }
 }
 
-impl Digest for Blake2b {
+impl<const BITS: usize> Digest for Blake2b<BITS> {
+    const OUTPUT_BITS: usize = BITS;
     fn input(&mut self, msg: &[u8]) {
         self.update(msg);
     }
@@ -166,15 +165,12 @@ impl Digest for Blake2b {
     fn result(&mut self, out: &mut [u8]) {
         self.finalize(out);
     }
-    fn output_bits(&self) -> usize {
-        8 * (self.digest_length as usize)
-    }
     fn block_size(&self) -> usize {
         Engine::BLOCK_BYTES
     }
 }
 
-impl Mac for Blake2b {
+impl<const BITS: usize> Mac for Blake2b<BITS> {
     fn input(&mut self, data: &[u8]) {
         self.update(data);
     }
@@ -184,7 +180,7 @@ impl Mac for Blake2b {
     }
 
     fn result(&mut self) -> MacResult {
-        let mut mac: Vec<u8> = repeat(0).take(self.digest_length as usize).collect();
+        let mut mac: Vec<u8> = repeat(0).take((BITS + 7) / 8).collect();
         self.raw_result(&mut mac);
         MacResult::new_from_owned(mac)
     }
@@ -194,7 +190,7 @@ impl Mac for Blake2b {
     }
 
     fn output_bytes(&self) -> usize {
-        self.digest_length as usize
+        (BITS + 7) / 8
     }
 }
 
@@ -205,7 +201,7 @@ mod hash_tests {
     #[test]
     fn test_vector() {
         let mut out = [0u8; 64];
-        Blake2b::blake2b(&mut out, b"abc", &[]);
+        Blake2b::<512>::blake2b(&mut out, b"abc", &[]);
         let expected = [
             0xBA, 0x80, 0xA5, 0x3F, 0x98, 0x1C, 0x4D, 0x0D, 0x6A, 0x27, 0x97, 0xB6, 0x9F, 0x12,
             0xF6, 0xE9, 0x4C, 0x21, 0x2F, 0x14, 0x68, 0x5A, 0xC4, 0xB7, 0x4B, 0x12, 0xBB, 0x6F,
@@ -226,7 +222,7 @@ mod mac_tests {
     fn test_reset_with_key_same_as_new_keyed_if_empty() {
         const KEY: &[u8] = &[];
         const INPUT: &[u8] = &[];
-        let mut m = Blake2b::new_keyed(32, &KEY);
+        let mut m = Blake2b::<256>::new_keyed(&KEY);
         m.input(&INPUT);
 
         let mac1 = m.result();
@@ -246,7 +242,7 @@ mod mac_tests {
             24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
             46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
         ];
-        let mut m = Blake2b::new_keyed(64, &key[..]);
+        let mut m = Blake2b::<512>::new_keyed(&key[..]);
         m.input(&[1, 2, 4, 8]);
         let expected = [
             0x8e, 0xc6, 0xcb, 0x71, 0xc4, 0x5c, 0x3c, 0x90, 0x91, 0xd0, 0x8a, 0x37, 0x1e, 0xa8,

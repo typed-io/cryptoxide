@@ -44,9 +44,8 @@ fn expand_key<D: Digest>(digest: &mut D, key: &[u8]) -> Vec<u8> {
     if key.len() <= bs {
         expanded_key[0..key.len()].copy_from_slice(key);
     } else {
-        let output_size = digest.output_bytes();
         digest.input(key);
-        digest.result(&mut expanded_key[..output_size]);
+        digest.result(&mut expanded_key[..D::OUTPUT_BYTES]);
         digest.reset();
     }
     expanded_key
@@ -94,8 +93,7 @@ impl<D: Digest> Mac for Hmac<D> {
     }
 
     fn result(&mut self) -> MacResult {
-        let output_size = self.digest.output_bytes();
-        let mut code: Vec<u8> = repeat(0).take(output_size).collect();
+        let mut code: Vec<u8> = repeat(0).take(D::OUTPUT_BYTES).collect();
 
         self.raw_result(&mut code);
 
@@ -117,7 +115,7 @@ impl<D: Digest> Mac for Hmac<D> {
     }
 
     fn output_bytes(&self) -> usize {
-        self.digest.output_bytes()
+        D::OUTPUT_BYTES
     }
 }
 
@@ -209,7 +207,7 @@ mod test {
             0xaf, 0x28, 0xa6, 0x7a,
         ];
 
-        let mut h = Hmac::new(Blake2s::new(32), &key[..]);
+        let mut h = Hmac::new(Blake2s::<256>::new(), &key[..]);
         let mut output = [0u8; 32];
         h.input(&data[..]);
         h.raw_result(&mut output);

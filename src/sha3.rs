@@ -390,6 +390,8 @@ macro_rules! sha3_impl {
         }
 
         impl Digest for $C {
+            const OUTPUT_BITS: usize = constants::$C::DIGEST_LENGTH * 8;
+
             fn input(&mut self, data: &[u8]) {
                 self.0.process(data)
             }
@@ -400,10 +402,6 @@ macro_rules! sha3_impl {
 
             fn reset(&mut self) {
                 self.0.reset()
-            }
-
-            fn output_bits(&self) -> usize {
-                constants::$C::DIGEST_LENGTH * 8
             }
 
             fn block_size(&self) -> usize {

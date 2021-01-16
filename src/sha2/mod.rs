@@ -85,6 +85,7 @@ macro_rules! digest {
         }
 
         impl Digest for $name {
+            const OUTPUT_BITS: usize = $output_bits;
             fn input(&mut self, d: &[u8]) {
                 self.engine.input(d)
             }
@@ -96,10 +97,6 @@ macro_rules! digest {
 
             fn reset(&mut self) {
                 self.engine.reset(&$state);
-            }
-
-            fn output_bits(&self) -> usize {
-                $output_bits
             }
 
             fn block_size(&self) -> usize {

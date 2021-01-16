@@ -393,6 +393,7 @@ impl Sha1 {
 }
 
 impl Digest for Sha1 {
+    const OUTPUT_BITS: usize = 160;
     fn reset(&mut self) {
         self.processed_bytes = 0;
         self.h = H;
@@ -405,9 +406,6 @@ impl Digest for Sha1 {
     fn result(&mut self, out: &mut [u8]) {
         use core::convert::TryFrom;
         mk_result(self, <&mut [u8; 20]>::try_from(out).unwrap())
-    }
-    fn output_bits(&self) -> usize {
-        160
     }
     fn block_size(&self) -> usize {
         64

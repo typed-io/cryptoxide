@@ -13,10 +13,8 @@
 // except according to those terms.
 use core::cmp;
 
-use crate::buffer::{BufferResult, RefReadBuffer, RefWriteBuffer};
 use crate::chacha::ChaChaEngine as ChaChaState;
-use crate::cryptoutil::{symm_enc_or_dec, xor_keystream, xor_keystream_mut};
-use crate::symmetriccipher::{Decryptor, Encryptor, SymmetricCipherError, SynchronousStreamCipher};
+use crate::cryptoutil::{xor_keystream, xor_keystream_mut};
 
 /// ChaCha Context
 #[derive(Clone)]
@@ -114,10 +112,7 @@ impl ChaCha20 {
             self.offset += count;
         }
     }
-}
-
-impl SynchronousStreamCipher for ChaCha20 {
-    fn process(&mut self, input: &[u8], output: &mut [u8]) {
+    pub fn process(&mut self, input: &[u8], output: &mut [u8]) {
         assert!(input.len() == output.len());
         let len = input.len();
         let mut i = 0;
@@ -141,35 +136,12 @@ impl SynchronousStreamCipher for ChaCha20 {
     }
 }
 
-impl Encryptor for ChaCha20 {
-    fn encrypt(
-        &mut self,
-        input: &mut RefReadBuffer,
-        output: &mut RefWriteBuffer,
-        _: bool,
-    ) -> Result<BufferResult, SymmetricCipherError> {
-        symm_enc_or_dec(self, input, output)
-    }
-}
-
-impl Decryptor for ChaCha20 {
-    fn decrypt(
-        &mut self,
-        input: &mut RefReadBuffer,
-        output: &mut RefWriteBuffer,
-        _: bool,
-    ) -> Result<BufferResult, SymmetricCipherError> {
-        symm_enc_or_dec(self, input, output)
-    }
-}
-
 #[cfg(test)]
 mod test {
     use std::iter::repeat;
     use std::vec::Vec;
 
     use super::ChaCha20;
-    use crate::symmetriccipher::SynchronousStreamCipher;
 
     #[test]
     fn test_chacha20_256_tls_vectors() {

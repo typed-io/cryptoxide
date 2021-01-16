@@ -90,8 +90,6 @@ pub mod sha2;
 #[cfg(feature = "sha3")]
 pub mod sha3;
 
-pub mod buffer;
 mod cryptoutil;
 mod simd;
-pub mod symmetriccipher;
 pub mod util;

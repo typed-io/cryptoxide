@@ -8,7 +8,7 @@
 [crates-badge]: https://img.shields.io/crates/v/cryptoxide.svg
 [crates-url]: https://crates.io/crates/cryptoxide
 [mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
-[apache-badge]: https://img.shields.io/badge/license-APACHE--2-blue.svg
+[apache2-badge]: https://img.shields.io/badge/license-APACHE--2-blue.svg
 [mit-url]: https://github.com/typed-io/cryptoxide/blob/master/LICENSE-MIT
 [apache2-url]: https://github.com/typed-io/cryptoxide/blob/master/LICENSE-APACHE
 [actions-badge]: https://github.com/typed-io/cryptoxide/workflows/CI/badge.svg

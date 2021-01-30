@@ -1,7 +1,7 @@
 # copy of https://github.com/actions-rs/meta/blob/master/recipes/quickstart.md
 on: [push, pull_request]
 
-name: Continuous integration
+name: CI
 
 jobs:
   check:

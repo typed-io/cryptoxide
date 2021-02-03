@@ -35,7 +35,6 @@ impl Align128 {
     }
 }
 
-#[inline]
 macro_rules! swizzle {
     ($b: expr, $c: expr, $d: expr) => {
         $b = _mm_shuffle_epi32($b, 0b00111001); // <<< 8

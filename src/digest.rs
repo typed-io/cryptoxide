@@ -90,8 +90,6 @@ pub trait Digest {
      * String in hexadecimal format.
      */
     fn result_str(&mut self) -> String {
-        //use serialize::hex::ToHex;
-
         let mut buf: Vec<u8> = repeat(0).take((self.output_bits() + 7) / 8).collect();
         self.result(&mut buf);
 

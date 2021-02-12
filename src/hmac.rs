@@ -127,6 +127,11 @@ mod test {
 
     use crate::hmac::Hmac;
     use crate::mac::Mac;
+
+    #[cfg(feature = "blake2")]
+    use crate::blake2s::Blake2s;
+
+    #[cfg(feature = "sha2")]
     use crate::sha2::Sha256;
 
     struct Test {
@@ -169,6 +174,7 @@ mod test {
         ]
     }
 
+    #[cfg(feature = "sha2")]
     #[test]
     fn hmac_sha256() {
         for t in tests().iter() {
@@ -178,5 +184,27 @@ mod test {
             h.raw_result(&mut output);
             assert_eq!(&output[..], &t.expected[..]);
         }
+    }
+
+    #[cfg(feature = "blake2")]
+    #[test]
+    fn hmac_blake2s() {
+        let key = [
+            0x05, 0x5a, 0x62, 0xc4, 0x6f, 0x56, 0x94, 0x0c, 0xb0, 0x00, 0xd5, 0x3d, 0x84, 0x2c,
+            0x0a, 0xbd, 0xba, 0x1c, 0x43, 0xb0, 0xa3, 0x0c, 0xa4, 0xc3, 0x8a, 0xd0, 0x84, 0xc2,
+            0x1c, 0x34, 0x99, 0x86,
+        ];
+        let data = b"hello";
+        let expected = [
+            0x9a, 0x4f, 0xe7, 0x47, 0xf8, 0x28, 0xa6, 0x15, 0x5e, 0xf8, 0x2b, 0xb2, 0x8c, 0xdb,
+            0x8f, 0x41, 0xfa, 0xd5, 0x29, 0xe0, 0x15, 0xf9, 0x25, 0x98, 0x74, 0x24, 0x70, 0x37,
+            0xaf, 0x28, 0xa6, 0x7a,
+        ];
+
+        let mut h = Hmac::new(Blake2s::new(32), &key[..]);
+        let mut output = [0u8; 32];
+        h.input(&data[..]);
+        h.raw_result(&mut output);
+        assert_eq!(&output[..], &expected[..]);
     }
 }

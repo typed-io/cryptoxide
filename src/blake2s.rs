@@ -142,7 +142,7 @@ impl Digest for Blake2s {
         8 * (self.digest_length as usize)
     }
     fn block_size(&self) -> usize {
-        8 * Engine::BLOCK_BYTES
+        Engine::BLOCK_BYTES
     }
 }
 

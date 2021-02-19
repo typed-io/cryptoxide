@@ -80,9 +80,14 @@ pub mod mac;
 pub mod pbkdf2;
 #[cfg(feature = "poly1305")]
 pub mod poly1305;
+#[cfg(feature = "scrypt")]
+pub mod scrypt;
 
 #[cfg(feature = "salsa")]
 pub mod salsa20;
+
+#[cfg(feature = "sha1")]
+pub mod sha1;
 
 #[cfg(feature = "sha2")]
 pub mod sha2;

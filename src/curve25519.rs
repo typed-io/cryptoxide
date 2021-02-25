@@ -13,7 +13,7 @@ Bounds on each t[i] vary depending on context.
 */
 
 #[derive(Clone)]
-pub struct Fe(pub [i32; 10]);
+pub(crate) struct Fe(pub [i32; 10]);
 
 impl PartialEq for Fe {
     fn eq(&self, other: &Fe) -> bool {
@@ -427,7 +427,7 @@ impl Mul for &Fe {
 
 impl Fe {
     #[rustfmt::skip]
-    pub fn from_bytes(s: &[u8]) -> Fe {
+    pub(crate) fn from_bytes(s: &[u8]) -> Fe {
         let mut h0 = load_4i(&s[0..4]);
         let mut h1 = load_3i(&s[4..7]) << 6;
         let mut h2 = load_3i(&s[7..10]) << 5;
@@ -481,7 +481,7 @@ impl Fe {
     */
 
     #[rustfmt::skip]
-    pub fn to_bytes(&self) -> [u8; 32] {
+    pub(crate) fn to_bytes(&self) -> [u8; 32] {
         let &Fe(es) = self;
         let mut h0 = es[0];
         let mut h1 = es[1];
@@ -565,7 +565,7 @@ impl Fe {
         ]
     }
 
-    pub fn maybe_swap_with(&mut self, other: &mut Fe, do_swap: i32) {
+    pub(crate) fn maybe_swap_with(&mut self, other: &mut Fe, do_swap: i32) {
         let &mut Fe(f) = self;
         let &mut Fe(g) = other;
         let f0 = f[0];
@@ -635,7 +635,7 @@ impl Fe {
         ]);
     }
 
-    pub fn maybe_set(&mut self, other: &Fe, do_swap: i32) {
+    pub(crate) fn maybe_set(&mut self, other: &Fe, do_swap: i32) {
         let &mut Fe(f) = self;
         let &Fe(g) = other;
         let f0 = f[0];
@@ -1002,7 +1002,7 @@ impl Fe {
             h5 as i32, h6 as i32, h7 as i32, h8 as i32, h9 as i32])
     }
 
-    pub fn invert(&self) -> Fe {
+    pub(crate) fn invert(&self) -> Fe {
         let z1 = self.clone();
 
         /* qhasm: z2 = z1^2^1 */
@@ -1122,22 +1122,14 @@ impl Fe {
 }
 
 #[derive(Clone)]
-pub struct GeP2 {
+pub(crate) struct GeP2 {
     x: Fe,
     y: Fe,
     z: Fe,
 }
 
 #[derive(Clone)]
-pub struct GeP3 {
-    x: Fe,
-    y: Fe,
-    z: Fe,
-    t: Fe,
-}
-
-#[derive(Clone)]
-pub struct GeP1P1 {
+pub(crate) struct GeP3 {
     x: Fe,
     y: Fe,
     z: Fe,
@@ -1145,14 +1137,22 @@ pub struct GeP1P1 {
 }
 
 #[derive(Clone)]
-pub struct GePrecomp {
+pub(crate) struct GeP1P1 {
+    x: Fe,
+    y: Fe,
+    z: Fe,
+    t: Fe,
+}
+
+#[derive(Clone)]
+pub(crate) struct GePrecomp {
     y_plus_x: Fe,
     y_minus_x: Fe,
     xy2d: Fe,
 }
 
 #[derive(Clone)]
-pub struct GeCached {
+pub(crate) struct GeCached {
     y_plus_x: Fe,
     y_minus_x: Fe,
     z: Fe,
@@ -1160,7 +1160,7 @@ pub struct GeCached {
 }
 
 impl GeP1P1 {
-    pub fn to_p2(&self) -> GeP2 {
+    pub(crate) fn to_p2(&self) -> GeP2 {
         GeP2 {
             x: &self.x * &self.t,
             y: &self.y * &self.z,
@@ -1187,7 +1187,7 @@ impl GeP2 {
         }
     }
 
-    pub fn to_bytes(&self) -> [u8; 32] {
+    pub(crate) fn to_bytes(&self) -> [u8; 32] {
         let recip = self.z.invert();
         let x = &self.x * &recip;
         let y = &self.y * &recip;
@@ -1254,7 +1254,7 @@ impl GeP2 {
     and b = b[0]+256*b[1]+...+256^31 b[31].
     B is the Ed25519 base point (x,4/5) with x positive.
     */
-    pub fn double_scalarmult_vartime(a_scalar: &[u8], a_point: GeP3, b_scalar: &[u8]) -> GeP2 {
+    pub(crate) fn double_scalarmult_vartime(a_scalar: &[u8], a_point: GeP3, b_scalar: &[u8]) -> GeP2 {
         let aslide = GeP2::slide(a_scalar);
         let bslide = GeP2::slide(b_scalar);
 
@@ -1308,7 +1308,7 @@ impl GeP2 {
 }
 
 impl GeP3 {
-    pub fn from_bytes_negate_vartime(s: &[u8]) -> Option<GeP3> {
+    pub(crate) fn from_bytes_negate_vartime(s: &[u8]) -> Option<GeP3> {
         let y = Fe::from_bytes(s);
         let z = FE_ONE.clone();
         let y_squared = y.square();
@@ -1352,7 +1352,7 @@ impl GeP3 {
         }
     }
 
-    pub fn to_cached(&self) -> GeCached {
+    pub(crate) fn to_cached(&self) -> GeCached {
         GeCached {
             y_plus_x: &self.y + &self.x,
             y_minus_x: &self.y - &self.x,
@@ -1374,7 +1374,7 @@ impl GeP3 {
         self.to_p2().dbl()
     }
 
-    pub fn to_bytes(&self) -> [u8; 32] {
+    pub(crate) fn to_bytes(&self) -> [u8; 32] {
         let recip = self.z.invert();
         let x = &self.x * &recip;
         let y = &self.y * &recip;
@@ -1534,13 +1534,13 @@ impl GePrecomp {
         }
     }
 
-    pub fn maybe_set(&mut self, other: &GePrecomp, do_swap: i32) {
+    pub(crate) fn maybe_set(&mut self, other: &GePrecomp, do_swap: i32) {
         self.y_plus_x.maybe_set(&other.y_plus_x, do_swap);
         self.y_minus_x.maybe_set(&other.y_minus_x, do_swap);
         self.xy2d.maybe_set(&other.xy2d, do_swap);
     }
 
-    pub fn select(pos: usize, b: i8) -> GePrecomp {
+    pub(crate) fn select(pos: usize, b: i8) -> GePrecomp {
         let bnegative = (b as u8) >> 7;
         let babs: u8 = (b - (((-(bnegative as i8)) & b) << 1)) as u8;
         let mut t = GePrecomp::zero();
@@ -1570,7 +1570,7 @@ B is the Ed25519 base point (x,4/5) with x positive.
 Preconditions:
   a[31] <= 127
 */
-pub fn ge_scalarmult_base(a: &[u8]) -> GeP3 {
+pub(crate) fn ge_scalarmult_base(a: &[u8]) -> GeP3 {
     let mut es: [i8; 64] = [0; 64];
     let mut r: GeP1P1;
     let mut s: GeP2;
@@ -1629,7 +1629,7 @@ Output:
     Overwrites s in place.
 */
 #[rustfmt::skip]
-pub fn sc_reduce(s: &mut [u8]) {
+pub(crate) fn sc_reduce(s: &mut [u8]) {
     let mut s0: i64 = 2097151 & load_3i(s);
     let mut s1: i64 = 2097151 & (load_4i(&s[2..6]) >> 5);
     let mut s2: i64 = 2097151 & (load_3i(&s[5..8]) >> 2);
@@ -1881,7 +1881,7 @@ Output:
     where l = 2^252 + 27742317777372353535851937790883648493.
 */
 #[rustfmt::skip]
-pub fn sc_muladd(s: &mut[u8], a: &[u8], b: &[u8], c: &[u8]) {
+pub(crate) fn sc_muladd(s: &mut[u8], a: &[u8], b: &[u8], c: &[u8]) {
     let a0 = 2097151 & load_3i(&a[0..3]);
     let a1 = 2097151 & (load_4i(&a[2..6]) >> 5);
     let a2 = 2097151 & (load_3i(&a[5..8]) >> 2);
@@ -2214,6 +2214,8 @@ pub fn sc_muladd(s: &mut[u8], a: &[u8], b: &[u8], c: &[u8]) {
     s[31] = (s11 >> 17) as u8;
 }
 
+/// Computes a shared secret from the curve25519 private key (n) and public
+/// key (p)
 pub fn curve25519(n: &[u8], p: &[u8]) -> [u8; 32] {
     let mut e = [0u8; 32];
     let mut x2;
@@ -2275,6 +2277,7 @@ pub fn curve25519(n: &[u8], p: &[u8]) -> [u8; 32] {
     (z2.invert() * x2).to_bytes()
 }
 
+/// Derives a public key from a private key
 pub fn curve25519_base(x: &[u8]) -> [u8; 32] {
     let mut base: [u8; 32] = [0; 32];
     base[0] = 9;

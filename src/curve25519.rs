@@ -1254,7 +1254,11 @@ impl GeP2 {
     and b = b[0]+256*b[1]+...+256^31 b[31].
     B is the Ed25519 base point (x,4/5) with x positive.
     */
-    pub(crate) fn double_scalarmult_vartime(a_scalar: &[u8], a_point: GeP3, b_scalar: &[u8]) -> GeP2 {
+    pub(crate) fn double_scalarmult_vartime(
+        a_scalar: &[u8],
+        a_point: GeP3,
+        b_scalar: &[u8],
+    ) -> GeP2 {
         let aslide = GeP2::slide(a_scalar);
         let bslide = GeP2::slide(b_scalar);
 

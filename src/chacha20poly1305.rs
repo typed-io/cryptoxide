@@ -254,7 +254,7 @@ mod test {
 
         // test decryption
         let mut output = vec![0u8; v.plain_text.len()];
-        assert!(dcontext.decrypt(&ciphertext, &mut output, &v.tag[..]), true);
+        assert_eq!(dcontext.decrypt(&ciphertext, &mut output, &v.tag[..]), true);
 
         assert_eq!(&output[..], &v.plain_text[..]);
     }

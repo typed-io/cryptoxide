@@ -13,7 +13,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::cryptoutil::{read_u32v_be, write_u32_be, FixedBuffer, FixedBuffer64, StandardPadding};
+use crate::cryptoutil::{read_u32v_be, write_u32_be, FixedBuffer};
 use crate::digest::Digest;
 use crate::simd::u32x4;
 
@@ -353,7 +353,7 @@ fn add_input(st: &mut Sha1, msg: &[u8]) {
     // Assumes that msg.len() can be converted to u64 without overflow
     st.length_bits = add_bytes_to_bits(st.length_bits, msg.len() as u64);
     let st_h = &mut st.h;
-    st.buffer.input(msg, |d: &[u8]| {
+    st.buffer.input(msg, |d| {
         sha1_digest_block(st_h, d);
     });
 }
@@ -362,7 +362,7 @@ fn mk_result(st: &mut Sha1, rs: &mut [u8]) {
     if !st.computed {
         let st_h = &mut st.h;
         st.buffer
-            .standard_padding(8, |d: &[u8]| sha1_digest_block(&mut *st_h, d));
+            .standard_padding(8, |d| sha1_digest_block(&mut *st_h, d));
         write_u32_be(st.buffer.next(4), (st.length_bits >> 32) as u32);
         write_u32_be(st.buffer.next(4), st.length_bits as u32);
         sha1_digest_block(st_h, st.buffer.full_buffer());
@@ -382,7 +382,7 @@ fn mk_result(st: &mut Sha1, rs: &mut [u8]) {
 pub struct Sha1 {
     h: [u32; STATE_LEN],
     length_bits: u64,
-    buffer: FixedBuffer64,
+    buffer: FixedBuffer<64>,
     computed: bool,
 }
 
@@ -392,7 +392,7 @@ impl Sha1 {
         let mut st = Sha1 {
             h: [0u32; STATE_LEN],
             length_bits: 0u64,
-            buffer: FixedBuffer64::new(),
+            buffer: FixedBuffer::new(),
             computed: false,
         };
         st.reset();

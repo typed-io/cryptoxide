@@ -76,9 +76,7 @@ mod impl256;
 mod impl512;
 mod initials;
 
-use crate::cryptoutil::{
-    write_u128_be, write_u64_be, FixedBuffer, FixedBuffer128, FixedBuffer64, StandardPadding,
-};
+use crate::cryptoutil::{write_u128_be, write_u64_be, FixedBuffer};
 use crate::digest::Digest;
 use initials::*;
 
@@ -141,7 +139,7 @@ macro_rules! digest256 {
 #[derive(Clone)]
 struct Engine512 {
     length_bits: u128,
-    buffer: FixedBuffer128,
+    buffer: FixedBuffer<128>,
     state: eng512::Engine,
     finished: bool,
 }
@@ -150,7 +148,7 @@ impl Engine512 {
     fn new(h: &[u64; eng512::STATE_LEN]) -> Engine512 {
         Engine512 {
             length_bits: 0,
-            buffer: FixedBuffer128::new(),
+            buffer: FixedBuffer::new(),
             state: eng512::Engine::new(h),
             finished: false,
         }
@@ -167,8 +165,7 @@ impl Engine512 {
         assert!(!self.finished);
         self.length_bits += (input.len() as u128) << 3;
         let self_state = &mut self.state;
-        self.buffer
-            .input(input, |input: &[u8]| self_state.blocks(input));
+        self.buffer.input(input, |input| self_state.blocks(input));
     }
 
     fn finish(&mut self) {
@@ -178,7 +175,7 @@ impl Engine512 {
 
         let self_state = &mut self.state;
         self.buffer
-            .standard_padding(16, |input: &[u8]| self_state.blocks(input));
+            .standard_padding(16, |input| self_state.blocks(input));
         write_u128_be(self.buffer.next(16), self.length_bits);
         self_state.blocks(self.buffer.full_buffer());
 
@@ -191,7 +188,7 @@ impl Engine512 {
 #[derive(Clone)]
 struct Engine256 {
     length_bits: u64,
-    buffer: FixedBuffer64,
+    buffer: FixedBuffer<64>,
     state: eng256::Engine,
     finished: bool,
 }
@@ -200,7 +197,7 @@ impl Engine256 {
     fn new(h: &[u32; eng256::STATE_LEN]) -> Engine256 {
         Engine256 {
             length_bits: 0,
-            buffer: FixedBuffer64::new(),
+            buffer: FixedBuffer::new(),
             state: eng256::Engine::new(h),
             finished: false,
         }
@@ -217,8 +214,7 @@ impl Engine256 {
         assert!(!self.finished);
         self.length_bits += (input.len() as u64) << 3;
         let self_state = &mut self.state;
-        self.buffer
-            .input(input, |input: &[u8]| self_state.blocks(input));
+        self.buffer.input(input, |input| self_state.blocks(input));
     }
 
     fn finish(&mut self) {
@@ -228,7 +224,7 @@ impl Engine256 {
 
         let self_state = &mut self.state;
         self.buffer
-            .standard_padding(8, |input: &[u8]| self_state.blocks(input));
+            .standard_padding(8, |input| self_state.blocks(input));
         write_u64_be(self.buffer.next(8), self.length_bits);
         self_state.blocks(self.buffer.full_buffer());
 

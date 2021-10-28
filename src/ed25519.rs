@@ -1,13 +1,14 @@
 //! ED25519 Signature Scheme
 //!
 //! ```
-//! use self::cryptoxide::ed25519;
+//! use cryptoxide::ed25519;
 //!
 //! let message = "messages".as_bytes();
 //! let seed = [0u8;32]; // seed only for example !
 //! let (secret, public) = ed25519::keypair(&seed[..]);
 //! let signature = ed25519::signature(message, &secret[..]);
-//! ed25519::verify(message, &public[..], &signature[..]);
+//! let verified = ed25519::verify(message, &public[..], &signature[..]);
+//! assert!(verified);
 //! ```
 //!
 

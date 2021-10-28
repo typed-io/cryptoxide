@@ -1,3 +1,9 @@
+//! Blake2 hash function
+//!
+//! Blake2 is specified at [1]
+//!
+//! [1] https://eprint.iacr.org/2013/322.pdf
+
 mod common;
 mod reference;
 

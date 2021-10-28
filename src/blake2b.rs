@@ -1,4 +1,33 @@
 //! Blake2B hash function
+//!
+//! Blake2 is specified at [1]
+//!
+//! # Example
+//!
+//! Hashing using Blake2b-256:
+//!
+//! ```
+//! use cryptoxide::{digest::Digest, blake2b::Blake2b};
+//!
+//! let mut digest = [0u8; 32];
+//! let mut context = Blake2b::new(32);
+//! context.input(b"hello world");
+//! context.result(&mut digest);
+//! ```
+//!
+//! or MAC using Blake2b-224 with 16-bytes key :
+//!
+//! ```
+//! use cryptoxide::{mac::Mac, blake2b::Blake2b};
+//!
+//! let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
+//! let mut context = Blake2b::new_keyed(28, &key);
+//! context.input(b"hello world");
+//! let mac = context.result();
+//! ```
+//!
+//!
+//! [1] https://eprint.iacr.org/2013/322.pdf
 
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license

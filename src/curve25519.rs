@@ -1,4 +1,30 @@
-//! Curve25519 elliptic curve
+//! Curve25519 elliptic curve diffie hellman (X25519)
+//!
+//! Curve25519 elliptic curve specified in [1], and extra information also at [2]
+//!
+//! # Example
+//!
+//! Creating a curve25519 point from a secret:
+//!
+//! ```
+//! use cryptoxide::curve25519::curve25519_base;
+//!
+//! let secret : [u8;32] = [0,1,2,3,4,5,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+//! let public = curve25519_base(&secret);
+//! ```
+//!
+//! Doing a ECDH on curve25519 using a curve point 'other_point' and a specific secret:
+//!
+//! ```
+//! use cryptoxide::curve25519::{curve25519_base, curve25519};
+//!
+//! # let other_point = curve25519_base(&[3u8; 32]);
+//! let secret : [u8;32] = [0,1,2,3,4,5,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+//! let public = curve25519(&secret, &other_point);
+//! ```
+//!
+//! [1] https://cr.yp.to/ecdh/curve25519-20060209.pdf
+//! [2] https://en.wikipedia.org/wiki/Curve25519
 
 use crate::util::fixed_time_eq;
 use core::cmp::{min, Eq, Ordering, PartialEq};

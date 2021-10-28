@@ -6,6 +6,17 @@
 //!
 //! However the hash function is still pervasively used in other contextes where security is still
 //! ok (e.g. hmac-sha1), so on this basis is available here.
+//!
+//! # Example
+//!
+//! ```
+//! use cryptoxide::{sha1::Sha1, digest::Digest};
+//!
+//! let mut digest = [0u8; 20];
+//! let mut context = Sha1::new();
+//! context.input(b"hello world");
+//! context.result(&mut digest);
+//! ```
 
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license

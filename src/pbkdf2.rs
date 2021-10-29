@@ -1,13 +1,24 @@
+//! This module implements the PBKDF2 Key Derivation Function as specified by [1]
+//!
+//! # Examples
+//!
+//! ```
+//! use cryptoxide::{pbkdf2::pbkdf2, hmac::Hmac, sha2::Sha256};
+//!
+//! let password = b"password";
+//! let salt = b"salt";
+//! let c = 2;
+//! let mut out = [0u8; 64];
+//! pbkdf2(&mut Hmac::new(Sha256::new(), password), salt, c, &mut out);
+//! ```
+//!
+//! [1] http://tools.ietf.org/html/rfc2898
+
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
-
-/*!
- * This module implements the PBKDF2 Key Derivation Function as specified by
- * <http://tools.ietf.org/html/rfc2898>.
- */
 
 use crate::cryptoutil::{copy_memory, write_u32_be};
 use crate::mac::Mac;
@@ -98,5 +109,28 @@ pub fn pbkdf2<M: Mac>(mac: &mut M, salt: &[u8], c: u32, output: &mut [u8]) {
             let chunk_len = chunk.len();
             copy_memory(&tmp[..chunk_len], chunk);
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::pbkdf2;
+    use crate::hmac::Hmac;
+    use crate::sha1::Sha1;
+
+    #[test]
+    fn test1() {
+        let password = b"password";
+        let salt = b"salt";
+        let c = 2;
+        let mut out = [0u8; 20];
+        pbkdf2(&mut Hmac::new(Sha1::new(), password), salt, c, &mut out);
+        assert_eq!(
+            out,
+            [
+                0xea, 0x6c, 0x01, 0x4d, 0xc7, 0x2d, 0x6f, 0x8c, 0xcd, 0x1e, 0xd9, 0x2a, 0xce, 0x1d,
+                0x41, 0xf0, 0xd8, 0xde, 0x89, 0x57
+            ]
+        )
     }
 }

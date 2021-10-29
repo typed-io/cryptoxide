@@ -135,8 +135,13 @@ impl Blake2s {
         self.eng.reset(self.digest_length as usize, key.len());
         self.computed = false;
         secure_memset(&mut self.buf[..], 0);
-        self.buf[0..key.len()].copy_from_slice(key);
-        self.buflen = Engine::BLOCK_BYTES;
+        if !key.is_empty() {
+            self.buf[0..key.len()].copy_from_slice(key);
+            self.buflen = Engine::BLOCK_BYTES;
+        } else {
+            self.buf = [0; Engine::BLOCK_BYTES];
+            self.buflen = 0;
+        }
     }
 
     pub fn blake2s(out: &mut [u8], input: &[u8], key: &[u8]) {

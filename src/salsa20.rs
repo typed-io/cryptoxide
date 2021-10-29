@@ -1,4 +1,24 @@
 //! Salsa20 Stream Cipher
+//!
+//! # Examples
+//!
+//! Combine a simple input using a 128 bits key and 64 bit nonce:
+//!
+//! ```
+//! use cryptoxide::salsa20::Salsa20;
+//!
+//! let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
+//! let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+//! let input : &[u8; 12] = b"hello world!";
+//! let mut out : [u8; 12] = [0u8; 12];
+//!
+//! // create a new cipher
+//! let mut cipher = Salsa20::new(&key, &nonce);
+//!
+//! // encrypt the msg
+//! cipher.process(input, &mut out);
+//! ```
+//!
 
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -202,6 +222,11 @@ impl Salsa20 {
             write_u32_le(&mut out[i * 4..(i + 1) * 4], lens[i]);
         }
     }
+
+    /// Process the input through the cipher, xoring the byte one-by-one
+    ///
+    /// the output need to be the same size as the input otherwise
+    /// this function will panic.
     pub fn process(&mut self, input: &[u8], output: &mut [u8]) {
         assert!(input.len() == output.len());
         let len = input.len();

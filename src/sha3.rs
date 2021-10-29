@@ -1,49 +1,32 @@
-// Copyright 2012-2013 The Rust Project Developers. See the COPYRIGHT
-// file at the top-level directory of this distribution and at
-// http://rust-lang.org/COPYRIGHT.
-//
-// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
-// option. This file may not be copied, modified, or distributed
-// except according to those terms.
-
-/*!
-An implementation of the SHA-3 cryptographic hash algorithms.
-
-There are 6 standard algorithms specified in the SHA-3 standard:
-
- * `SHA3-224`
- * `SHA3-256`
- * `SHA3-384`
- * `SHA3-512`
- * `SHAKE128`, an extendable output function (XOF)
- * `SHAKE256`, an extendable output function (XOF)
- * `Keccak224`, `Keccak256`, `Keccak384`, `Keccak512` (NIST submission without padding changes)
-
-Based on an [implementation by Sébastien Martini](https://github.com/seb-m/crypto.rs/blob/master/src/sha3.rs)
-
-# Usage
-
-An example of using `SHA3-256` is:
-
-```rust
-use self::cryptoxide::digest::Digest;
-use self::cryptoxide::sha3::Sha3_256;
-
-// create a SHA3-256 object
-let mut hasher = Sha3_256::new();
-
-// write input message
-hasher.input_str("abc");
-
-// read hash digest
-let hex = hasher.result_str();
-
-assert_eq!(hex, "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532");
-```
-
- */
+//! An implementation of the SHA-3 cryptographic hash algorithms.
+//!
+//! There are 6 standard algorithms specified in the SHA-3 standard:
+//!
+//!  * `SHA3-224`
+//!  * `SHA3-256`
+//!  * `SHA3-384`
+//!  * `SHA3-512`
+//!  * `Keccak224`, `Keccak256`, `Keccak384`, `Keccak512` (NIST submission without padding changes)
+//!
+//! Based on an [implementation by Sébastien Martini](https://github.com/seb-m/crypto.rs/blob/master/src/sha3.rs)
+//!
+//! # Examples
+//!
+//! An example of using `SHA3-256` is:
+//!
+//! ```rust
+//! use cryptoxide::{digest::Digest, sha3::Sha3_256};
+//!
+//! // create a SHA3-256 context
+//! let mut context = Sha3_256::new();
+//!
+//! // write input message
+//! context.input(b"abc");
+//!
+//! // get hash digest
+//! let mut out = [0u8; 32];
+//! context.result(&mut out);
+//! ```
 
 use alloc::vec;
 use core::cmp;

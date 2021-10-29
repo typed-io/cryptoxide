@@ -1,4 +1,65 @@
-//! ChaCha20Poly1305 is an authenticated symmetric stream cipher based on chacha20 and poly1305
+//! ChaCha20Poly1305 is an authenticated symmetric stream cipher based on chacha20 and poly1305.
+//!
+//! the specification of chacha20poly1305 is available at [RFC8439][1] and it follows general principle related to [AEAD][2].
+//!
+//! This module provides 2 interfaces:
+//!
+//! * the one shot interface [`ChaCha20Poly1305`]
+//! * the incremental interfaces, using [`Context`], [`ContextEncryption`] and [`ContextDecryption`]
+//!
+//! The incremental interfaces should be used when you are streaming data or that
+//! you need more control over the memory usage, as the one-shot interface
+//! expects one single call with slices parameter.
+//!
+//! # Examples
+//!
+//! Encrypting using the one-shot interface:
+//!
+//! ```
+//! use cryptoxide::chacha20poly1305::ChaCha20Poly1305;
+//!
+//! let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
+//! let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+//! let aad : [u8; 0] = [];
+//! let input : &[u8; 12] = b"hello world!";
+//! let mut out : [u8; 12+16] = [0u8; 12+16];
+//! let mut tag : [u8; 16] = [0u8; 16];
+//!
+//! // create a new cipher
+//! let mut cipher = ChaCha20Poly1305::new(&key, &nonce, &aad);
+//!
+//! // encrypt the msg and append the tag at the end
+//! cipher.encrypt(input, &mut out[0..12], &mut tag);
+//! out[12..].copy_from_slice(&tag);
+//! ```
+//!
+//! Encrypting using the incremental interfaces:
+//!
+//! ```
+//! use cryptoxide::chacha20poly1305::Context;
+//!
+//! let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
+//! let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+//! let mut context = Context::new(&key, &nonce);
+//!
+//! // Add incrementally 2 slices of data
+//! context.add_data(b"authenticated");
+//! context.add_data(b"data");
+//!
+//! let mut encrypted_input = [0u8; 10+16];
+//! let mut context = context.to_encryption();
+//!
+//! // Encrypt incrementally 2 slices and append the encrypted data to the output buffer
+//! context.encrypt(b"hello", &mut encrypted_input[0..5]);
+//! context.encrypt(b"world", &mut encrypted_input[5..10]);
+//!
+//! // Finalize the context, and append the tag to the end of the output buffer
+//! let tag = context.finalize();
+//! encrypted_input[10..26].copy_from_slice(&tag.0);
+//! ```
+//!
+//! [1]: https://tools.ietf.org/html/rfc8439
+//! [2]: https://en.wikipedia.org/wiki/Authenticated_encryption
 
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -13,6 +74,33 @@ use crate::poly1305::Poly1305;
 use crate::util::fixed_time_eq;
 
 /// Chacha20Poly1305 Incremental Context for Authenticated Data (AAD)
+///
+/// The initial context set the key and nonce, and the authenticated data (if any),
+/// then it needs to converted either to a [`ContextEncryption`] or [`ContextDecryption`]
+/// using the [`Context::to_encryption`] or [`Context::to_decryption`] methods (respectively).
+///
+/// ```
+/// use cryptoxide::chacha20poly1305::Context;
+///
+/// let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
+/// let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+/// let mut context = Context::new(&key, &nonce);
+///
+/// // Add incrementally 2 slices of data
+/// context.add_data(b"authenticated");
+/// context.add_data(b"data");
+///
+/// let mut encrypted_input = [0u8; 10+16];
+/// let mut context = context.to_encryption();
+///
+/// // Encrypt incrementally 2 slices and append the encrypted data to the output buffer
+/// context.encrypt(b"hello", &mut encrypted_input[0..5]);
+/// context.encrypt(b"world", &mut encrypted_input[5..10]);
+///
+/// // Finalize the context, and append the tag to the end of the output buffer
+/// let tag = context.finalize();
+/// encrypted_input[10..26].copy_from_slice(&tag.0);
+/// ```
 #[derive(Clone)]
 pub struct Context {
     cipher: ChaCha20,
@@ -42,7 +130,15 @@ impl PartialEq for Tag {
 impl Eq for Tag {}
 
 impl Context {
-    /// Create a new context given the key and nonce
+    /// Create a new context given the key and nonce.
+    ///
+    /// ```
+    /// use cryptoxide::chacha20poly1305::Context;
+    ///
+    /// let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
+    /// let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+    /// let context = Context::new(&key, &nonce);
+    /// ```
     pub fn new(key: &[u8], nonce: &[u8]) -> Self {
         assert!(key.len() == 16 || key.len() == 32);
         assert!(nonce.len() == 8 || nonce.len() == 12);
@@ -105,6 +201,9 @@ impl ContextEncryption {
 
     /// Encrypt the input slice to the output slice
     ///
+    /// The number of bytes written to the output is
+    /// equal to the number of bytes as input.
+    ///
     /// Panics:
     ///     if input and output are of different size
     pub fn encrypt(&mut self, input: &[u8], output: &mut [u8]) {
@@ -146,7 +245,8 @@ impl ContextDecryption {
     }
 
     /// Finalize the decryption context and check that the tag match the expected value
-    #[must_use]
+    ///
+    #[must_use = "if the result is not checked, then the data will not be verified against tempering"]
     pub fn finalize(mut self, expected_tag: &Tag) -> DecryptionResult {
         let got_tag = Tag(finalize_raw(&mut self.0));
         if &got_tag == expected_tag {
@@ -177,6 +277,7 @@ impl ChaCha20Poly1305 {
     ///
     /// * key needs to be 16 or 32 bytes
     /// * nonce needs to be 8 or 12 bytes
+    ///
     pub fn new(key: &[u8], nonce: &[u8], aad: &[u8]) -> ChaCha20Poly1305 {
         let mut context = Context::new(key, nonce);
         context.add_data(aad);
@@ -190,6 +291,28 @@ impl ChaCha20Poly1305 {
     ///
     /// Output buffer need to be the same size as the input buffer
     /// Out_tag mutable slice need to 16 bytes exactly.
+    ///
+    /// Example: Encrypt a simple "hello world" message with chacha20poly1305 AEAD
+    /// using a 64 bits nonce and a 128 bits keys, and arrange the output data
+    /// in the format : ENCRYPTED_MSG | AEAD_TAG
+    ///
+    /// ```
+    /// use cryptoxide::chacha20poly1305::ChaCha20Poly1305;
+    ///
+    /// let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
+    /// let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+    /// let aad : [u8; 0] = [];
+    /// let input : &[u8; 12] = b"hello world!";
+    /// let mut out : [u8; 12+16] = [0u8; 12+16];
+    /// let mut tag : [u8; 16] = [0u8; 16];
+    ///
+    /// // create a new cipher
+    /// let mut cipher = ChaCha20Poly1305::new(&key, &nonce, &aad);
+    ///
+    /// // encrypt the msg and append the tag at the end
+    /// cipher.encrypt(input, &mut out[0..12], &mut tag);
+    /// out[12..].copy_from_slice(&tag);
+    /// ```
     pub fn encrypt(&mut self, input: &[u8], output: &mut [u8], out_tag: &mut [u8]) {
         assert!(input.len() == output.len());
         assert!(!self.finished);
@@ -208,6 +331,33 @@ impl ChaCha20Poly1305 {
     ///
     /// if the calculated tag during decryption doesn't match
     /// the tag in parameter, then the function return False
+    ///
+    /// Example: Decrypt a simple message with chacha20poly1305 AEAD
+    /// using a 64 bits nonce and a 128 bits keys where the first 12 bytes
+    /// are the encrypted message and the tag is the last 16 bytes. if the
+    /// cipher message has been tempered, a panic is raised (in the example):
+    ///
+    /// ```
+    /// use cryptoxide::chacha20poly1305::ChaCha20Poly1305;
+    ///
+    /// let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
+    /// let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+    /// let aad : [u8; 0] = [];
+    /// let ae_msg : [u8; 12+16] = [98, 155, 81, 205, 163, 244, 162, 254, 57, 96, 183,
+    ///                             101, 167, 88, 238, 184, 17, 109, 89, 185, 72, 150,
+    ///                             97, 95, 149, 82, 179, 220];
+    /// let mut decrypt_msg : [u8; 12] = [0u8; 12];
+    ///
+    /// // create a new cipher
+    /// let mut cipher = ChaCha20Poly1305::new(&key, &nonce, &aad);
+    ///
+    /// // encrypt the msg and append the tag at the end
+    /// if !cipher.decrypt(&ae_msg[0..12], &mut decrypt_msg, &ae_msg[12..]) {
+    ///     panic!("encrypted message has been tempered")
+    /// }
+    /// assert_eq!(&decrypt_msg, b"hello world!");
+    ///
+    /// ```
     pub fn decrypt(&mut self, input: &[u8], output: &mut [u8], tag: &[u8]) -> bool {
         assert!(tag.len() == 16);
         assert!(input.len() == output.len());

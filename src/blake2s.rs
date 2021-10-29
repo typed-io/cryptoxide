@@ -1,10 +1,33 @@
 //! Blake2S hash function
-
-// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
-// option. This file may not be copied, modified, or distributed
-// except according to those terms.
+//!
+//! Blake2 [Specification][1].
+//!
+//! # Example
+//!
+//! Hashing using Blake2s-256:
+//!
+//! ```
+//! use cryptoxide::{digest::Digest, blake2s::Blake2s};
+//!
+//! let mut digest = [0u8; 32];
+//! let mut context = Blake2s::new(32);
+//! context.input(b"hello world");
+//! context.result(&mut digest);
+//! ```
+//!
+//! MAC using Blake2s-224 with 16-bytes key :
+//!
+//! ```
+//! use cryptoxide::{mac::Mac, blake2s::Blake2s};
+//!
+//! let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
+//! let mut context = Blake2s::new_keyed(28, &key);
+//! context.input(b"hello world");
+//! let mac = context.result();
+//! ```
+//!
+//!
+//! [1]: <https://eprint.iacr.org/2013/322.pdf>
 
 use crate::blake2::{EngineS as Engine, LastBlock};
 use crate::cryptoutil::{copy_memory, write_u32v_le};

@@ -6,12 +6,17 @@
 //!
 //! However the hash function is still pervasively used in other contextes where security is still
 //! ok (e.g. hmac-sha1), so on this basis is available here.
-
-// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
-// option. This file may not be copied, modified, or distributed
-// except according to those terms.
+//!
+//! # Example
+//!
+//! ```
+//! use cryptoxide::{sha1::Sha1, digest::Digest};
+//!
+//! let mut digest = [0u8; 20];
+//! let mut context = Sha1::new();
+//! context.input(b"hello world");
+//! context.result(&mut digest);
+//! ```
 
 use crate::cryptoutil::{read_u32v_be, write_u32_be, FixedBuffer};
 use crate::digest::Digest;
@@ -307,7 +312,7 @@ pub fn sha1_digest_block_u32(state: &mut [u32; 5], block: &[u32; 16]) {
 /// The schedule-related functions can be used to easily perform 4 rounds
 /// of the message work schedule update calculation, as shown below:
 ///
-/// ```ignore
+/// ```no_check
 /// macro_rules! schedule_x4 {
 ///     ($v0:expr, $v1:expr, $v2:expr, $v3:expr) => (
 ///         sha1msg2(sha1msg1($v0, $v1) ^ $v2, $v3)

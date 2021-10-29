@@ -1,74 +1,61 @@
-// Copyright 2012-2013 The Rust Project Developers. See the COPYRIGHT
-// file at the top-level directory of this distribution and at
-// http://rust-lang.org/COPYRIGHT.
-//
-// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
-// option. This file may not be copied, modified, or distributed
-// except according to those terms.
-
-/*!
-An implementation of the SHA-2 cryptographic hash algorithms.
-
-There are 6 standard algorithms specified in the SHA-2 standard:
-
- * `Sha224`, which is the 32-bit `Sha256` algorithm with the result truncated to 224 bits.
- * `Sha256`, which is the 32-bit `Sha256` algorithm.
- * `Sha384`, which is the 64-bit `Sha512` algorithm with the result truncated to 384 bits.
- * `Sha512`, which is the 64-bit `Sha512` algorithm.
- * `Sha512Trunc224`, which is the 64-bit `Sha512` algorithm with the result truncated to 224 bits.
- * `Sha512Trunc256`, which is the 64-bit `Sha512` algorithm with the result truncated to 256 bits.
-
-Algorithmically, there are only 2 core algorithms: `Sha256` and `Sha512`.
-All other algorithms are just applications of these with different initial hash
-values, and truncated to different digest bit lengths.
-
-# Usage
-
-An example of using `Sha256` is:
-
-```rust
-use self::cryptoxide::digest::Digest;
-use self::cryptoxide::sha2::Sha256;
-
-// create a Sha256 object
-let mut hasher = Sha256::new();
-
-// write input message
-hasher.input_str("hello world");
-
-// read hash digest
-let hex = hasher.result_str();
-
-assert_eq!(hex,
-           concat!("b94d27b9934d3e08a52e52d7da7dabfa",
-                   "c484efe37a5380ee9088f7ace2efcde9"));
-```
-
-An example of using `Sha512` is:
-
-```rust
-use self::cryptoxide::digest::Digest;
-use self::cryptoxide::sha2::Sha512;
-
-// create a Sha512 object
-let mut hasher = Sha512::new();
-
-// write input message
-hasher.input_str("hello world");
-
-// read hash digest
-let hex = hasher.result_str();
-
-assert_eq!(hex,
-           concat!("309ecc489c12d6eb4cc40f50c902f2b4",
-                   "d0ed77ee511a7c7a9bcd3ca86d4cd86f",
-                   "989dd35bc5ff499670da34255b45b0cf",
-                   "d830e81f605dcf7dc5542e93ae9cd76f"));
-```
-
- */
+//! An implementation of the SHA-2 cryptographic hash algorithms.
+//!
+//! There are 6 standard algorithms specified in the SHA-2 standard:
+//!
+//!  * `Sha224`, which is the 32-bit `Sha256` algorithm with the result truncated to 224 bits.
+//!  * `Sha256`, which is the 32-bit `Sha256` algorithm.
+//!  * `Sha384`, which is the 64-bit `Sha512` algorithm with the result truncated to 384 bits.
+//!  * `Sha512`, which is the 64-bit `Sha512` algorithm.
+//!  * `Sha512Trunc224`, which is the 64-bit `Sha512` algorithm with the result truncated to 224 bits.
+//!  * `Sha512Trunc256`, which is the 64-bit `Sha512` algorithm with the result truncated to 256 bits.
+//!
+//! Algorithmically, there are only 2 core algorithms: `Sha256` and `Sha512`.
+//! All other algorithms are just applications of these with different initial hash
+//! values, and truncated to different digest bit lengths.
+//!
+//! # Usage
+//!
+//! An example of using `Sha256` is:
+//!
+//! ```rust
+//! use self::cryptoxide::digest::Digest;
+//! use self::cryptoxide::sha2::Sha256;
+//!
+//! // create a Sha256 object
+//! let mut hasher = Sha256::new();
+//!
+//! // write input message
+//! hasher.input_str("hello world");
+//!
+//! // read hash digest
+//! let hex = hasher.result_str();
+//!
+//! assert_eq!(hex,
+//!            concat!("b94d27b9934d3e08a52e52d7da7dabfa",
+//!                    "c484efe37a5380ee9088f7ace2efcde9"));
+//! ```
+//!
+//! An example of using `Sha512` is:
+//!
+//! ```rust
+//! use self::cryptoxide::digest::Digest;
+//! use self::cryptoxide::sha2::Sha512;
+//!
+//! // create a Sha512 object
+//! let mut hasher = Sha512::new();
+//!
+//! // write input message
+//! hasher.input_str("hello world");
+//!
+//! // read hash digest
+//! let hex = hasher.result_str();
+//!
+//! assert_eq!(hex,
+//!            concat!("309ecc489c12d6eb4cc40f50c902f2b4",
+//!                    "d0ed77ee511a7c7a9bcd3ca86d4cd86f",
+//!                    "989dd35bc5ff499670da34255b45b0cf",
+//!                    "d830e81f605dcf7dc5542e93ae9cd76f"));
+//! ```
 
 mod eng256;
 mod eng512;

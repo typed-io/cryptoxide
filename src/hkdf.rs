@@ -1,13 +1,20 @@
 //! HMAC Key Derivation Function (HKDF)
-
-// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
-// option. This file may not be copied, modified, or distributed
-// except according to those terms.
-
+//!
 //! This module implements the HMAC-based Extract-and-Expand Key
-//! Derivation Function as specified by <https://tools.ietf.org/html/rfc5869>.
+//! Derivation Function as specified by [1]
+//!
+//! # Examples
+//!
+//! ```
+//! use cryptoxide::{sha2::Sha256, hkdf::{hkdf_extract, hkdf_expand}};
+//!
+//! let salt = b"salt";
+//! let input = b"input";
+//! let mut prk = [0u8; 32];
+//! hkdf_extract(Sha256::new(), salt, input, &mut prk);
+//! ```
+//!
+//! [1]: <https://tools.ietf.org/html/rfc5869>
 
 use alloc::vec::Vec;
 use core::iter::repeat;

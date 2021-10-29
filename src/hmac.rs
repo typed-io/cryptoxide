@@ -1,12 +1,18 @@
-// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
-// option. This file may not be copied, modified, or distributed
-// except according to those terms.
-
-/*!
- * This module implements the Hmac function - a Message Authentication Code using a Digest.
- */
+//! * This module implements the Hmac function - a Message Authentication Code using a Digest.
+//!
+//! # Examples
+//!
+//! HMAC-SHA256 using a 16 bytes key of a simple input data
+//!
+//! ```
+//! use cryptoxide::{hmac::Hmac, mac::Mac, sha2::Sha256};
+//!
+//! let input = b"data";
+//! let key = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
+//! let mut h = Hmac::new(Sha256::new(), &key);
+//! h.input(input);
+//! let mac = h.result();
+//! ```
 
 use core::iter::repeat;
 
@@ -15,9 +21,7 @@ use crate::digest::Digest;
 use crate::mac::{Mac, MacResult};
 use alloc::vec::Vec;
 
-/**
- * The Hmac struct represents an Hmac function - a Message Authentication Code using a Digest.
- */
+/// HMAC context parametrized by the hashing function
 pub struct Hmac<D> {
     digest: D,
     i_key: Vec<u8>,
@@ -60,14 +64,12 @@ fn create_keys<D: Digest>(digest: &mut D, key: &[u8]) -> (Vec<u8>, Vec<u8>) {
 }
 
 impl<D: Digest> Hmac<D> {
-    /**
-     * Create a new Hmac instance.
-     *
-     * # Arguments
-     * * digest - The Digest to use.
-     * * key - The key to use.
-     *
-     */
+    /// Create a new Hmac instance.
+    ///
+    /// # Arguments
+    /// * digest - The Digest to use.
+    /// * key - The key to use.
+    ///
     pub fn new(mut digest: D, key: &[u8]) -> Hmac<D> {
         let (i_key, o_key) = create_keys(&mut digest, key);
         digest.input(&i_key[..]);

@@ -1,6 +1,6 @@
 //! Blake2S hash function
 //!
-//! Blake2 is specified at [1]
+//! Blake2 [Specification][1].
 //!
 //! # Example
 //!
@@ -15,7 +15,7 @@
 //! context.result(&mut digest);
 //! ```
 //!
-//! or MAC using Blake2s-224 with 16-bytes key :
+//! MAC using Blake2s-224 with 16-bytes key :
 //!
 //! ```
 //! use cryptoxide::{mac::Mac, blake2s::Blake2s};
@@ -27,13 +27,7 @@
 //! ```
 //!
 //!
-//! [1] https://eprint.iacr.org/2013/322.pdf
-
-// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
-// option. This file may not be copied, modified, or distributed
-// except according to those terms.
+//! [1]: <https://eprint.iacr.org/2013/322.pdf>
 
 use crate::blake2::{EngineS as Engine, LastBlock};
 use crate::cryptoutil::{copy_memory, write_u32v_le};

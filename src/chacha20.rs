@@ -6,7 +6,7 @@
 //! Along with the standard ChaCha20, there is support for the
 //! XChaCha20 variant with extended nonce.
 //!
-//! Note that with stream cipher, there's only one operation [`Chacha20::process`]
+//! Note that with stream cipher, there's only one operation [`ChaCha20::process`]
 //! instead of the typical encrypt and decrypt.
 //!
 //! # Examples
@@ -29,11 +29,6 @@
 //! ```
 //!
 
-// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
-// option. This file may not be copied, modified, or distributed
-// except according to those terms.
 use core::cmp;
 
 use crate::chacha::ChaChaEngine as ChaChaState;

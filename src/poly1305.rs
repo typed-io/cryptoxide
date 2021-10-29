@@ -10,10 +10,10 @@
 //! let mac = context.result();
 //! ```
 //!
-//! [1] https://cr.yp.to/mac/poly1305-20050329.pdf
+//! [1]: <https://cr.yp.to/mac/poly1305-20050329.pdf>
 
 // This is a port of Andrew Moons poly1305-donna
-// https://github.com/floodyberry/poly1305-donna
+// <https://github.com/floodyberry/poly1305-donna>
 
 use core::cmp::min;
 

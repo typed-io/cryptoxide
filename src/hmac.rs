@@ -1,4 +1,4 @@
-//! * This module implements the Hmac function - a Message Authentication Code using a Digest.
+//! Implements the Hash Message Authentication Code (HMAC)
 //!
 //! # Examples
 //!

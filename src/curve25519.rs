@@ -23,8 +23,8 @@
 //! let public = curve25519(&secret, &other_point);
 //! ```
 //!
-//! [1] https://cr.yp.to/ecdh/curve25519-20060209.pdf
-//! [2] https://en.wikipedia.org/wiki/Curve25519
+//! [1]: <https://cr.yp.to/ecdh/curve25519-20060209.pdf>
+//! [2]: <https://en.wikipedia.org/wiki/Curve25519>
 
 use crate::util::fixed_time_eq;
 use core::cmp::{min, Eq, Ordering, PartialEq};

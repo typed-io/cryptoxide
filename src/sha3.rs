@@ -10,7 +10,7 @@
 //!
 //! Based on an [implementation by Sébastien Martini](https://github.com/seb-m/crypto.rs/blob/master/src/sha3.rs)
 //!
-//! # Usage
+//! # Examples
 //!
 //! An example of using `SHA3-256` is:
 //!

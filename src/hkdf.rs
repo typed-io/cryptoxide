@@ -14,7 +14,7 @@
 //! hkdf_extract(Sha256::new(), salt, input, &mut prk);
 //! ```
 //!
-//! [1] https://tools.ietf.org/html/rfc5869
+//! [1]: <https://tools.ietf.org/html/rfc5869>
 
 use alloc::vec::Vec;
 use core::iter::repeat;

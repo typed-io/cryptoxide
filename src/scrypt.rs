@@ -13,7 +13,7 @@
 //! ```
 //!
 //! # References
-//! [1] http://www.tarsnap.com/scrypt/scrypt.pdf
+//! [1]: <http://www.tarsnap.com/scrypt/scrypt.pdf>
 //!
 
 use alloc::vec::Vec;

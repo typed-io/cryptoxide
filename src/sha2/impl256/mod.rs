@@ -3,7 +3,7 @@
 //! Reference implementation come from haskell's cryptonite cbits
 //!
 //! SSE and AVX optimisation are coming from
-//! https://eprint.iacr.org/2012/067.pdf and consist
+//! <https://eprint.iacr.org/2012/067.pdf> and consist
 //! of creating the message schedule of 4 (SSE) or 8 (AVX) blocks
 //! at a time, then using the standard ALU to do the compression.
 //!

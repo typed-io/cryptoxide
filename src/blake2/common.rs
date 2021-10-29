@@ -56,8 +56,13 @@ pub const SIGMA: [[usize; 16]; 12] = [
     [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
 ];
 
+/// Parameter when hashing the last block for the engine compress function
+///
+/// see [super::EngineB::compress] or [super::EngineS::compress]
 #[derive(Clone, PartialEq, Eq)]
 pub enum LastBlock {
+    /// To use when this is the last block to process, otherwise use [`LastBlock::No`]
     Yes,
+    /// To use for all block to compress except the last one
     No,
 }

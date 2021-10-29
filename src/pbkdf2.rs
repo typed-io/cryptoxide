@@ -12,7 +12,7 @@
 //! pbkdf2(&mut Hmac::new(Sha256::new(), password), salt, c, &mut out);
 //! ```
 //!
-//! [1] http://tools.ietf.org/html/rfc2898
+//! [1]: <https://tools.ietf.org/html/rfc2898>
 
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license

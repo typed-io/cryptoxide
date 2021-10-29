@@ -1,5 +1,9 @@
 //! ED25519 Signature Scheme
 //!
+//! # Examples
+//!
+//! Creating a signature, and verifying the signature:
+//!
 //! ```
 //! use cryptoxide::ed25519;
 //!

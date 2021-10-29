@@ -391,28 +391,29 @@ pub struct Sha1 {
     computed: bool,
 }
 
+const H0: u32 = 0x67452301u32;
+const H1: u32 = 0xEFCDAB89u32;
+const H2: u32 = 0x98BADCFEu32;
+const H3: u32 = 0x10325476u32;
+const H4: u32 = 0xC3D2E1F0u32;
+const H: [u32; STATE_LEN] = [H0, H1, H2, H3, H4];
+
 impl Sha1 {
     /// Construct a `sha` object
-    pub fn new() -> Sha1 {
-        let mut st = Sha1 {
-            h: [0u32; STATE_LEN],
+    pub const fn new() -> Sha1 {
+        Sha1 {
+            h: H,
             length_bits: 0u64,
             buffer: FixedBuffer::new(),
             computed: false,
-        };
-        st.reset();
-        st
+        }
     }
 }
 
 impl Digest for Sha1 {
     fn reset(&mut self) {
         self.length_bits = 0;
-        self.h[0] = 0x67452301u32;
-        self.h[1] = 0xEFCDAB89u32;
-        self.h[2] = 0x98BADCFEu32;
-        self.h[3] = 0x10325476u32;
-        self.h[4] = 0xC3D2E1F0u32;
+        self.h = H;
         self.buffer.reset();
         self.computed = false;
     }

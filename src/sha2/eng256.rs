@@ -14,7 +14,7 @@ pub(super) struct Engine {
 }
 
 impl Engine {
-    pub(super) fn new(h: &[u32; STATE_LEN]) -> Self {
+    pub(super) const fn new(h: &[u32; STATE_LEN]) -> Self {
         Self { h: *h }
     }
 

@@ -161,7 +161,7 @@ pub(crate) struct FixedBuffer<const N: usize> {
 
 impl<const N: usize> FixedBuffer<N> {
     /// Create a new buffer
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             buffer: [0u8; N],
             buffer_idx: 0,

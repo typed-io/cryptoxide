@@ -77,7 +77,7 @@ macro_rules! digest {
 
         impl $name {
             /// Create a new hashing algorithm context
-            pub fn new() -> Self {
+            pub const fn new() -> Self {
                 Self {
                     engine: $init::new(&$state),
                 }
@@ -132,7 +132,7 @@ struct Engine512 {
 }
 
 impl Engine512 {
-    fn new(h: &[u64; eng512::STATE_LEN]) -> Engine512 {
+    const fn new(h: &[u64; eng512::STATE_LEN]) -> Engine512 {
         Engine512 {
             length_bits: 0,
             buffer: FixedBuffer::new(),
@@ -181,7 +181,7 @@ struct Engine256 {
 }
 
 impl Engine256 {
-    fn new(h: &[u32; eng256::STATE_LEN]) -> Engine256 {
+    const fn new(h: &[u32; eng256::STATE_LEN]) -> Engine256 {
         Engine256 {
             length_bits: 0,
             buffer: FixedBuffer::new(),

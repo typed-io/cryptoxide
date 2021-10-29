@@ -318,7 +318,7 @@ pub fn sha1_digest_block_u32(state: &mut [u32; 5], block: &[u32; 16]) {
 /// The schedule-related functions can be used to easily perform 4 rounds
 /// of the message work schedule update calculation, as shown below:
 ///
-/// ```ignore
+/// ```no_check
 /// macro_rules! schedule_x4 {
 ///     ($v0:expr, $v1:expr, $v2:expr, $v3:expr) => (
 ///         sha1msg2(sha1msg1($v0, $v1) ^ $v2, $v3)

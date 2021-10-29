@@ -1,4 +1,4 @@
-//! This module implements the PBKDF2 Key Derivation Function as specified by [1]
+//! This module implements the PBKDF2 Key Derivation Function as specified in [Specification][1].
 //!
 //! # Examples
 //!

@@ -1,4 +1,4 @@
-//! Poly1305 Message Authentication Code (MAC) as defined in [1]
+//! Poly1305 Message Authentication Code (MAC) as defined in [Specification][1].
 //!
 //! # Examples
 //!

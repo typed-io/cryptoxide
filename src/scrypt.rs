@@ -1,4 +1,4 @@
-//! Implements the Scrypt key derivation function as specified in [1].
+//! Implements the Scrypt key derivation function as [Specification][1].
 //!
 //! # Examples
 //!

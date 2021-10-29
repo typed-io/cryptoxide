@@ -1,12 +1,16 @@
-//! Poly1305 Message Authentication Code (MAC)
+//! Poly1305 Message Authentication Code (MAC) as defined in [1]
 //!
-//! Defined in [Spec](https://cr.yp.to/mac/poly1305-20050329.pdf)
-
-// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
-// option. This file may not be copied, modified, or distributed
-// except according to those terms.
+//! # Examples
+//!
+//! ```
+//! use cryptoxide::{mac::Mac, poly1305::Poly1305};
+//!
+//! let mut context = Poly1305::new(&[0u8;32]);
+//! context.input(b"data to authenticate");
+//! let mac = context.result();
+//! ```
+//!
+//! [1] https://cr.yp.to/mac/poly1305-20050329.pdf
 
 // This is a port of Andrew Moons poly1305-donna
 // https://github.com/floodyberry/poly1305-donna

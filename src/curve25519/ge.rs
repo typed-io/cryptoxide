@@ -4,7 +4,7 @@ use core::ops::{Add, Sub};
 use super::fe::Fe;
 
 #[derive(Clone)]
-pub(crate) struct GeP2 {
+pub struct GeP2 {
     x: Fe,
     y: Fe,
     z: Fe,
@@ -20,7 +20,7 @@ pub struct GeP3 {
 }
 
 #[derive(Clone)]
-pub(crate) struct GeP1P1 {
+pub struct GeP1P1 {
     x: Fe,
     y: Fe,
     z: Fe,
@@ -28,14 +28,14 @@ pub(crate) struct GeP1P1 {
 }
 
 #[derive(Clone)]
-pub(crate) struct GePrecomp {
+pub struct GePrecomp {
     y_plus_x: Fe,
     y_minus_x: Fe,
     xy2d: Fe,
 }
 
 #[derive(Clone)]
-pub(crate) struct GeCached {
+pub struct GeCached {
     y_plus_x: Fe,
     y_minus_x: Fe,
     z: Fe,
@@ -68,7 +68,7 @@ impl GeP2 {
         z: Fe::ONE,
     };
 
-    pub(crate) fn to_bytes(&self) -> [u8; 32] {
+    pub fn to_bytes(&self) -> [u8; 32] {
         let recip = self.z.invert();
         let x = &self.x * &recip;
         let y = &self.y * &recip;
@@ -77,7 +77,7 @@ impl GeP2 {
         bs
     }
 
-    pub(crate) fn dbl(&self) -> GeP1P1 {
+    pub fn dbl(&self) -> GeP1P1 {
         let xx = self.x.square();
         let yy = self.y.square();
         let b = self.z.square_and_double();
@@ -135,11 +135,7 @@ impl GeP2 {
     and b = b[0]+256*b[1]+...+256^31 b[31].
     B is the Ed25519 base point (x,4/5) with x positive.
     */
-    pub(crate) fn double_scalarmult_vartime(
-        a_scalar: &[u8],
-        a_point: GeP3,
-        b_scalar: &[u8],
-    ) -> GeP2 {
+    pub fn double_scalarmult_vartime(a_scalar: &[u8], a_point: GeP3, b_scalar: &[u8]) -> GeP2 {
         let aslide = GeP2::slide(a_scalar);
         let bslide = GeP2::slide(b_scalar);
 
@@ -229,7 +225,7 @@ impl GeP3 {
         })
     }
 
-    pub(crate) fn to_p2(&self) -> GeP2 {
+    pub fn to_p2(&self) -> GeP2 {
         GeP2 {
             x: self.x.clone(),
             y: self.y.clone(),
@@ -237,7 +233,7 @@ impl GeP3 {
         }
     }
 
-    pub(crate) fn to_cached(&self) -> GeCached {
+    pub fn to_cached(&self) -> GeCached {
         GeCached {
             y_plus_x: &self.y + &self.x,
             y_minus_x: &self.y - &self.x,
@@ -253,11 +249,11 @@ impl GeP3 {
         t: Fe::ZERO,
     };
 
-    pub(crate) fn dbl(&self) -> GeP1P1 {
+    pub fn dbl(&self) -> GeP1P1 {
         self.to_p2().dbl()
     }
 
-    pub(crate) fn to_bytes(&self) -> [u8; 32] {
+    pub fn to_bytes(&self) -> [u8; 32] {
         let recip = self.z.invert();
         let x = &self.x * &recip;
         let y = &self.y * &recip;

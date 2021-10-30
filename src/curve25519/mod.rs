@@ -865,6 +865,13 @@ mod tests {
     }
 }
 
+pub mod arithmetic {
+    //! experimental arithmetic on curve25519 module
+
+    pub use super::fe::Fe;
+    pub use super::ge::{GeCached, GeP1P1, GeP2, GeP3, GePrecomp};
+}
+
 #[cfg(all(test, feature = "with-bench"))]
 mod bench {
     use super::*;

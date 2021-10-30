@@ -2,16 +2,13 @@ use crate::constant_time::CtEqual;
 use core::cmp::{Eq, PartialEq};
 use core::ops::{Add, Mul, Sub};
 
-/*
-fe means field element.
-Here the field is \Z/(2^255-19).
-An element t, entries t[0]...t[9], represents the integer
-t[0]+2^26 t[1]+2^51 t[2]+2^77 t[3]+2^102 t[4]+...+2^230 t[9].
-Bounds on each t[i] vary depending on context.
-*/
-
+/// Field Element in \Z/(2^255-19)
+///
+/// An element t, entries t[0]...t[9], represents the integer
+/// t[0]+2^26 t[1]+2^51 t[2]+2^77 t[3]+2^102 t[4]+...+2^230 t[9].
+/// Bounds on each t[i] vary depending on context.
 #[derive(Clone)]
-pub(crate) struct Fe(pub [i32; 10]);
+pub struct Fe(pub [i32; 10]);
 
 impl PartialEq for Fe {
     fn eq(&self, other: &Fe) -> bool {

@@ -1,6 +1,6 @@
 //! Curve25519 elliptic curve diffie hellman (X25519)
 //!
-//! Curve25519 elliptic curve specified in [1], and extra information also at [2]
+//! Curve25519 elliptic curve from in [Specification][1], and extra information also on [Wikipedia][2]
 //!
 //! # Example
 //!
@@ -1155,7 +1155,7 @@ pub(crate) struct GeP2 {
 }
 
 #[derive(Clone)]
-pub(crate) struct GeP3 {
+pub struct GeP3 {
     x: Fe,
     y: Fe,
     z: Fe,
@@ -1338,7 +1338,7 @@ impl GeP2 {
 }
 
 impl GeP3 {
-    pub(crate) fn from_bytes_negate_vartime(s: &[u8]) -> Option<GeP3> {
+    pub fn from_bytes_negate_vartime(s: &[u8]) -> Option<GeP3> {
         let y = Fe::from_bytes(s);
         let z = FE_ONE.clone();
         let y_squared = y.square();
@@ -1600,7 +1600,7 @@ B is the Ed25519 base point (x,4/5) with x positive.
 Preconditions:
   a[31] <= 127
 */
-pub(crate) fn ge_scalarmult_base(a: &[u8]) -> GeP3 {
+pub fn ge_scalarmult_base(a: &[u8]) -> GeP3 {
     let mut es: [i8; 64] = [0; 64];
     let mut r: GeP1P1;
     let mut s: GeP2;

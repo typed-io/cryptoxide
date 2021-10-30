@@ -32,6 +32,16 @@ static L: [u8; 32] = [
     0x14, 0xde, 0xf9, 0xde, 0xa2, 0xf7, 0x9c, 0xd6, 0x58, 0x12, 0x63, 0x1a, 0x5c, 0xf5, 0xd3, 0xed,
 ];
 
+// clamp the scalar by:
+// 1. clearing the 3 lower bits,
+// 2. clearing the highest bit
+// 3. setting the second highest bit
+fn clamp_scalar(scalar: &mut [u8]) {
+    scalar[0] &= 0b1111_1000;
+    scalar[31] &= 0b0011_1111;
+    scalar[31] |= 0b0100_0000;
+}
+
 /// Create a keypair of secret key and public key
 pub fn keypair(seed: &[u8]) -> ([u8; PRIVATE_KEY_LENGTH], [u8; PUBLIC_KEY_LENGTH]) {
     assert!(
@@ -45,9 +55,7 @@ pub fn keypair(seed: &[u8]) -> ([u8; PRIVATE_KEY_LENGTH], [u8; PUBLIC_KEY_LENGTH
         let mut hasher = Sha512::new();
         hasher.input(seed);
         hasher.result(&mut hash_output);
-        hash_output[0] &= 248;
-        hash_output[31] &= 63;
-        hash_output[31] |= 64;
+        clamp_scalar(&mut hash_output);
         hash_output
     };
 
@@ -77,9 +85,7 @@ pub fn signature(message: &[u8], secret_key: &[u8]) -> [u8; SIGNATURE_LENGTH] {
         let mut hasher = Sha512::new();
         hasher.input(seed);
         hasher.result(&mut hash_output);
-        hash_output[0] &= 248;
-        hash_output[31] &= 63;
-        hash_output[31] |= 64;
+        clamp_scalar(&mut hash_output);
         hash_output
     };
 
@@ -89,8 +95,7 @@ pub fn signature(message: &[u8], secret_key: &[u8]) -> [u8; SIGNATURE_LENGTH] {
         hasher.input(&az[32..64]);
         hasher.input(message);
         hasher.result(&mut hash_output);
-        sc_reduce(&mut hash_output[0..64]);
-        hash_output
+        sc_reduce(&hash_output)
     };
 
     let mut signature: [u8; SIGNATURE_LENGTH] = [0; SIGNATURE_LENGTH];
@@ -108,7 +113,7 @@ pub fn signature(message: &[u8], secret_key: &[u8]) -> [u8; SIGNATURE_LENGTH] {
         hasher.input(message);
         let mut hram: [u8; 64] = [0; 64];
         hasher.result(&mut hram);
-        sc_reduce(&mut hram);
+        let hram = sc_reduce(&hram);
         sc_muladd(
             &mut signature[32..64],
             &hram[0..32],
@@ -142,8 +147,7 @@ pub fn signature_extended(message: &[u8], extended_secret: &[u8]) -> [u8; SIGNAT
         hasher.input(&extended_secret[32..64]);
         hasher.input(message);
         hasher.result(&mut hash_output);
-        sc_reduce(&mut hash_output[0..64]);
-        hash_output
+        sc_reduce(&hash_output)
     };
 
     let mut signature: [u8; SIGNATURE_LENGTH] = [0; SIGNATURE_LENGTH];
@@ -161,7 +165,7 @@ pub fn signature_extended(message: &[u8], extended_secret: &[u8]) -> [u8; SIGNAT
         hasher.input(message);
         let mut hram: [u8; 64] = [0; 64];
         hasher.result(&mut hram);
-        sc_reduce(&mut hram);
+        let hram = sc_reduce(&mut hram);
         sc_muladd(
             &mut signature[32..64],
             &hram[0..32],
@@ -231,9 +235,9 @@ pub fn verify(message: &[u8], public_key: &[u8], signature: &[u8]) -> bool {
     hasher.input(message);
     let mut hash: [u8; 64] = [0; 64];
     hasher.result(&mut hash);
-    sc_reduce(&mut hash);
+    let a_scalar = sc_reduce(&mut hash);
 
-    let r = GeP2::double_scalarmult_vartime(hash.as_ref(), a, signature_right);
+    let r = GeP2::double_scalarmult_vartime(&a_scalar, a, signature_right);
     let rcheck = r.to_bytes();
 
     CtEqual::ct_eq(&rcheck, signature_left).into()
@@ -252,9 +256,7 @@ pub fn exchange(public_key: &[u8], private_key: &[u8]) -> [u8; 32] {
     let mut hash: [u8; 64] = [0; 64];
     hasher.result(&mut hash);
     // Clamp the hash such that it is a valid private key
-    hash[0] &= 248;
-    hash[31] &= 127;
-    hash[31] |= 64;
+    clamp_scalar(&mut hash);
 
     let shared_mont_x: [u8; 32] = curve25519(&hash, &mont_x.to_bytes()); // priv., pub.
 
@@ -340,9 +342,8 @@ mod tests {
         hasher.input(&ed_private[0..32]);
         let mut hash: [u8; 64] = [0; 64];
         hasher.result(&mut hash);
-        hash[0] &= 248;
-        hash[31] &= 127;
-        hash[31] |= 64;
+
+        super::clamp_scalar(&mut hash);
 
         let cv_public = curve25519_base(&hash);
 

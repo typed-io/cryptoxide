@@ -101,10 +101,10 @@ Input:
 Output:
     s[0]+256*s[1]+...+256^31*s[31] = s mod l
     where l = 2^252 + 27742317777372353535851937790883648493.
-    Overwrites s in place.
 */
 #[rustfmt::skip]
-pub(crate) fn sc_reduce(s: &mut [u8]) {
+#[must_use]
+pub(crate) fn sc_reduce(s: &[u8; 64]) -> [u8; 32] {
     let mut s0: i64 = 2097151 & load_3i(s);
     let mut s1: i64 = 2097151 & (load_4i(&s[2..6]) >> 5);
     let mut s2: i64 = 2097151 & (load_3i(&s[5..8]) >> 2);
@@ -311,38 +311,40 @@ pub(crate) fn sc_reduce(s: &mut [u8]) {
     carry9 = s9 >> 21; s10 += carry9; s9 -= carry9 << 21;
     carry10 = s10 >> 21; s11 += carry10; s10 -= carry10 << 21;
 
-    s[0] = (s0 >> 0) as u8;
-    s[1] = (s0 >> 8) as u8;
-    s[2] = ((s0 >> 16) | (s1 << 5)) as u8;
-    s[3] = (s1 >> 3) as u8;
-    s[4] = (s1 >> 11) as u8;
-    s[5] = ((s1 >> 19) | (s2 << 2)) as u8;
-    s[6] = (s2 >> 6) as u8;
-    s[7] = ((s2 >> 14) | (s3 << 7)) as u8;
-    s[8] = (s3 >> 1) as u8;
-    s[9] = (s3 >> 9) as u8;
-    s[10] = ((s3 >> 17) | (s4 << 4)) as u8;
-    s[11] = (s4 >> 4) as u8;
-    s[12] = (s4 >> 12) as u8;
-    s[13] = ((s4 >> 20) | (s5 << 1)) as u8;
-    s[14] = (s5 >> 7) as u8;
-    s[15] = ((s5 >> 15) | (s6 << 6)) as u8;
-    s[16] = (s6 >> 2) as u8;
-    s[17] = (s6 >> 10) as u8;
-    s[18] = ((s6 >> 18) | (s7 << 3)) as u8;
-    s[19] = (s7 >> 5) as u8;
-    s[20] = (s7 >> 13) as u8;
-    s[21] = (s8 >> 0) as u8;
-    s[22] = (s8 >> 8) as u8;
-    s[23] = ((s8 >> 16) | (s9 << 5)) as u8;
-    s[24] = (s9 >> 3) as u8;
-    s[25] = (s9 >> 11) as u8;
-    s[26] = ((s9 >> 19) | (s10 << 2)) as u8;
-    s[27] = (s10 >> 6) as u8;
-    s[28] = ((s10 >> 14) | (s11 << 7)) as u8;
-    s[29] = (s11 >> 1) as u8;
-    s[30] = (s11 >> 9) as u8;
-    s[31] = (s11 >> 17) as u8;
+    let mut out = [0u8; 32];
+    out[0] = (s0 >> 0) as u8;
+    out[1] = (s0 >> 8) as u8;
+    out[2] = ((s0 >> 16) | (s1 << 5)) as u8;
+    out[3] = (s1 >> 3) as u8;
+    out[4] = (s1 >> 11) as u8;
+    out[5] = ((s1 >> 19) | (s2 << 2)) as u8;
+    out[6] = (s2 >> 6) as u8;
+    out[7] = ((s2 >> 14) | (s3 << 7)) as u8;
+    out[8] = (s3 >> 1) as u8;
+    out[9] = (s3 >> 9) as u8;
+    out[10] = ((s3 >> 17) | (s4 << 4)) as u8;
+    out[11] = (s4 >> 4) as u8;
+    out[12] = (s4 >> 12) as u8;
+    out[13] = ((s4 >> 20) | (s5 << 1)) as u8;
+    out[14] = (s5 >> 7) as u8;
+    out[15] = ((s5 >> 15) | (s6 << 6)) as u8;
+    out[16] = (s6 >> 2) as u8;
+    out[17] = (s6 >> 10) as u8;
+    out[18] = ((s6 >> 18) | (s7 << 3)) as u8;
+    out[19] = (s7 >> 5) as u8;
+    out[20] = (s7 >> 13) as u8;
+    out[21] = (s8 >> 0) as u8;
+    out[22] = (s8 >> 8) as u8;
+    out[23] = ((s8 >> 16) | (s9 << 5)) as u8;
+    out[24] = (s9 >> 3) as u8;
+    out[25] = (s9 >> 11) as u8;
+    out[26] = ((s9 >> 19) | (s10 << 2)) as u8;
+    out[27] = (s10 >> 6) as u8;
+    out[28] = ((s10 >> 14) | (s11 << 7)) as u8;
+    out[29] = (s11 >> 1) as u8;
+    out[30] = (s11 >> 9) as u8;
+    out[31] = (s11 >> 17) as u8;
+    out
 }
 
 /*

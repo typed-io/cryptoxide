@@ -1155,6 +1155,7 @@ pub(crate) struct GeP2 {
 }
 
 #[derive(Clone)]
+#[doc(hidden)]
 pub struct GeP3 {
     x: Fe,
     y: Fe,
@@ -1600,6 +1601,7 @@ B is the Ed25519 base point (x,4/5) with x positive.
 Preconditions:
   a[31] <= 127
 */
+#[doc(hidden)]
 pub fn ge_scalarmult_base(a: &[u8]) -> GeP3 {
     let mut es: [i8; 64] = [0; 64];
     let mut r: GeP1P1;

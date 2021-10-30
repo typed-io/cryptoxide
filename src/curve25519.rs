@@ -1,6 +1,6 @@
 //! Curve25519 elliptic curve diffie hellman (X25519)
 //!
-//! Curve25519 elliptic curve from in [Specification][1], and extra information also on [Wikipedia][2]
+//! Curve25519 elliptic curve from [Specification][1], and extra information also on [Wikipedia][2]
 //!
 //! # Example
 //!

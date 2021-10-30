@@ -1,6 +1,12 @@
+# 0.3.5
+
+* Add some const qualifier in Sha1 and Sha2
+* Revert partially some curve25519 interface changes
+
 # 0.3.4
 
 * Documentation and examples for all modules
+* Unpublish some internals arithmetic from curve25519
 
 # 0.3.3
 

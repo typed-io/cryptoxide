@@ -2261,6 +2261,8 @@ pub fn sc_muladd(s: &mut[u8], a: &[u8], b: &[u8], c: &[u8]) {
     s[31] = (s11 >> 17) as u8;
 }
 
+/// Computes a shared secret from the curve25519 private key (n) and public
+/// key (p)
 pub fn curve25519(n: &[u8], p: &[u8]) -> [u8; 32] {
     let mut e = [0u8; 32];
     let mut x2;
@@ -2322,6 +2324,7 @@ pub fn curve25519(n: &[u8], p: &[u8]) -> [u8; 32] {
     (z2.invert() * x2).to_bytes()
 }
 
+/// Derives a public key from a private key
 pub fn curve25519_base(x: &[u8]) -> [u8; 32] {
     let mut base: [u8; 32] = [0; 32];
     base[0] = 9;

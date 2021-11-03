@@ -1,3 +1,7 @@
+# 0.3.6
+
+* Revert more some curve25519 interface changes
+
 # 0.3.5
 
 * Add some const qualifier in Sha1 and Sha2

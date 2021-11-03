@@ -395,8 +395,8 @@ pub fn shake_256() -> Sha3 {
 use self::constants::Const;
 
 macro_rules! sha3_impl {
-    ($C: ident) => {
-        /// A $C context
+    ($C: ident, $doc:expr) => {
+        #[doc=$doc]
         #[derive(Clone)]
         pub struct $C(Engine<constants::$C>);
 
@@ -430,15 +430,15 @@ macro_rules! sha3_impl {
     };
 }
 
-sha3_impl!(Sha3_224);
-sha3_impl!(Sha3_256);
-sha3_impl!(Sha3_384);
-sha3_impl!(Sha3_512);
+sha3_impl!(Sha3_224, "A SHA3 224 context");
+sha3_impl!(Sha3_256, "A SHA3 256 context");
+sha3_impl!(Sha3_384, "A SHA3 384 context");
+sha3_impl!(Sha3_512, "A SHA3 512 context");
 
-sha3_impl!(Keccak224);
-sha3_impl!(Keccak256);
-sha3_impl!(Keccak384);
-sha3_impl!(Keccak512);
+sha3_impl!(Keccak224, "A Keccak224 context");
+sha3_impl!(Keccak256, "A Keccak256 context");
+sha3_impl!(Keccak384, "A Keccak384 context");
+sha3_impl!(Keccak512, "A Keccak512 context");
 
 #[cfg(test)]
 mod tests {

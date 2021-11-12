@@ -249,8 +249,8 @@ impl<const N: usize> FixedBuffer<N> {
 
 #[cfg(test)]
 pub mod test {
-    use std::iter::repeat;
-    use std::vec::Vec;
+    use alloc::vec::Vec;
+    use core::iter::repeat;
 
     use crate::digest::Digest;
 

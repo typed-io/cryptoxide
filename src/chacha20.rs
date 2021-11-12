@@ -162,8 +162,8 @@ impl ChaCha20 {
 
 #[cfg(test)]
 mod test {
-    use std::iter::repeat;
-    use std::vec::Vec;
+    use alloc::vec::Vec;
+    use core::iter::repeat;
 
     use super::ChaCha20;
 

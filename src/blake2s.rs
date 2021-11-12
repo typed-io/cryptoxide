@@ -223,7 +223,7 @@ impl Mac for Blake2s {
 mod digest_tests {
     use super::Blake2s;
     use crate::digest::Digest;
-    use std::vec::Vec;
+    use alloc::vec::Vec;
 
     struct Test {
         input: Vec<u8>,
@@ -318,11 +318,13 @@ mod digest_tests {
 mod mac_tests {
     use super::Blake2s;
     use crate::mac::Mac;
-    use std::vec::Vec;
 
     #[test]
     fn test_blake2s_mac() {
-        let key: Vec<u8> = (0..32).collect();
+        let key: [u8; 32] = [
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+            24, 25, 26, 27, 28, 29, 30, 31,
+        ];
         let mut m = Blake2s::new_keyed(32, &key[..]);
         m.input(&[1, 2, 4, 8]);
         let expected = [

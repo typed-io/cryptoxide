@@ -78,8 +78,8 @@ pub fn hkdf_expand<D: Digest>(mut digest: D, prk: &[u8], info: &[u8], okm: &mut 
 
 #[cfg(test)]
 mod test {
-    use std::iter::repeat;
-    use std::vec::Vec;
+    use alloc::vec::Vec;
+    use core::iter::repeat;
 
     use crate::digest::Digest;
     use crate::hkdf::{hkdf_expand, hkdf_extract};

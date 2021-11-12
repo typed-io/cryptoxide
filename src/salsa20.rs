@@ -264,9 +264,6 @@ pub fn hsalsa20(key: &[u8], nonce: &[u8], out: &mut [u8]) {
 
 #[cfg(test)]
 mod test {
-    use alloc::vec::Vec;
-    use std::iter::repeat;
-
     use super::Salsa20;
 
     use crate::digest::Digest;
@@ -321,15 +318,20 @@ mod test {
             0x66, 0x25, 0x6c, 0xe4,
         ];
         let nonce = [0x82, 0x19, 0xe0, 0x03, 0x6b, 0x7a, 0x0b, 0x37];
-        let input: Vec<u8> = repeat(0).take(4194304).collect();
-        let mut stream: Vec<u8> = repeat(0).take(input.len()).collect();
         let output_str = "662b9d0e3463029156069b12f918691a98f7dfb2ca0393c96bbfc6b1fbd630a2";
 
         let mut salsa20 = Salsa20::new(&key, &nonce);
-        salsa20.process(input.as_ref(), &mut stream);
 
+        // hash 4194304 0-bytes (512*8192) in SHA256
         let mut sh = Sha256::new();
-        sh.input(stream.as_ref());
+
+        let block = [0u8; 512];
+        let mut stream_output = [0u8; 512];
+        for _ in 0..8192 {
+            salsa20.process(&block, &mut stream_output);
+            sh.input(&stream_output);
+        }
+
         let out_str = sh.result_str();
         assert!(&out_str[..] == output_str);
     }

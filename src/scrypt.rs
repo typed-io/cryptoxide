@@ -20,8 +20,7 @@ use alloc::vec::Vec;
 use core::iter::repeat;
 use core::mem::size_of;
 
-use crate::cryptoutil::copy_memory;
-use crate::cryptoutil::{read_u32_le, read_u32v_le, write_u32_le};
+use crate::cryptoutil::{copy_memory, read_u32_le, read_u32v_le, write_u32_le};
 use crate::hmac::Hmac;
 use crate::pbkdf2::pbkdf2;
 use crate::sha2::Sha256;

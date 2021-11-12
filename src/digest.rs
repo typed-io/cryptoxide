@@ -26,7 +26,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::iter::repeat;
 
-static CHARS: &[u8] = b"0123456789abcdef";
+const CHARS: &'static [u8; 16] = b"0123456789abcdef";
 
 /**
  * The Digest trait specifies an interface common to digest functions, such as SHA-1 and the SHA-2

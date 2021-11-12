@@ -243,7 +243,6 @@ mod hash_tests {
 mod mac_tests {
     use super::Blake2b;
     use crate::mac::Mac;
-    use std::vec::Vec;
 
     #[test]
     fn test_reset_with_key_same_as_new_keyed_if_empty() {
@@ -264,7 +263,11 @@ mod mac_tests {
 
     #[test]
     fn test_blake2b_mac() {
-        let key: Vec<u8> = (0..64).collect();
+        let key: [u8; 64] = [
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+            24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
+            46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
+        ];
         let mut m = Blake2b::new_keyed(64, &key[..]);
         m.input(&[1, 2, 4, 8]);
         let expected = [

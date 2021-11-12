@@ -29,10 +29,8 @@
 mod fe;
 mod ge;
 
-pub(crate) use fe::Fe;
-pub(crate) use ge::{GeP1P1, GeP2, GePrecomp};
-
-pub use ge::GeP3;
+pub use fe::Fe;
+pub use ge::{GeCached, GeP1P1, GeP2, GeP3, GePrecomp};
 
 use fe::{load_3i, load_4i};
 
@@ -706,12 +704,11 @@ pub fn curve25519(n: &[u8], p: &[u8]) -> [u8; 32] {
     let mut swap: i32;
     let mut b: i32;
 
-    for (d, s) in e.iter_mut().zip(n.iter()) {
-        *d = *s;
-    }
+    e.copy_from_slice(&n[0..32]);
     e[0] &= 248;
     e[31] &= 127;
     e[31] |= 64;
+
     let x1 = Fe::from_bytes(p);
     x2 = Fe::ONE;
     z2 = Fe::ZERO;
@@ -867,13 +864,6 @@ mod tests {
         ];
         assert_eq!(pk.to_vec(), correct.to_vec());
     }
-}
-
-pub mod arithmetic {
-    //! experimental arithmetic on curve25519 module
-
-    pub use super::fe::Fe;
-    pub use super::ge::{GeCached, GeP1P1, GeP2, GeP3, GePrecomp};
 }
 
 #[cfg(all(test, feature = "with-bench"))]

@@ -11,7 +11,6 @@ pub struct GeP2 {
 }
 
 #[derive(Clone)]
-#[doc(hidden)]
 pub struct GeP3 {
     x: Fe,
     y: Fe,

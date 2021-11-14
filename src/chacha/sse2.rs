@@ -9,7 +9,7 @@ use core::arch::x86_64::*;
 use core::convert::TryInto;
 
 #[derive(Clone)]
-pub(crate) struct State {
+pub(crate) struct State<const ROUNDS: usize> {
     a: __m128i,
     b: __m128i,
     c: __m128i,
@@ -61,7 +61,7 @@ macro_rules! round {
     };
 }
 
-impl State {
+impl<const ROUNDS: usize> State<ROUNDS> {
     // state initialization constant le-32bit array of b"expand 16-byte k"
     const CST16: [u32; 4] = [0x61707865, 0x3120646e, 0x79622d36, 0x6b206574];
 
@@ -135,9 +135,9 @@ impl State {
     }
 
     #[inline]
-    pub(crate) fn round20(&mut self) {
+    pub(crate) fn round(&mut self) {
         unsafe {
-            for _ in 0..10 {
+            for _ in 0..(ROUNDS / 2) {
                 round!(self.a, self.b, self.c, self.d);
                 swizzle!(self.b, self.c, self.d);
                 round!(self.a, self.b, self.c, self.d);

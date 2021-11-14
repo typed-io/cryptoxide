@@ -36,22 +36,31 @@ use crate::cryptoutil::{xor_keystream, xor_keystream_mut};
 
 /// ChaCha Context
 #[derive(Clone)]
-pub struct ChaCha20 {
-    state: ChaChaState,
+pub struct ChaCha<const ROUNDS: usize> {
+    state: ChaChaState<ROUNDS>,
     output: [u8; 64],
     offset: usize,
 }
 
-impl ChaCha20 {
+pub type ChaCha20 = ChaCha<20>;
+
+impl ChaCha<20> {
+    pub fn new_xchacha20(key: &[u8], nonce: &[u8]) -> Self {
+        Self::new_xchacha(key, nonce)
+    }
+}
+
+impl<const ROUNDS: usize> ChaCha<ROUNDS> {
     /// Create a new ChaCha20 context.
     ///
     /// * The key must be 16 or 32 bytes
     /// * The nonce must be 8 or 12 bytes
-    pub fn new(key: &[u8], nonce: &[u8]) -> ChaCha20 {
+    pub fn new(key: &[u8], nonce: &[u8]) -> Self {
         assert!(key.len() == 16 || key.len() == 32);
         assert!(nonce.len() == 8 || nonce.len() == 12);
+        assert!(ROUNDS == 8 || ROUNDS == 12 || ROUNDS == 20);
 
-        ChaCha20 {
+        Self {
             state: ChaChaState::init(key, nonce),
             output: [0u8; 64],
             offset: 64,
@@ -61,9 +70,10 @@ impl ChaCha20 {
     /// Create a new XChaCha20 context.
     ///
     /// Key must be 32 bytes and the nonce 24 bytes.
-    pub fn new_xchacha20(key: &[u8], nonce: &[u8]) -> ChaCha20 {
+    pub fn new_xchacha(key: &[u8], nonce: &[u8]) -> Self {
         assert!(key.len() == 32);
         assert!(nonce.len() == 24);
+        assert!(ROUNDS == 8 || ROUNDS == 12 || ROUNDS == 20);
 
         // HChaCha20 produces a 256-bit output block starting from a 512 bit
         // input block where (x0,x1,...,x15) where
@@ -71,27 +81,27 @@ impl ChaCha20 {
         //  * (x0, x1, x2, x3) is the ChaCha20 constant.
         //  * (x4, x5, ... x11) is a 256 bit key.
         //  * (x12, x13, x14, x15) is a 128 bit nonce.
-        let mut xchacha20 = ChaCha20 {
+        let mut xchacha = ChaCha {
             state: ChaChaState::init(key, &nonce[0..16]),
             output: [0u8; 64],
             offset: 64,
         };
 
-        // Use HChaCha to derive the subkey, and initialize a ChaCha20 instance
+        // Use HChaCha to derive the subkey, and initialize a ChaCha<ROUNDS> instance
         // with the subkey and the remaining 8 bytes of the nonce.
         let mut new_key = [0; 32];
-        xchacha20.hchacha20(&mut new_key);
-        xchacha20.state = ChaChaState::init(&new_key, &nonce[16..24]);
+        xchacha.hchacha(&mut new_key);
+        xchacha.state = ChaChaState::init(&new_key, &nonce[16..24]);
 
-        xchacha20
+        xchacha
     }
 
-    fn hchacha20(&mut self, out: &mut [u8; 32]) {
+    fn hchacha(&mut self, out: &mut [u8; 32]) {
         let mut state = self.state.clone();
 
         // Apply r/2 iterations of the same "double-round" function,
         // obtaining (z0, z1, ... z15) = doubleround r/2 (x0, x1, ... x15).
-        state.round20();
+        state.round();
 
         // HChaCha20 then outputs the 256-bit block (z0, z1, z2, z3, z12, z13,
         // z14, z15).  These correspond to the constant and input positions in
@@ -102,7 +112,7 @@ impl ChaCha20 {
     // put the the next 64 keystream bytes into self.output
     fn update(&mut self) {
         let mut state = self.state.clone();
-        state.round20();
+        state.round();
         state.add_back(&self.state);
 
         state.output_bytes(&mut self.output);
@@ -112,7 +122,7 @@ impl ChaCha20 {
     }
 }
 
-impl ChaCha20 {
+impl<const ROUNDS: usize> ChaCha<ROUNDS> {
     /// Process the input in place through the cipher xoring
     pub fn process_mut(&mut self, data: &mut [u8]) {
         let len = data.len();

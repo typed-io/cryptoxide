@@ -2,7 +2,7 @@ use crate::cryptoutil::{read_u32_le, write_u32v_le};
 use crate::simd::u32x4;
 
 #[derive(Clone)]
-pub(crate) struct State {
+pub(crate) struct State<const ROUNDS: usize> {
     a: u32x4,
     b: u32x4,
     c: u32x4,
@@ -62,7 +62,7 @@ static S12: u32x4 = u32x4(12, 12, 12, 12);
 static S8: u32x4 = u32x4(8, 8, 8, 8);
 static S7: u32x4 = u32x4(7, 7, 7, 7);
 
-impl State {
+impl<const ROUNDS: usize> State<ROUNDS> {
     // state initialization constant le-32bit array of b"expand 16-byte k"
     const CST16: [u32; 4] = [0x61707865, 0x3120646e, 0x79622d36, 0x6b206574];
     // state initialization constant le-32bit array of b"expand 32-byte k"
@@ -139,30 +139,8 @@ impl State {
     }
 
     #[inline]
-    pub(crate) fn round20(&mut self) {
-        for _ in 0..10 {
-            round!(self);
-            swizzle!(self.b, self.c, self.d);
-            round!(self);
-            swizzle!(self.d, self.c, self.b);
-        }
-    }
-
-    #[inline]
-    #[allow(dead_code)]
-    pub(crate) fn round12(&mut self) {
-        for _ in 0..8 {
-            round!(self);
-            swizzle!(self.b, self.c, self.d);
-            round!(self);
-            swizzle!(self.d, self.c, self.b);
-        }
-    }
-
-    #[inline]
-    #[allow(dead_code)]
-    pub(crate) fn round8(&mut self) {
-        for _ in 0..4 {
+    pub(crate) fn round(&mut self) {
+        for _ in 0..(ROUNDS / 2) {
             round!(self);
             swizzle!(self.b, self.c, self.d);
             round!(self);

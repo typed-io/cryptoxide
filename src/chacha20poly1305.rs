@@ -67,7 +67,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::chacha20::ChaCha20;
+use crate::chacha20::ChaCha;
 use crate::cryptoutil::write_u64_le;
 use crate::mac::Mac;
 use crate::poly1305::Poly1305;
@@ -102,8 +102,8 @@ use crate::util::fixed_time_eq;
 /// encrypted_input[10..26].copy_from_slice(&tag.0);
 /// ```
 #[derive(Clone)]
-pub struct Context {
-    cipher: ChaCha20,
+pub struct Context<const ROUNDS: usize> {
+    cipher: ChaCha<ROUNDS>,
     mac: Poly1305,
     aad_len: u64,
     data_len: u64,
@@ -111,11 +111,11 @@ pub struct Context {
 
 /// ChaCha20Poly1305 Incremental Context for encryption
 #[derive(Clone)]
-pub struct ContextEncryption(Context);
+pub struct ContextEncryption<const ROUNDS: usize>(Context<ROUNDS>);
 
 /// ChaCha20Poly1305 Incremental Context for decryption
 #[derive(Clone)]
-pub struct ContextDecryption(Context);
+pub struct ContextDecryption<const ROUNDS: usize>(Context<ROUNDS>);
 
 /// ChaCha20Poly1305 Authenticated Tag (128 bits)
 #[derive(Debug, Clone)]
@@ -129,7 +129,7 @@ impl PartialEq for Tag {
 
 impl Eq for Tag {}
 
-impl Context {
+impl<const ROUNDS: usize> Context<ROUNDS> {
     /// Create a new context given the key and nonce.
     ///
     /// ```
@@ -137,12 +137,12 @@ impl Context {
     ///
     /// let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
     /// let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
-    /// let context = Context::new(&key, &nonce);
+    /// let context = Context::<20>::new(&key, &nonce);
     /// ```
     pub fn new(key: &[u8], nonce: &[u8]) -> Self {
         assert!(key.len() == 16 || key.len() == 32);
         assert!(nonce.len() == 8 || nonce.len() == 12);
-        let mut cipher = ChaCha20::new(key, nonce);
+        let mut cipher = ChaCha::new(key, nonce);
         let mut mac_key = [0u8; 64];
         let zero_key = [0u8; 64];
         cipher.process(&zero_key, &mut mac_key);
@@ -170,19 +170,19 @@ impl Context {
     }
 
     /// Finish authenticated part and move to the encryption phase
-    pub fn to_encryption(mut self) -> ContextEncryption {
+    pub fn to_encryption(mut self) -> ContextEncryption<ROUNDS> {
         pad16(&mut self.mac, self.aad_len);
         ContextEncryption(self)
     }
 
     /// Finish authenticated part and move to the decryption phase
-    pub fn to_decryption(mut self) -> ContextDecryption {
+    pub fn to_decryption(mut self) -> ContextDecryption<ROUNDS> {
         pad16(&mut self.mac, self.aad_len);
         ContextDecryption(self)
     }
 }
 
-fn finalize_raw(inner: &mut Context) -> [u8; 16] {
+fn finalize_raw<const ROUNDS: usize>(inner: &mut Context<ROUNDS>) -> [u8; 16] {
     let mut len_buf = [0u8; 16];
     pad16(&mut inner.mac, inner.data_len);
     write_u64_le(&mut len_buf[0..8], inner.aad_len);
@@ -192,7 +192,7 @@ fn finalize_raw(inner: &mut Context) -> [u8; 16] {
     len_buf
 }
 
-impl ContextEncryption {
+impl<const ROUNDS: usize> ContextEncryption<ROUNDS> {
     /// Encrypt input in place
     pub fn encrypt_mut(&mut self, buf: &mut [u8]) {
         self.0.cipher.process_mut(buf);
@@ -227,7 +227,7 @@ pub enum DecryptionResult {
     MisMatch,
 }
 
-impl ContextDecryption {
+impl<const ROUNDS: usize> ContextDecryption<ROUNDS> {
     /// Decrypt input in place
     pub fn decrypt_mut(&mut self, buf: &mut [u8]) {
         self.0.add_encrypted(buf);
@@ -259,9 +259,9 @@ impl ContextDecryption {
 
 /// A ChaCha20+Poly1305 Context
 #[derive(Clone)]
-pub struct ChaCha20Poly1305 {
+pub struct ChaChaPoly1305<const ROUNDS: usize> {
     finished: bool,
-    context: Context,
+    context: Context<ROUNDS>,
 }
 
 fn pad16(mac: &mut Poly1305, len: u64) {
@@ -272,16 +272,18 @@ fn pad16(mac: &mut Poly1305, len: u64) {
     }
 }
 
-impl ChaCha20Poly1305 {
+pub type ChaCha20Poly1305 = ChaChaPoly1305<20>;
+
+impl<const ROUNDS: usize> ChaChaPoly1305<ROUNDS> {
     /// Create a new ChaCha20Poly1305
     ///
     /// * key needs to be 16 or 32 bytes
     /// * nonce needs to be 8 or 12 bytes
     ///
-    pub fn new(key: &[u8], nonce: &[u8], aad: &[u8]) -> ChaCha20Poly1305 {
+    pub fn new(key: &[u8], nonce: &[u8], aad: &[u8]) -> Self {
         let mut context = Context::new(key, nonce);
         context.add_data(aad);
-        ChaCha20Poly1305 {
+        ChaChaPoly1305 {
             context: context,
             finished: false,
         }

@@ -40,11 +40,13 @@ struct SalsaState {
 }
 
 #[derive(Clone)]
-pub struct Salsa20 {
+pub struct Salsa<const ROUNDS: usize> {
     state: SalsaState,
     output: [u8; 64],
     offset: usize,
 }
+
+pub type Salsa20 = Salsa<20>;
 
 const S7: u32x4 = u32x4(7, 7, 7, 7);
 const S9: u32x4 = u32x4(9, 9, 9, 9);
@@ -97,12 +99,12 @@ fn rowround(state: &mut SalsaState) {
     add_rotate_xor!(state.d, state.a, state.b, S18);
 }
 
-impl Salsa20 {
+impl<const ROUNDS: usize> Salsa<ROUNDS> {
     pub fn new(key: &[u8], nonce: &[u8]) -> Salsa20 {
         assert!(key.len() == 16 || key.len() == 32);
         assert!(nonce.len() == 8);
-        Salsa20 {
-            state: Salsa20::expand(key, nonce),
+        Salsa {
+            state: Salsa::<ROUNDS>::expand(key, nonce),
             output: [0; 64],
             offset: 64,
         }
@@ -111,17 +113,17 @@ impl Salsa20 {
     pub fn new_xsalsa20(key: &[u8], nonce: &[u8]) -> Salsa20 {
         assert!(key.len() == 32);
         assert!(nonce.len() == 24);
-        let mut xsalsa20 = Salsa20 {
-            state: Salsa20::expand(key, &nonce[0..16]),
+        let mut xsalsa = Salsa {
+            state: Salsa::<ROUNDS>::expand(key, &nonce[0..16]),
             output: [0; 64],
             offset: 64,
         };
 
         let mut new_key = [0; 32];
-        xsalsa20.hsalsa20_hash(&mut new_key);
-        xsalsa20.state = Salsa20::expand(&new_key, &nonce[16..24]);
+        xsalsa.hsalsa_hash(&mut new_key);
+        xsalsa.state = Salsa20::expand(&new_key, &nonce[16..24]);
 
-        xsalsa20
+        xsalsa
     }
 
     fn expand(key: &[u8], nonce: &[u8]) -> SalsaState {
@@ -205,7 +207,7 @@ impl Salsa20 {
         self.offset = 0;
     }
 
-    fn hsalsa20_hash(&mut self, out: &mut [u8]) {
+    fn hsalsa_hash(&mut self, out: &mut [u8]) {
         let mut state = self.state.clone();
         for _ in 0..10 {
             columnround(&mut state);
@@ -251,15 +253,21 @@ impl Salsa20 {
     }
 }
 
-pub fn hsalsa20(key: &[u8], nonce: &[u8], out: &mut [u8]) {
+pub fn hsalsa<const ROUNDS: usize>(key: &[u8], nonce: &[u8], out: &mut [u8]) {
     assert!(key.len() == 32);
     assert!(nonce.len() == 16);
+    assert!(ROUNDS == 8 || ROUNDS == 12 || ROUNDS == 20);
+
     let mut h = Salsa20 {
         state: Salsa20::expand(key, nonce),
         output: [0; 64],
         offset: 64,
     };
-    h.hsalsa20_hash(out);
+    h.hsalsa_hash(out);
+}
+
+pub fn hsalsa20(key: &[u8], nonce: &[u8], out: &mut [u8]) {
+    hsalsa::<20>(key, nonce, out)
 }
 
 #[cfg(test)]

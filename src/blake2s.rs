@@ -30,7 +30,7 @@
 //! [1]: <https://eprint.iacr.org/2013/322.pdf>
 
 use crate::blake2::{EngineS as Engine, LastBlock};
-use crate::cryptoutil::{copy_memory, write_u32v_le};
+use crate::cryptoutil::write_u32v_le;
 use crate::digest::Digest;
 use crate::mac::{Mac, MacResult};
 use crate::util::secure_memset;
@@ -88,7 +88,7 @@ impl Blake2s {
         let fill = Engine::BLOCK_BYTES - self.buflen;
 
         if input.len() > fill {
-            copy_memory(&input[0..fill], &mut self.buf[self.buflen..]);
+            self.buf[self.buflen..self.buflen + fill].copy_from_slice(&input[0..fill]);
             self.buflen = 0;
             self.eng.increment_counter(Engine::BLOCK_BYTES_NATIVE);
             self.eng
@@ -103,7 +103,7 @@ impl Blake2s {
                 input = &input[Engine::BLOCK_BYTES..];
             }
         }
-        copy_memory(input, &mut self.buf[self.buflen..]);
+        self.buf[self.buflen..self.buflen + input.len()].copy_from_slice(input);
         self.buflen += input.len();
     }
 
@@ -118,7 +118,7 @@ impl Blake2s {
             write_u32v_le(&mut self.buf[0..32], &self.eng.h);
             self.computed = true;
         }
-        copy_memory(&self.buf[0..out.len()], out);
+        out.copy_from_slice(&self.buf[0..out.len()]);
     }
 
     /// Reset the context to the state after calling `new`

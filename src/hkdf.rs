@@ -19,7 +19,6 @@
 use alloc::vec::Vec;
 use core::iter::repeat;
 
-use crate::cryptoutil::copy_memory;
 use crate::digest::Digest;
 use crate::hmac::Hmac;
 use crate::mac::Mac;
@@ -72,7 +71,7 @@ pub fn hkdf_expand<D: Digest>(mut digest: D, prk: &[u8], info: &[u8], okm: &mut 
         mac.raw_result(&mut t);
         mac.reset();
         let chunk_len = chunk.len();
-        copy_memory(&t[..chunk_len], chunk);
+        chunk[0..chunk_len].copy_from_slice(&t[..chunk_len]);
     }
 }
 

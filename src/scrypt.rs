@@ -20,7 +20,7 @@ use alloc::vec::Vec;
 use core::iter::repeat;
 use core::mem::size_of;
 
-use crate::cryptoutil::{copy_memory, read_u32_le, read_u32v_le, write_u32_le};
+use crate::cryptoutil::{read_u32_le, read_u32v_le, write_u32_le};
 use crate::hmac::Hmac;
 use crate::pbkdf2::pbkdf2;
 use crate::sha2::Sha256;
@@ -94,7 +94,12 @@ fn xor(x: &[u8], y: &[u8], output: &mut [u8]) {
 // output - the output vector. Must be the same length as input.
 fn scrypt_block_mix(input: &[u8], output: &mut [u8]) {
     let mut x = [0u8; 64];
-    copy_memory(&input[input.len() - 64..], &mut x);
+    let left_over = input.len() % 64;
+    if left_over > 0 {
+        x[0..left_over].copy_from_slice(&input[input.len() - 64..]);
+    } else {
+        x.copy_from_slice(&input[input.len() - 64..]);
+    }
 
     let mut t = [0u8; 64];
 
@@ -106,7 +111,7 @@ fn scrypt_block_mix(input: &[u8], output: &mut [u8]) {
         } else {
             (i / 2) * 64 + input.len() / 2
         };
-        copy_memory(&x, &mut output[pos..pos + 64]);
+        output[pos..pos + 64].copy_from_slice(&x);
     }
 }
 
@@ -129,7 +134,7 @@ fn scrypt_ro_mix(b: &mut [u8], v: &mut [u8], t: &mut [u8], n: usize) {
     let len = b.len();
 
     for chunk in v.chunks_mut(len) {
-        copy_memory(b, chunk);
+        chunk[0..b.len()].copy_from_slice(b);
         scrypt_block_mix(chunk, b);
     }
 
@@ -328,7 +333,7 @@ mod test {
                 &params,
                 &mut result,
             );
-            assert!(result == t.expected);
+            assert_eq!(result, t.expected);
         }
     }
 }

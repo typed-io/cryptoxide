@@ -98,3 +98,5 @@ pub mod sha3;
 mod cryptoutil;
 mod simd;
 pub mod util;
+
+pub mod constant_time;

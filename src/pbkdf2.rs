@@ -20,7 +20,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::cryptoutil::{copy_memory, write_u32_be};
+use crate::cryptoutil::write_u32_be;
 use crate::mac::Mac;
 use alloc::vec::Vec;
 use core::iter::repeat;
@@ -107,7 +107,7 @@ pub fn pbkdf2<M: Mac>(mac: &mut M, salt: &[u8], c: u32, output: &mut [u8]) {
             let mut tmp: Vec<u8> = repeat(0).take(os).collect();
             calculate_block(mac, salt, c, idx, &mut scratch[..], &mut tmp[..]);
             let chunk_len = chunk.len();
-            copy_memory(&tmp[..chunk_len], chunk);
+            chunk[0..chunk_len].copy_from_slice(&tmp[..chunk_len]);
         }
     }
 }

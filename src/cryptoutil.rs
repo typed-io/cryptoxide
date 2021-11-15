@@ -133,17 +133,6 @@ pub fn xor_keystream_mut(buf: &mut [u8], keystream: &[u8]) {
     }
 }
 
-/// Copy bytes from src to dest
-#[inline]
-pub fn copy_memory(src: &[u8], dst: &mut [u8]) {
-    assert!(dst.len() >= src.len());
-    unsafe {
-        let srcp = src.as_ptr();
-        let dstp = dst.as_mut_ptr();
-        ptr::copy_nonoverlapping(srcp, dstp, src.len());
-    }
-}
-
 /// Zero all bytes in dst
 #[inline]
 pub fn zero(dst: &mut [u8]) {
@@ -176,18 +165,12 @@ impl<const N: usize> FixedBuffer<N> {
         if self.buffer_idx != 0 {
             let buffer_remaining = N - self.buffer_idx;
             if input.len() >= buffer_remaining {
-                copy_memory(
-                    &input[..buffer_remaining],
-                    &mut self.buffer[self.buffer_idx..N],
-                );
+                self.buffer[self.buffer_idx..N].copy_from_slice(&input[..buffer_remaining]);
                 self.buffer_idx = 0;
                 func(&self.buffer);
                 i += buffer_remaining;
             } else {
-                copy_memory(
-                    input,
-                    &mut self.buffer[self.buffer_idx..self.buffer_idx + input.len()],
-                );
+                self.buffer[self.buffer_idx..self.buffer_idx + input.len()].copy_from_slice(&input);
                 self.buffer_idx += input.len();
                 return;
             }
@@ -206,7 +189,7 @@ impl<const N: usize> FixedBuffer<N> {
         // data left in the input vector will be less than the buffer size and the buffer will
         // be empty.
         let input_remaining = input.len() - i;
-        copy_memory(&input[i..], &mut self.buffer[0..input_remaining]);
+        self.buffer[0..input_remaining].copy_from_slice(&input[i..]);
         self.buffer_idx += input_remaining;
     }
 

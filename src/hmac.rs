@@ -16,7 +16,6 @@
 
 use core::iter::repeat;
 
-use crate::cryptoutil;
 use crate::digest::Digest;
 use crate::mac::{Mac, MacResult};
 use alloc::vec::Vec;
@@ -43,7 +42,7 @@ fn expand_key<D: Digest>(digest: &mut D, key: &[u8]) -> Vec<u8> {
     let mut expanded_key: Vec<u8> = repeat(0).take(bs).collect();
 
     if key.len() <= bs {
-        cryptoutil::copy_memory(key, &mut expanded_key);
+        expanded_key[0..key.len()].copy_from_slice(key);
     } else {
         let output_size = digest.output_bytes();
         digest.input(key);

@@ -30,10 +30,9 @@
 //! [1]: <https://eprint.iacr.org/2013/322.pdf>
 
 use crate::blake2::{EngineB as Engine, LastBlock};
-use crate::cryptoutil::write_u64v_le;
+use crate::cryptoutil::{write_u64v_le, zero};
 use crate::digest::Digest;
 use crate::mac::{Mac, MacResult};
-use crate::util::secure_memset;
 use alloc::vec::Vec;
 use core::iter::repeat;
 
@@ -111,7 +110,7 @@ impl Blake2b {
         assert!(out.len() == self.digest_length as usize);
         if !self.computed {
             self.eng.increment_counter(self.buflen as u64);
-            secure_memset(&mut self.buf[self.buflen..], 0);
+            zero(&mut self.buf[self.buflen..]);
             self.eng
                 .compress(&self.buf[0..Engine::BLOCK_BYTES], LastBlock::Yes);
 
@@ -126,7 +125,7 @@ impl Blake2b {
         self.eng.reset(self.digest_length as usize, 0);
         self.computed = false;
         self.buflen = 0;
-        secure_memset(&mut self.buf[..], 0);
+        zero(&mut self.buf[..]);
     }
 
     pub fn reset_with_key(&mut self, key: &[u8]) {
@@ -134,7 +133,7 @@ impl Blake2b {
 
         self.eng.reset(self.digest_length as usize, key.len());
         self.computed = false;
-        secure_memset(&mut self.buf[..], 0);
+        zero(&mut self.buf[..]);
 
         if !key.is_empty() {
             self.buf[0..key.len()].copy_from_slice(key);

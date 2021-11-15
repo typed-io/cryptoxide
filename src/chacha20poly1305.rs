@@ -68,10 +68,10 @@
 // except according to those terms.
 
 use crate::chacha20::ChaCha;
+use crate::constant_time::{Choice, CtEqual};
 use crate::cryptoutil::write_u64_le;
 use crate::mac::Mac;
 use crate::poly1305::Poly1305;
-use crate::util::fixed_time_eq;
 
 /// Chacha20Poly1305 Incremental Context for Authenticated Data (AAD)
 ///
@@ -121,9 +121,15 @@ pub struct ContextDecryption<const ROUNDS: usize>(Context<ROUNDS>);
 #[derive(Debug, Clone)]
 pub struct Tag(pub [u8; 16]);
 
+impl CtEqual for Tag {
+    fn ct_eq(&self, other: &Self) -> Choice {
+        self.0.ct_eq(&other.0)
+    }
+}
+
 impl PartialEq for Tag {
     fn eq(&self, other: &Self) -> bool {
-        fixed_time_eq(&self.0, &other.0)
+        self.ct_eq(other).is_true()
     }
 }
 

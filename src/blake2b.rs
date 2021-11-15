@@ -175,45 +175,24 @@ impl Digest for Blake2b {
 }
 
 impl Mac for Blake2b {
-    /**
-     * Process input data.
-     *
-     * # Arguments
-     * * data - The input data to process.
-     *
-     */
     fn input(&mut self, data: &[u8]) {
         self.update(data);
     }
 
-    /**
-     * Reset the Mac state to begin processing another input stream.
-     */
     fn reset(&mut self) {
         Blake2b::reset(self);
     }
 
-    /**
-     * Obtain the result of a Mac computation as a MacResult.
-     */
     fn result(&mut self) -> MacResult {
         let mut mac: Vec<u8> = repeat(0).take(self.digest_length as usize).collect();
         self.raw_result(&mut mac);
         MacResult::new_from_owned(mac)
     }
 
-    /**
-     * Obtain the result of a Mac computation as [u8]. This method should be used very carefully
-     * since incorrect use of the Mac code could result in permitting a timing attack which defeats
-     * the security provided by a Mac function.
-     */
     fn raw_result(&mut self, output: &mut [u8]) {
         self.finalize(output);
     }
 
-    /**
-     * Get the size of the Mac code, in bytes.
-     */
     fn output_bytes(&self) -> usize {
         self.digest_length as usize
     }

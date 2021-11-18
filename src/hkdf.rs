@@ -6,12 +6,12 @@
 //! # Examples
 //!
 //! ```
-//! use cryptoxide::{sha2::Sha256, hkdf::{hkdf_extract, hkdf_expand}};
+//! use cryptoxide::{hmac, hkdf};
 //!
 //! let salt = b"salt";
 //! let input = b"input";
 //! let mut prk = [0u8; 32];
-//! hkdf_extract(Sha256::new(), salt, input, &mut prk);
+//! hkdf::extract::<hmac::SHA256>(salt, input, &mut prk);
 //! ```
 //!
 //! [1]: <https://tools.ietf.org/html/rfc5869>
@@ -19,9 +19,7 @@
 use alloc::vec::Vec;
 use core::iter::repeat;
 
-use crate::digest::Digest;
-use crate::hmac::Hmac;
-use crate::mac::Mac;
+use crate::hmac;
 
 /// Execute the HKDF-Extract function.  Applications MUST NOT use this for
 /// password hashing.
@@ -32,14 +30,12 @@ use crate::mac::Mac;
 /// * ikm - The input keying material to use.
 /// * prk - The output buffer to fill with a `digest.output_bytes()` length
 ///         pseudo random key.
-pub fn hkdf_extract<D: Digest>(mut digest: D, salt: &[u8], ikm: &[u8], prk: &mut [u8]) {
-    assert!(prk.len() == digest.output_bytes());
-    digest.reset();
+pub fn extract<D: hmac::Algorithm>(salt: &[u8], ikm: &[u8], prk: &mut [u8]) {
+    assert!(prk.len() == D::OUTPUT_SIZE);
 
-    let mut mac = Hmac::new(digest, salt);
-    mac.input(ikm);
-    mac.raw_result(prk);
-    mac.reset();
+    let mut context = hmac::Context::<D>::new(salt);
+    context.update(ikm);
+    context.finalize_at(prk);
 }
 
 /// Execute the HKDF-Expand function.  Applications MUST NOT use this for
@@ -50,26 +46,24 @@ pub fn hkdf_extract<D: Digest>(mut digest: D, salt: &[u8], ikm: &[u8], prk: &mut
 /// * prk - The pseudorandom key of at least `digest.output_bytes()` octets.
 /// * info - The optional context and application specific information to use.
 /// * okm - The output buffer to fill with the derived key value.
-pub fn hkdf_expand<D: Digest>(mut digest: D, prk: &[u8], info: &[u8], okm: &mut [u8]) {
-    digest.reset();
-
-    let mut mac = Hmac::new(digest, prk);
-    let os = mac.output_bytes();
+pub fn expand<D: hmac::Algorithm>(prk: &[u8], info: &[u8], okm: &mut [u8]) {
+    let context = hmac::Context::<D>::new(prk);
+    let os = context.output_bytes();
     let mut t: Vec<u8> = repeat(0).take(os).collect();
     let mut n: u8 = 0;
 
     for chunk in okm.chunks_mut(os) {
+        let mut context = context.clone();
         // The block index starts at 1. So, this is supposed to run on the first execution.
         n = n.checked_add(1).expect("HKDF size limit exceeded.");
 
         if n != 1 {
-            mac.input(&t[..]);
+            context.update(&t[..]);
         }
         let nbuf = [n];
-        mac.input(info);
-        mac.input(&nbuf);
-        mac.raw_result(&mut t);
-        mac.reset();
+        context.update(info);
+        context.update(&nbuf);
+        context.finalize_at(&mut t);
         let chunk_len = chunk.len();
         chunk[0..chunk_len].copy_from_slice(&t[..chunk_len]);
     }
@@ -80,12 +74,10 @@ mod test {
     use alloc::vec::Vec;
     use core::iter::repeat;
 
-    use crate::digest::Digest;
-    use crate::hkdf::{hkdf_expand, hkdf_extract};
-    use crate::sha2::Sha256;
+    use crate::hkdf;
+    use crate::hmac::SHA256;
 
-    struct TestVector<D: Digest> {
-        digest: D,
+    struct TestVector {
         ikm: Vec<u8>,
         salt: Vec<u8>,
         info: Vec<u8>,
@@ -99,7 +91,6 @@ mod test {
     fn test_hkdf_rfc5869_sha256_vectors() {
         let test_vectors = vec![
             TestVector {
-                digest: Sha256::new(),
                 ikm: repeat(0x0b).take(22).collect(),
                 salt: (0x00..=0x0c).collect(),
                 info: (0xf0..=0xf9).collect(),
@@ -117,7 +108,6 @@ mod test {
                 ],
             },
             TestVector {
-                digest: Sha256::new(),
                 ikm: (0x00..=0x4f).collect(),
                 salt: (0x60..=0xaf).collect(),
                 info: (0xb0..=0xff).map(|x| x as u8).collect(),
@@ -138,7 +128,6 @@ mod test {
                 ],
             },
             TestVector {
-                digest: Sha256::new(),
                 ikm: repeat(0x0b).take(22).collect(),
                 salt: vec![],
                 info: vec![],
@@ -159,12 +148,12 @@ mod test {
 
         for t in test_vectors.iter() {
             let mut prk: Vec<u8> = repeat(0).take(t.prk.len()).collect();
-            hkdf_extract(t.digest.clone(), &t.salt[..], &t.ikm[..], &mut prk);
+            hkdf::extract::<SHA256>(&t.salt[..], &t.ikm[..], &mut prk);
             assert!(prk == t.prk);
 
             let mut okm: Vec<u8> = repeat(0).take(t.okm.len()).collect();
             assert!(okm.len() == t.l);
-            hkdf_expand(t.digest.clone(), &prk[..], &t.info[..], &mut okm);
+            hkdf::expand::<SHA256>(&prk[..], &t.info[..], &mut okm);
             assert!(okm == t.okm);
         }
     }

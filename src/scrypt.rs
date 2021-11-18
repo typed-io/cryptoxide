@@ -21,9 +21,8 @@ use core::iter::repeat;
 use core::mem::size_of;
 
 use crate::cryptoutil::{read_u32_le, read_u32v_le, write_u32_le};
-use crate::hmac::Hmac;
+use crate::hmac;
 use crate::pbkdf2::pbkdf2;
-use crate::sha2::Sha256;
 
 // The salsa20/8 core function.
 fn salsa20_8(input: &[u8], output: &mut [u8]) {
@@ -241,10 +240,10 @@ pub fn scrypt(password: &[u8], salt: &[u8], params: &ScryptParams, output: &mut 
     let pr128 = (params.p as usize) * r128;
     let nr128 = n * r128;
 
-    let mut mac = Hmac::new(Sha256::new(), password);
+    //let mut mac = hmac::Context::<hmac::SHA256>::new(password);
 
     let mut b: Vec<u8> = repeat(0).take(pr128).collect();
-    pbkdf2(&mut mac, salt, 1, &mut b);
+    pbkdf2::<hmac::SHA256>(password, salt, 1, &mut b);
 
     let mut v: Vec<u8> = repeat(0).take(nr128).collect();
     let mut t: Vec<u8> = repeat(0).take(r128).collect();
@@ -253,7 +252,7 @@ pub fn scrypt(password: &[u8], salt: &[u8], params: &ScryptParams, output: &mut 
         scrypt_ro_mix(chunk, &mut v, &mut t, n);
     }
 
-    pbkdf2(&mut mac, &*b, 1, output);
+    pbkdf2::<hmac::SHA256>(password, &*b, 1, output);
 }
 
 #[cfg(test)]

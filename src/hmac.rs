@@ -2,135 +2,387 @@
 //!
 //! # Examples
 //!
-//! HMAC-SHA256 using a 16 bytes key of a simple input data
+//! HMAC-SHA256 using a 16 bytes key and the incremental interface:
 //!
 //! ```
-//! use cryptoxide::{hmac::Hmac, mac::Mac, sha2::Sha256};
+//! use cryptoxide::{hmac, hmac::SHA256};
 //!
-//! let input = b"data";
 //! let key = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
-//! let mut h = Hmac::new(Sha256::new(), &key);
-//! h.input(input);
-//! let mac = h.result();
+//! let mut context = hmac::Context::<SHA256>::new(&key);
+//! context.update(b"my ");
+//! context.update(b"message");
+//! let mac = context.finalize();
 //! ```
+//!
+//! or using the more concise one-shot interface:
+//!
+//! ```
+//! use cryptoxide::hmac::{hmac, SHA256};
+//!
+//! let key = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
+//! let mac = hmac::<SHA256>(&key, b"my message");
+//! ```
+//!
 
-use core::iter::repeat;
+#![allow(missing_docs)]
 
+use crate::constant_time::{Choice, CtEqual};
+use crate::cryptoutil::zero;
 use crate::digest::Digest;
-use crate::mac::{Mac, MacResult};
-use alloc::vec::Vec;
+use core::convert::TryFrom;
+
+// HMAC is implemented using the following operations:
+//
+// HMAC(K, m) = H( (K' ⊕ opad) || H( (K' ⊕ ipad) || m ) )
+// where
+//   K' = H(K) if length K > block size
+//      | K    otherwise
+//   H is a cryptographic hash function
+//   m is the message to be authenticated
+//   K is the secret key
+//   K' is a block-sized key derived from the secret key, K; either by padding to the right with 0s up to the block size, or by hashing down to less than or equal to the block size first and then padding to the right with zeros
+//   || denotes concatenation
+//   ⊕ denotes bitwise exclusive or (XOR)
+//   opad is the block-sized outer padding, consisting of repeated bytes valued 0x5c
+//   ipad is the block-sized inner padding, consisting of repeated bytes valued 0x36
+
+macro_rules! init_key {
+    ($key:ident, $new:expr, $digest_len:path, $block_size:path) => {{
+        const OPAD: u8 = 0x5c;
+        const IPAD: u8 = 0x36;
+
+        assert!($digest_len <= $block_size);
+
+        let mut k = [0u8; $block_size];
+        let mut mix = [0u8; $block_size];
+        let mut digest_out = [0u8; $digest_len];
+
+        let mut inner_ctx = $new;
+        let mut outer_ctx = $new;
+
+        // set k' either as a hash of the key or as the key itself.
+        if $key.len() <= $block_size {
+            k[0..$key.len()].copy_from_slice($key)
+        } else {
+            // use inner_ctx to just hash into k
+            let k_as_digestlen =
+                <&mut [u8; $digest_len]>::try_from(&mut k[0..$digest_len]).unwrap();
+            inner_ctx.input($key);
+            inner_ctx.result(k_as_digestlen);
+            inner_ctx.reset();
+        }
+
+        // input the keyed-ipad in the inner-context (the one hashing the message)
+        for (m, k_byte) in mix.iter_mut().zip(k.iter()) {
+            *m = k_byte ^ IPAD;
+        }
+        inner_ctx.input(&mix);
+
+        // input the keyed-opad in the outer-context (the one hashing the final result)
+        for (m, k_byte) in mix.iter_mut().zip(k.iter()) {
+            *m = k_byte ^ OPAD;
+        }
+        outer_ctx.input(&mix);
+
+        // zero the objects
+        zero(&mut k);
+        zero(&mut mix);
+        zero(&mut digest_out);
+
+        (inner_ctx, outer_ctx)
+    }};
+}
+
+macro_rules! algorithm_impl {
+    ($name:ident, $module:ident, $digest_new:ident) => {
+        impl Algorithm for $name {
+            const BLOCK_SIZE: usize = Self::BLOCK_SIZE;
+            const OUTPUT_SIZE: usize = Self::OUTPUT_SIZE;
+
+            type Context = crate::$module::$digest_new;
+            type Output = [u8; Self::OUTPUT_SIZE];
+            type MacOutput = Tag<{ Self::OUTPUT_SIZE }>;
+
+            fn init(key: &[u8]) -> (Self::Context, Self::Context) {
+                init_key!(
+                    key,
+                    crate::$module::$digest_new::new(),
+                    Self::OUTPUT_SIZE,
+                    Self::BLOCK_SIZE
+                )
+            }
+            fn update(_context: &mut Self::Context, _input: &[u8]) {
+                _context.input(_input);
+            }
+            fn finalize(_context: &mut Self::Context) -> Self::MacOutput {
+                let mut output = [0u8; Self::OUTPUT_SIZE];
+                _context.result(&mut output);
+                _context.reset();
+                Tag(output)
+            }
+            fn finalize_at(_context: &mut Self::Context, out: &mut [u8]) {
+                _context.result(out);
+                _context.reset();
+            }
+            fn feed(context: &mut Self::Context, other: &mut Self::Context) {
+                let mut output = [0u8; Self::OUTPUT_SIZE];
+                other.result(&mut output);
+                other.reset();
+                context.input(&output);
+            }
+        }
+    };
+}
+
+macro_rules! algorithm2_impl {
+    ($name:ident, $module:ident, $digest_new:ident) => {
+        impl Algorithm for $name {
+            const BLOCK_SIZE: usize = Self::BLOCK_SIZE;
+            const OUTPUT_SIZE: usize = Self::OUTPUT_SIZE;
+
+            type Context = crate::$module::$digest_new;
+            type Output = [u8; Self::OUTPUT_SIZE];
+            type MacOutput = Tag<{ Self::OUTPUT_SIZE }>;
+
+            fn init(key: &[u8]) -> (Self::Context, Self::Context) {
+                init_key!(
+                    key,
+                    crate::$module::$digest_new::new(Self::OUTPUT_SIZE),
+                    Self::OUTPUT_SIZE,
+                    Self::BLOCK_SIZE
+                )
+            }
+            fn update(_context: &mut Self::Context, _input: &[u8]) {
+                _context.input(_input);
+            }
+            fn finalize(_context: &mut Self::Context) -> Self::MacOutput {
+                let mut output = [0u8; Self::OUTPUT_SIZE];
+                _context.result(&mut output);
+                _context.reset();
+                Tag(output)
+            }
+            fn finalize_at(_context: &mut Self::Context, out: &mut [u8]) {
+                _context.result(out);
+                _context.reset();
+            }
+            fn feed(context: &mut Self::Context, other: &mut Self::Context) {
+                let mut output = [0u8; Self::OUTPUT_SIZE];
+                other.result(&mut output);
+                other.reset();
+                context.input(&output);
+            }
+        }
+    };
+}
+
+/// Algorithm defined to do HMAC
+pub trait Algorithm {
+    const BLOCK_SIZE: usize;
+    const OUTPUT_SIZE: usize;
+
+    type Context: Clone;
+
+    // Output and MacOutput should not be needed, but there's current compiler
+    // limitation in composing the associated type and the constants
+    type Output;
+    type MacOutput;
+
+    fn init(key: &[u8]) -> (Self::Context, Self::Context);
+    fn update(context: &mut Self::Context, input: &[u8]);
+    fn feed(context: &mut Self::Context, other: &mut Self::Context);
+    fn finalize(context: &mut Self::Context) -> Self::MacOutput;
+    fn finalize_at(_context: &mut Self::Context, out: &mut [u8]);
+}
+
+#[cfg(feature = "sha1")]
+#[derive(Clone, Debug)]
+pub struct SHA1;
+
+#[cfg(feature = "sha1")]
+impl SHA1 {
+    pub const BLOCK_SIZE: usize = 64;
+    pub const OUTPUT_SIZE: usize = 20;
+}
+
+#[cfg(feature = "sha1")]
+algorithm_impl!(SHA1, sha1, Sha1);
+
+#[cfg(feature = "sha2")]
+#[derive(Clone, Debug)]
+pub struct SHA256;
+
+#[cfg(feature = "sha2")]
+impl SHA256 {
+    pub const BLOCK_SIZE: usize = 64;
+    pub const OUTPUT_SIZE: usize = 32;
+}
+
+#[cfg(feature = "sha2")]
+algorithm_impl!(SHA256, sha2, Sha256);
+
+#[cfg(feature = "sha2")]
+#[derive(Clone, Debug)]
+pub struct SHA512;
+
+#[cfg(feature = "sha2")]
+impl SHA512 {
+    pub const BLOCK_SIZE: usize = 128;
+    pub const OUTPUT_SIZE: usize = 64;
+}
+
+#[cfg(feature = "sha2")]
+algorithm_impl!(SHA512, sha2, Sha512);
+
+#[cfg(feature = "blake2")]
+#[derive(Clone, Debug)]
+pub struct Blake2b256;
+
+#[cfg(feature = "blake2")]
+impl Blake2b256 {
+    pub const BLOCK_SIZE: usize = 128;
+    pub const OUTPUT_SIZE: usize = 32;
+}
+
+#[cfg(feature = "blake2")]
+algorithm2_impl!(Blake2b256, blake2b, Blake2b);
+
+#[cfg(feature = "blake2")]
+#[derive(Clone, Debug)]
+pub struct Blake2b512;
+
+#[cfg(feature = "blake2")]
+impl Blake2b512 {
+    pub const BLOCK_SIZE: usize = 128;
+    pub const OUTPUT_SIZE: usize = 64;
+}
+
+#[cfg(feature = "blake2")]
+algorithm2_impl!(Blake2b512, blake2b, Blake2b);
+
+#[cfg(feature = "blake2")]
+#[derive(Clone, Debug)]
+pub struct Blake2s256;
+
+#[cfg(feature = "blake2")]
+impl Blake2s256 {
+    pub const BLOCK_SIZE: usize = 64;
+    pub const OUTPUT_SIZE: usize = 32;
+}
+
+#[cfg(feature = "blake2")]
+algorithm2_impl!(Blake2s256, blake2s, Blake2s);
 
 /// HMAC context parametrized by the hashing function
-pub struct Hmac<D> {
-    digest: D,
-    i_key: Vec<u8>,
-    o_key: Vec<u8>,
-    finished: bool,
+///
+/// It is composed of 2 hashing contextes, and the construction
+/// is meant to hide the initial key from its context, by forcing
+/// the key component to be processed by an initial compress step
+/// rendering the key not recoverable from the context memory.
+///
+/// It may not be true for every type of hashing context, specially if they
+/// have a buffering / last buffer capability.
+pub struct Context<A: Algorithm> {
+    inner: A::Context,
+    outer: A::Context,
 }
 
-fn derive_key(key: &mut [u8], mask: u8) {
-    for elem in key.iter_mut() {
-        *elem ^= mask;
-    }
-}
-
-// The key that Hmac processes must be the same as the block size of the underlying Digest. If the
-// provided key is smaller than that, we just pad it with zeros. If its larger, we hash it and then
-// pad it with zeros.
-fn expand_key<D: Digest>(digest: &mut D, key: &[u8]) -> Vec<u8> {
-    let bs = digest.block_size();
-    let mut expanded_key: Vec<u8> = repeat(0).take(bs).collect();
-
-    if key.len() <= bs {
-        expanded_key[0..key.len()].copy_from_slice(key);
-    } else {
-        let output_size = digest.output_bytes();
-        digest.input(key);
-        digest.result(&mut expanded_key[..output_size]);
-        digest.reset();
-    }
-    expanded_key
-}
-
-// Hmac uses two keys derived from the provided key - one by xoring every byte with 0x36 and another
-// with 0x5c.
-fn create_keys<D: Digest>(digest: &mut D, key: &[u8]) -> (Vec<u8>, Vec<u8>) {
-    let mut i_key = expand_key(digest, key);
-    let mut o_key = i_key.clone();
-    derive_key(&mut i_key, 0x36);
-    derive_key(&mut o_key, 0x5c);
-    (i_key, o_key)
-}
-
-impl<D: Digest> Hmac<D> {
-    /// Create a new Hmac instance.
-    ///
-    /// # Arguments
-    /// * digest - The Digest to use.
-    /// * key - The key to use.
-    ///
-    pub fn new(mut digest: D, key: &[u8]) -> Hmac<D> {
-        let (i_key, o_key) = create_keys(&mut digest, key);
-        digest.input(&i_key[..]);
-        Hmac {
-            digest: digest,
-            i_key: i_key,
-            o_key: o_key,
-            finished: false,
+impl<A: Algorithm> Clone for Context<A> {
+    fn clone(&self) -> Self {
+        Context {
+            inner: self.inner.clone(),
+            outer: self.outer.clone(),
         }
     }
 }
 
-impl<D: Digest> Mac for Hmac<D> {
-    fn input(&mut self, data: &[u8]) {
-        assert!(!self.finished);
-        self.digest.input(data);
+/// HMAC Tag with the number of bytes associated as const type parameter
+///
+/// This type is equiped with a constant time equality, either using the constant time
+/// trait (`CtEqual`) but also using the standard equality trait (`Eq`), so
+/// if this is used in a equality check it doesn't leak timing information.
+///
+/// The inner component of the tag, an array of bytes, is exposed publicly
+/// and the `Tag` type can be constructed from the component.
+pub struct Tag<const N: usize>(pub [u8; N]);
+
+impl<'a, const N: usize> From<&'a Tag<N>> for &'a [u8] {
+    fn from(tag: &'a Tag<N>) -> Self {
+        &tag.0
+    }
+}
+
+impl<const N: usize> CtEqual for &Tag<N> {
+    fn ct_eq(self, other: Self) -> Choice {
+        self.0.ct_eq(&other.0)
     }
 
-    fn reset(&mut self) {
-        self.digest.reset();
-        self.digest.input(&self.i_key[..]);
-        self.finished = false;
+    fn ct_ne(self, other: Self) -> Choice {
+        self.0.ct_ne(&other.0)
+    }
+}
+
+impl<const N: usize> PartialEq for Tag<N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.ct_eq(other).is_true()
+    }
+}
+
+impl<const N: usize> Eq for Tag<N> {}
+
+impl<H: Algorithm> Context<H> {
+    pub(crate) fn output_bytes(&self) -> usize {
+        H::OUTPUT_SIZE
     }
 
-    fn result(&mut self) -> MacResult {
-        let output_size = self.digest.output_bytes();
-        let mut code: Vec<u8> = repeat(0).take(output_size).collect();
-
-        self.raw_result(&mut code);
-
-        MacResult::new_from_owned(code)
+    /// Create a new HMAC context instance with the given key
+    ///
+    /// The key to use can be any sequence of bytes
+    pub fn new(key: &[u8]) -> Self {
+        let (inner, outer) = H::init(key);
+        Self { inner, outer }
     }
 
-    fn raw_result(&mut self, output: &mut [u8]) {
-        if !self.finished {
-            self.digest.result(output);
-
-            self.digest.reset();
-            self.digest.input(&self.o_key[..]);
-            self.digest.input(output);
-
-            self.finished = true;
-        }
-
-        self.digest.result(output);
+    /// Update the context with message
+    ///
+    /// This can be called multiple times
+    pub fn update(&mut self, message: &[u8]) {
+        H::update(&mut self.inner, message)
     }
 
-    fn output_bytes(&self) -> usize {
-        self.digest.output_bytes()
+    /// Finalize the context and get the associated HMAC Tag output
+    pub fn finalize(mut self) -> H::MacOutput {
+        H::feed(&mut self.outer, &mut self.inner);
+        H::finalize(&mut self.outer)
     }
+
+    /// Finalize the context and get the associated HMAC Tag output
+    pub fn finalize_at(&mut self, out: &mut [u8]) {
+        H::feed(&mut self.outer, &mut self.inner);
+        H::finalize_at(&mut self.outer, out)
+    }
+}
+
+/// Generate a HMAC Tag for a given key and message
+///
+/// ```
+/// # #[cfg(feature = "sha2")]
+/// use cryptoxide::hmac::{hmac, SHA256};
+///
+/// # #[cfg(feature = "sha2")]
+/// hmac::<SHA256>(&[1,2,3], b"message");
+/// ```
+pub fn hmac<D: Algorithm>(key: &[u8], message: &[u8]) -> D::MacOutput {
+    let mut context: Context<D> = Context::new(key);
+    context.update(message);
+    context.finalize()
 }
 
 #[cfg(test)]
 mod test {
-    use crate::hmac::Hmac;
-    use crate::mac::Mac;
+    use crate::hmac;
 
-    #[cfg(feature = "blake2")]
-    use crate::blake2s::Blake2s;
-
-    #[cfg(feature = "sha2")]
-    use crate::sha2::Sha256;
+    //#[cfg(feature = "blake2")]
+    //use crate::blake2s::Blake2s;
 
     struct Test {
         key: &'static [u8],
@@ -186,11 +438,10 @@ mod test {
     #[test]
     fn hmac_sha256() {
         for t in tests().iter() {
-            let mut h = Hmac::new(Sha256::new(), &t.key[..]);
-            let mut output = [0u8; 32];
-            h.input(&t.data[..]);
-            h.raw_result(&mut output);
-            assert_eq!(&output[..], &t.expected[..]);
+            let mut h: hmac::Context<hmac::SHA256> = hmac::Context::new(&t.key[..]);
+            h.update(&t.data[..]);
+            let output = h.finalize();
+            assert_eq!(&output.0[..], &t.expected[..]);
         }
     }
 
@@ -209,10 +460,9 @@ mod test {
             0xaf, 0x28, 0xa6, 0x7a,
         ];
 
-        let mut h = Hmac::new(Blake2s::new(32), &key[..]);
-        let mut output = [0u8; 32];
-        h.input(&data[..]);
-        h.raw_result(&mut output);
-        assert_eq!(&output[..], &expected[..]);
+        let mut h: hmac::Context<hmac::Blake2s256> = hmac::Context::new(&key[..]);
+        h.update(&data[..]);
+        let output = h.finalize();
+        assert_eq!(&output.0[..], &expected[..]);
     }
 }

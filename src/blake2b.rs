@@ -141,17 +141,6 @@ impl<const BITS: usize> Blake2b<BITS> {
             self.buflen = 0;
         }
     }
-
-    pub fn blake2b(out: &mut [u8], input: &[u8], key: &[u8]) {
-        let mut hasher: Self = if !key.is_empty() {
-            Blake2b::new_keyed(key)
-        } else {
-            Blake2b::new()
-        };
-
-        hasher.update(input);
-        hasher.finalize(out);
-    }
 }
 
 impl<const BITS: usize> Digest for Blake2b<BITS> {
@@ -194,14 +183,22 @@ impl<const BITS: usize> Mac for Blake2b<BITS> {
     }
 }
 
+/// Compute blake2b on input
+pub fn blake2b<const BITS: usize>(out: &mut [u8], input: &[u8]) {
+    assert_eq!(out.len(), (BITS + 7) / 8);
+    let mut hasher: Blake2b<BITS> = Blake2b::new();
+    hasher.update(input);
+    hasher.finalize(out);
+}
+
 #[cfg(test)]
 mod hash_tests {
-    use super::Blake2b;
+    use super::blake2b;
 
     #[test]
     fn test_vector() {
         let mut out = [0u8; 64];
-        Blake2b::<512>::blake2b(&mut out, b"abc", &[]);
+        blake2b::<512>(&mut out, b"abc");
         let expected = [
             0xBA, 0x80, 0xA5, 0x3F, 0x98, 0x1C, 0x4D, 0x0D, 0x6A, 0x27, 0x97, 0xB6, 0x9F, 0x12,
             0xF6, 0xE9, 0x4C, 0x21, 0x2F, 0x14, 0x68, 0x5A, 0xC4, 0xB7, 0x4B, 0x12, 0xBB, 0x6F,

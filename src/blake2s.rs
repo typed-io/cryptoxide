@@ -141,17 +141,6 @@ impl<const BITS: usize> Blake2s<BITS> {
             self.buflen = 0;
         }
     }
-
-    pub fn blake2s(out: &mut [u8], input: &[u8], key: &[u8]) {
-        let mut hasher: Self = if !key.is_empty() {
-            Blake2s::new_keyed(key)
-        } else {
-            Blake2s::new()
-        };
-
-        hasher.update(input);
-        hasher.finalize(out);
-    }
 }
 
 impl<const BITS: usize> Digest for Blake2s<BITS> {
@@ -193,6 +182,13 @@ impl<const BITS: usize> Mac for Blake2s<BITS> {
     fn output_bytes(&self) -> usize {
         (BITS + 7) / 8
     }
+}
+
+pub fn blake2s<const BITS: usize>(out: &mut [u8], input: &[u8]) {
+    assert_eq!(out.len(), (BITS + 7) / 8);
+    let mut hasher = Blake2s::<BITS>::new();
+    hasher.update(input);
+    hasher.finalize(out);
 }
 
 #[cfg(test)]

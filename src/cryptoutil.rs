@@ -199,9 +199,10 @@ impl<const N: usize> FixedBuffer<N> {
         self.buffer_idx = idx;
     }
 
-    pub fn next(&mut self, len: usize) -> &mut [u8] {
-        self.buffer_idx += len;
-        &mut self.buffer[self.buffer_idx - len..self.buffer_idx]
+    pub fn next<const I: usize>(&mut self) -> &mut [u8; I] {
+        let start = self.buffer_idx;
+        self.buffer_idx += I;
+        <&mut [u8; I]>::try_from(&mut self.buffer[start..self.buffer_idx]).unwrap()
     }
 
     pub fn full_buffer(&mut self) -> &[u8; N] {
@@ -215,7 +216,7 @@ impl<const N: usize> FixedBuffer<N> {
     /// least rem bytes available, the buffer will be zero padded, processed, cleared, and then
     /// filled with zeros again until only rem bytes are remaining.
     pub fn standard_padding<F: FnMut(&[u8; N])>(&mut self, rem: usize, mut func: F) {
-        self.next(1)[0] = 128;
+        self.next::<1>()[0] = 128;
 
         if (N - self.buffer_idx) < rem {
             self.zero_until(N);

@@ -63,7 +63,7 @@ mod impl256;
 mod impl512;
 mod initials;
 
-use crate::cryptoutil::{write_u128_be, write_u64_be, FixedBuffer};
+use crate::cryptoutil::FixedBuffer;
 use crate::digest::Digest;
 use initials::*;
 
@@ -125,7 +125,7 @@ macro_rules! digest256 {
 // necessary to perform the final calculations.
 #[derive(Clone)]
 struct Engine512 {
-    length_bits: u128,
+    processed_bytes: u128,
     buffer: FixedBuffer<128>,
     state: eng512::Engine,
     finished: bool,
@@ -134,7 +134,7 @@ struct Engine512 {
 impl Engine512 {
     const fn new(h: &[u64; eng512::STATE_LEN]) -> Engine512 {
         Engine512 {
-            length_bits: 0,
+            processed_bytes: 0,
             buffer: FixedBuffer::new(),
             state: eng512::Engine::new(h),
             finished: false,
@@ -142,7 +142,7 @@ impl Engine512 {
     }
 
     fn reset(&mut self, h: &[u64; eng512::STATE_LEN]) {
-        self.length_bits = 0;
+        self.processed_bytes = 0;
         self.buffer.reset();
         self.state.reset(h);
         self.finished = false;
@@ -150,7 +150,7 @@ impl Engine512 {
 
     fn input(&mut self, input: &[u8]) {
         assert!(!self.finished);
-        self.length_bits += (input.len() as u128) << 3;
+        self.processed_bytes += input.len() as u128;
         let self_state = &mut self.state;
         self.buffer.input(input, |input| self_state.blocks(input));
     }
@@ -163,8 +163,8 @@ impl Engine512 {
         let self_state = &mut self.state;
         self.buffer
             .standard_padding(16, |input| self_state.blocks(input));
-        write_u128_be(self.buffer.next(16), self.length_bits);
-        self_state.blocks(self.buffer.full_buffer());
+        *self.buffer.next::<16>() = (self.processed_bytes << 3).to_be_bytes();
+        self.state.blocks(self.buffer.full_buffer());
 
         self.finished = true;
     }
@@ -174,7 +174,7 @@ impl Engine512 {
 // necessary to perform the final calculations.
 #[derive(Clone)]
 struct Engine256 {
-    length_bits: u64,
+    processed_bytes: u64,
     buffer: FixedBuffer<64>,
     state: eng256::Engine,
     finished: bool,
@@ -183,7 +183,7 @@ struct Engine256 {
 impl Engine256 {
     const fn new(h: &[u32; eng256::STATE_LEN]) -> Engine256 {
         Engine256 {
-            length_bits: 0,
+            processed_bytes: 0,
             buffer: FixedBuffer::new(),
             state: eng256::Engine::new(h),
             finished: false,
@@ -191,7 +191,7 @@ impl Engine256 {
     }
 
     fn reset(&mut self, h: &[u32; eng256::STATE_LEN]) {
-        self.length_bits = 0;
+        self.processed_bytes = 0;
         self.buffer.reset();
         self.state.reset(h);
         self.finished = false;
@@ -199,7 +199,7 @@ impl Engine256 {
 
     fn input(&mut self, input: &[u8]) {
         assert!(!self.finished);
-        self.length_bits += (input.len() as u64) << 3;
+        self.processed_bytes += input.len() as u64;
         let self_state = &mut self.state;
         self.buffer.input(input, |input| self_state.blocks(input));
     }
@@ -212,8 +212,8 @@ impl Engine256 {
         let self_state = &mut self.state;
         self.buffer
             .standard_padding(8, |input| self_state.blocks(input));
-        write_u64_be(self.buffer.next(8), self.length_bits);
-        self_state.blocks(self.buffer.full_buffer());
+        *self.buffer.next::<8>() = (self.processed_bytes << 3).to_be_bytes();
+        self.state.blocks(self.buffer.full_buffer());
 
         self.finished = true;
     }

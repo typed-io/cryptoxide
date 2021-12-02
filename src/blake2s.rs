@@ -42,7 +42,6 @@ pub struct Blake2s<const BITS: usize> {
     eng: Engine,
     buf: [u8; Engine::BLOCK_BYTES],
     buflen: usize,
-    digest_length: u8,
     computed: bool, // whether the final digest has been computed
 }
 
@@ -75,7 +74,6 @@ impl<const BITS: usize> Blake2s<BITS> {
             eng,
             buf,
             buflen,
-            digest_length: (BITS / 8) as u8,
             computed: false,
         }
     }
@@ -107,7 +105,7 @@ impl<const BITS: usize> Blake2s<BITS> {
     }
 
     fn finalize(&mut self, out: &mut [u8]) {
-        assert!(out.len() == self.digest_length as usize);
+        assert!(out.len() == ((BITS + 7) / 8));
         if !self.computed {
             self.eng.increment_counter(self.buflen as u32);
             zero(&mut self.buf[self.buflen..]);
@@ -122,7 +120,7 @@ impl<const BITS: usize> Blake2s<BITS> {
 
     /// Reset the context to the state after calling `new`
     pub fn reset(&mut self) {
-        self.eng.reset(self.digest_length as usize, 0);
+        self.eng.reset((BITS + 7) / 8, 0);
         self.computed = false;
         self.buflen = 0;
         zero(&mut self.buf[..]);
@@ -131,7 +129,7 @@ impl<const BITS: usize> Blake2s<BITS> {
     pub fn reset_with_key(&mut self, key: &[u8]) {
         assert!(key.len() <= Engine::MAX_KEYLEN);
 
-        self.eng.reset(self.digest_length as usize, key.len());
+        self.eng.reset((BITS + 7) / 8, key.len());
         self.computed = false;
         zero(&mut self.buf[..]);
 
@@ -183,7 +181,7 @@ impl<const BITS: usize> Mac for Blake2s<BITS> {
     }
 
     fn result(&mut self) -> MacResult {
-        let mut mac: Vec<u8> = repeat(0).take(self.digest_length as usize).collect();
+        let mut mac: Vec<u8> = repeat(0).take((BITS + 7) / 8).collect();
         self.raw_result(&mut mac);
         MacResult::new_from_owned(mac)
     }
@@ -193,7 +191,7 @@ impl<const BITS: usize> Mac for Blake2s<BITS> {
     }
 
     fn output_bytes(&self) -> usize {
-        self.digest_length as usize
+        (BITS + 7) / 8
     }
 }
 

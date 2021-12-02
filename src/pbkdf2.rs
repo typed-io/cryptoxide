@@ -20,7 +20,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::cryptoutil::write_u32_be;
 use crate::mac::Mac;
 use alloc::vec::Vec;
 use core::iter::repeat;
@@ -42,9 +41,7 @@ fn calculate_block<M: Mac>(
 ) {
     // Perform the 1st iteration. The output goes directly into block
     mac.input(salt);
-    let mut idx_buf = [0u8; 4];
-    write_u32_be(&mut idx_buf, idx);
-    mac.input(&idx_buf);
+    mac.input(&idx.to_be_bytes());
     mac.raw_result(block);
     mac.reset();
 

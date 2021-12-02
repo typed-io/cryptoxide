@@ -87,11 +87,7 @@ read_array_type!(read_u32v_le, u32, from_le_bytes);
 
 /// Read the value of a vector of bytes as a u32 value in little-endian format.
 pub fn read_u32_le(input: &[u8]) -> u32 {
-    assert!(input.len() == 4);
-    let mut tmp = [0u8; 4];
-    unsafe {
-        ptr::copy_nonoverlapping(input.get_unchecked(0), &mut tmp as *mut _ as *mut u8, 4);
-    }
+    let tmp: [u8; 4] = *<&[u8; 4]>::try_from(input).unwrap();
     u32::from_le_bytes(tmp)
 }
 

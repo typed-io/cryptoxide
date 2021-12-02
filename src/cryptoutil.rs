@@ -10,29 +10,23 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use core::convert::TryFrom;
 use core::{mem::size_of, ptr};
 
-macro_rules! write_type {
-    ($C: ident, $T: ident, $F: ident) => {
-        /// Write a $T into a vector, which must be of the correct size. The value is written using $F for endianness
-        pub fn $C(dst: &mut [u8], input: $T) {
-            const SZ: usize = size_of::<$T>();
-            assert!(dst.len() == SZ);
-            let as_bytes = input.$F();
-            unsafe {
-                let tmp = &as_bytes as *const u8;
-                ptr::copy_nonoverlapping(tmp, dst.get_unchecked_mut(0), SZ);
-            }
-        }
-    };
+#[inline]
+pub(crate) fn write_u64_le(dst: &mut [u8], input: u64) {
+    *<&mut [u8; 8]>::try_from(dst).unwrap() = input.to_le_bytes();
 }
 
-write_type!(write_u128_be, u128, to_be_bytes);
-//write_type!(write_u128_le, u128, to_le_bytes);
-write_type!(write_u64_be, u64, to_be_bytes);
-write_type!(write_u64_le, u64, to_le_bytes);
-write_type!(write_u32_be, u32, to_be_bytes);
-write_type!(write_u32_le, u32, to_le_bytes);
+#[inline]
+pub(crate) fn write_u32_le(dst: &mut [u8], input: u32) {
+    *<&mut [u8; 4]>::try_from(dst).unwrap() = input.to_le_bytes();
+}
+
+#[inline]
+pub(crate) fn write_u32_be(dst: &mut [u8], input: u32) {
+    *<&mut [u8; 4]>::try_from(dst).unwrap() = input.to_be_bytes();
+}
 
 macro_rules! write_array_type {
     ($C: ident, $T: ident, $F: ident) => {

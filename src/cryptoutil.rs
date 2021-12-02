@@ -40,13 +40,13 @@ macro_rules! write_array_type {
         pub fn $C(dst: &mut [u8], input: &[$T]) {
             const SZ: usize = size_of::<$T>();
             assert!(dst.len() == SZ * input.len());
-            unsafe {
-                let mut x: *mut u8 = dst.get_unchecked_mut(0);
-                for v in input.iter() {
-                    let tmp = v.$F();
-                    ptr::copy_nonoverlapping(&tmp as *const u8, x, SZ);
-                    x = x.add(SZ);
+            let mut offset = 0;
+            for v in input.iter() {
+                match <&mut [u8; SZ]>::try_from(&mut dst[offset..offset + SZ]) {
+                    Ok(t) => *t = v.$F(),
+                    Err(_) => unsafe { core::hint::unreachable_unchecked() },
                 }
+                offset += SZ;
             }
         }
     };

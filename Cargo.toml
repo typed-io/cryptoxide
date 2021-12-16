@@ -19,6 +19,9 @@ doctest = false
 
 [dependencies]
 
+[dev-dependencies]
+hacl-star = "0.1.0"
+
 [features]
 default = ["blake2", "sha1", "sha2", "sha3", "ripemd160", "chacha", "salsa", "hkdf", "hmac", "pbkdf2", "poly1305", "scrypt", "curve25519", "ed25519"]
 blake2 = ["digest", "mac"]

@@ -2316,7 +2316,7 @@ pub fn curve25519_base(x: &[u8]) -> [u8; 32] {
 
 #[cfg(test)]
 mod tests {
-    use super::{curve25519_base, Fe};
+    use super::{curve25519, curve25519_base, Fe};
     use alloc::vec::Vec;
 
     #[test]
@@ -2417,6 +2417,44 @@ mod tests {
             0xaa, 0x9b, 0x4e, 0x6a,
         ];
         assert_eq!(pk.to_vec(), correct.to_vec());
+    }
+
+    #[test]
+    fn hacl() {
+        let sk1: [u8; 32] = [
+            0x77, 0x07, 0x6d, 0x0a, 0x73, 0x18, 0xa5, 0x7d, 0x3c, 0x16, 0xc1, 0x72, 0x51, 0xb2,
+            0x66, 0x45, 0xdf, 0x4c, 0x2f, 0x87, 0xeb, 0xc0, 0x99, 0x2a, 0xb1, 0x77, 0xfb, 0xa5,
+            0x1d, 0xb9, 0x2c, 0x2a,
+        ];
+        let sk2: [u8; 32] = [
+            0x77, 0x07, 0x6d, 0x0a, 0x73, 0x8a, 0x00, 0x7d, 0x3c, 0x16, 0xc1, 0x72, 0x51, 0xb2,
+            0x66, 0x45, 0xdf, 0x4c, 0x2f, 0x87, 0x12, 0xc0, 0x99, 0x2a, 0x10, 0x77, 0xfb, 0x75,
+            0x1d, 0xb9, 0x2c, 0x2a,
+        ];
+
+        let hacl1 = hacl_star::curve25519::SecretKey(sk1);
+        let hacl2 = hacl_star::curve25519::SecretKey(sk2);
+
+        // test the public key generation is the same
+        assert_eq!(&hacl1.get_public().0, &curve25519_base(sk1.as_ref()),);
+        assert_eq!(&hacl2.get_public().0, &curve25519_base(sk2.as_ref()),);
+
+        let hacl1_pk = hacl1.get_public();
+        let hacl2_pk = hacl2.get_public();
+
+        let mut hacl1_e = [0; 32];
+        hacl1.exchange(&hacl2_pk, &mut hacl1_e);
+        let mut hacl2_e = [0; 32];
+        hacl2.exchange(&hacl1_pk, &mut hacl2_e);
+
+        assert_eq!(hacl1_e, hacl2_e);
+
+        let e1 = curve25519(&sk1, &curve25519_base(&sk2));
+        let e2 = curve25519(&sk2, &curve25519_base(&sk1));
+        assert_eq!(e1, e2);
+
+        assert_eq!(hacl1_e, e1);
+        assert_eq!(hacl2_e, e2);
     }
 }
 

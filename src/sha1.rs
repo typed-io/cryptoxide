@@ -329,47 +329,29 @@ pub fn sha1_digest_block_u32(state: &mut [u32; 5], block: &[u32; 16]) {
 /// and also shown above is how the digest-related functions can be used to
 /// perform 4 rounds of the message block digest calculation.
 ///
-pub fn sha1_digest_block(state: &mut [u32; 5], block: &[u8]) {
+fn sha1_digest_block(state: &mut [u32; 5], block: &[u8]) {
     assert_eq!(block.len(), BLOCK_LEN * 4);
     let mut block2 = [0u32; BLOCK_LEN];
     read_u32v_be(&mut block2[..], block);
     sha1_digest_block_u32(state, &block2);
 }
 
-fn to_bits(x: u64) -> (u64, u64) {
-    (x >> 61, x << 3)
-}
-
-/// Adds the specified number of bytes to the bit count. panic!() if this
-/// would cause numeric overflow.
-fn add_bytes_to_bits(bits: u64, bytes: u64) -> u64 {
-    let (new_high_bits, new_low_bits) = to_bits(bytes);
-
-    if new_high_bits > 0 {
-        panic!("Numeric overflow occured.")
-    }
-
-    bits.checked_add(new_low_bits)
-        .expect("Numeric overflow occured.")
-}
-
 fn add_input(st: &mut Sha1, msg: &[u8]) {
     assert!((!st.computed));
     // Assumes that msg.len() can be converted to u64 without overflow
-    st.length_bits = add_bytes_to_bits(st.length_bits, msg.len() as u64);
+    st.processed_bytes += msg.len() as u64;
     let st_h = &mut st.h;
     st.buffer.input(msg, |d| {
         sha1_digest_block(st_h, d);
     });
 }
 
-fn mk_result(st: &mut Sha1, rs: &mut [u8]) {
+fn mk_result(st: &mut Sha1, rs: &mut [u8; 20]) {
     if !st.computed {
         let st_h = &mut st.h;
         st.buffer
             .standard_padding(8, |d| sha1_digest_block(&mut *st_h, d));
-        write_u32_be(st.buffer.next(4), (st.length_bits >> 32) as u32);
-        write_u32_be(st.buffer.next(4), st.length_bits as u32);
+        *st.buffer.next::<8>() = (st.processed_bytes << 3).to_be_bytes();
         sha1_digest_block(st_h, st.buffer.full_buffer());
 
         st.computed = true;
@@ -386,7 +368,7 @@ fn mk_result(st: &mut Sha1, rs: &mut [u8]) {
 #[derive(Clone)]
 pub struct Sha1 {
     h: [u32; STATE_LEN],
-    length_bits: u64,
+    processed_bytes: u64,
     buffer: FixedBuffer<64>,
     computed: bool,
 }
@@ -403,7 +385,7 @@ impl Sha1 {
     pub const fn new() -> Sha1 {
         Sha1 {
             h: H,
-            length_bits: 0u64,
+            processed_bytes: 0u64,
             buffer: FixedBuffer::new(),
             computed: false,
         }
@@ -412,7 +394,7 @@ impl Sha1 {
 
 impl Digest for Sha1 {
     fn reset(&mut self) {
-        self.length_bits = 0;
+        self.processed_bytes = 0;
         self.h = H;
         self.buffer.reset();
         self.computed = false;
@@ -421,7 +403,8 @@ impl Digest for Sha1 {
         add_input(self, msg);
     }
     fn result(&mut self, out: &mut [u8]) {
-        mk_result(self, out)
+        use core::convert::TryFrom;
+        mk_result(self, <&mut [u8; 20]>::try_from(out).unwrap())
     }
     fn output_bits(&self) -> usize {
         160

@@ -1,38 +1,22 @@
 //! Various utility to write/read in buffers
 
-// Copyright 2012-2013 The Rust Project Developers. See the COPYRIGHT
-// file at the top-level directory of this distribution and at
-// http://rust-lang.org/COPYRIGHT.
-//
-// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
-// option. This file may not be copied, modified, or distributed
-// except according to those terms.
-
+use core::convert::TryFrom;
 use core::{mem::size_of, ptr};
 
-macro_rules! write_type {
-    ($C: ident, $T: ident, $F: ident) => {
-        /// Write a $T into a vector, which must be of the correct size. The value is written using $F for endianness
-        pub fn $C(dst: &mut [u8], input: $T) {
-            const SZ: usize = size_of::<$T>();
-            assert!(dst.len() == SZ);
-            let as_bytes = input.$F();
-            unsafe {
-                let tmp = &as_bytes as *const u8;
-                ptr::copy_nonoverlapping(tmp, dst.get_unchecked_mut(0), SZ);
-            }
-        }
-    };
+#[inline]
+pub(crate) fn write_u64_le(dst: &mut [u8], input: u64) {
+    *<&mut [u8; 8]>::try_from(dst).unwrap() = input.to_le_bytes();
 }
 
-write_type!(write_u128_be, u128, to_be_bytes);
-//write_type!(write_u128_le, u128, to_le_bytes);
-write_type!(write_u64_be, u64, to_be_bytes);
-write_type!(write_u64_le, u64, to_le_bytes);
-write_type!(write_u32_be, u32, to_be_bytes);
-write_type!(write_u32_le, u32, to_le_bytes);
+#[inline]
+pub(crate) fn write_u32_le(dst: &mut [u8], input: u32) {
+    *<&mut [u8; 4]>::try_from(dst).unwrap() = input.to_le_bytes();
+}
+
+#[inline]
+pub(crate) fn write_u32_be(dst: &mut [u8], input: u32) {
+    *<&mut [u8; 4]>::try_from(dst).unwrap() = input.to_be_bytes();
+}
 
 macro_rules! write_array_type {
     ($C: ident, $T: ident, $F: ident) => {
@@ -40,13 +24,13 @@ macro_rules! write_array_type {
         pub fn $C(dst: &mut [u8], input: &[$T]) {
             const SZ: usize = size_of::<$T>();
             assert!(dst.len() == SZ * input.len());
-            unsafe {
-                let mut x: *mut u8 = dst.get_unchecked_mut(0);
-                for v in input.iter() {
-                    let tmp = v.$F();
-                    ptr::copy_nonoverlapping(&tmp as *const u8, x, SZ);
-                    x = x.add(SZ);
+            let mut offset = 0;
+            for v in input.iter() {
+                match <&mut [u8; SZ]>::try_from(&mut dst[offset..offset + SZ]) {
+                    Ok(t) => *t = v.$F(),
+                    Err(_) => unsafe { core::hint::unreachable_unchecked() },
                 }
+                offset += SZ;
             }
         }
     };
@@ -87,11 +71,7 @@ read_array_type!(read_u32v_le, u32, from_le_bytes);
 
 /// Read the value of a vector of bytes as a u32 value in little-endian format.
 pub fn read_u32_le(input: &[u8]) -> u32 {
-    assert!(input.len() == 4);
-    let mut tmp = [0u8; 4];
-    unsafe {
-        ptr::copy_nonoverlapping(input.get_unchecked(0), &mut tmp as *mut _ as *mut u8, 4);
-    }
+    let tmp: [u8; 4] = *<&[u8; 4]>::try_from(input).unwrap();
     u32::from_le_bytes(tmp)
 }
 
@@ -203,9 +183,10 @@ impl<const N: usize> FixedBuffer<N> {
         self.buffer_idx = idx;
     }
 
-    pub fn next(&mut self, len: usize) -> &mut [u8] {
-        self.buffer_idx += len;
-        &mut self.buffer[self.buffer_idx - len..self.buffer_idx]
+    pub fn next<const I: usize>(&mut self) -> &mut [u8; I] {
+        let start = self.buffer_idx;
+        self.buffer_idx += I;
+        <&mut [u8; I]>::try_from(&mut self.buffer[start..self.buffer_idx]).unwrap()
     }
 
     pub fn full_buffer(&mut self) -> &[u8; N] {
@@ -219,7 +200,7 @@ impl<const N: usize> FixedBuffer<N> {
     /// least rem bytes available, the buffer will be zero padded, processed, cleared, and then
     /// filled with zeros again until only rem bytes are remaining.
     pub fn standard_padding<F: FnMut(&[u8; N])>(&mut self, rem: usize, mut func: F) {
-        self.next(1)[0] = 128;
+        self.next::<1>()[0] = 128;
 
         if (N - self.buffer_idx) < rem {
             self.zero_until(N);

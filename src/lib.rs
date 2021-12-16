@@ -100,6 +100,5 @@ pub mod ripemd160;
 
 mod cryptoutil;
 mod simd;
-mod util;
 
 pub mod constant_time;

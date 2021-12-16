@@ -16,10 +16,10 @@
 //! ```
 //!
 
+use crate::constant_time::CtEqual;
 use crate::curve25519::{curve25519, ge_scalarmult_base, sc_muladd, sc_reduce, Fe, GeP2, GeP3};
 use crate::digest::Digest;
 use crate::sha2::Sha512;
-use crate::util::fixed_time_eq;
 use core::ops::{Add, Mul, Sub};
 
 pub const SEED_LENGTH: usize = 32;
@@ -203,8 +203,11 @@ pub fn verify(message: &[u8], public_key: &[u8], signature: &[u8]) -> bool {
         "signature should be {} bytes long!",
         SIGNATURE_LENGTH
     );
+    use core::convert::TryFrom;
+    let signature_left = <&[u8; 32]>::try_from(&signature[0..32]).unwrap();
+    let signature_right = <&[u8; 32]>::try_from(&signature[32..64]).unwrap();
 
-    if check_s_lt_l(&signature[32..64]) {
+    if check_s_lt_l(signature_right) {
         return false;
     }
 
@@ -223,17 +226,17 @@ pub fn verify(message: &[u8], public_key: &[u8], signature: &[u8]) -> bool {
     }
 
     let mut hasher = Sha512::new();
-    hasher.input(&signature[0..32]);
+    hasher.input(signature_left);
     hasher.input(public_key);
     hasher.input(message);
     let mut hash: [u8; 64] = [0; 64];
     hasher.result(&mut hash);
     sc_reduce(&mut hash);
 
-    let r = GeP2::double_scalarmult_vartime(hash.as_ref(), a, &signature[32..64]);
+    let r = GeP2::double_scalarmult_vartime(hash.as_ref(), a, signature_right);
     let rcheck = r.to_bytes();
 
-    fixed_time_eq(rcheck.as_ref(), &signature[0..32])
+    CtEqual::ct_eq(&rcheck, signature_left).into()
 }
 
 /// Curve25519 DH (Diffie Hellman) between a curve25519 public key and a ed25519 private key

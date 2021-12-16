@@ -8,7 +8,7 @@
  * The mac module defines the Message Authentication Code (`Mac`) trait.
  */
 
-use crate::util::fixed_time_eq;
+use crate::constant_time::CtEqual;
 use alloc::vec::Vec;
 
 /**
@@ -84,7 +84,12 @@ impl PartialEq for MacResult {
     fn eq(&self, x: &MacResult) -> bool {
         let lhs = self.code();
         let rhs = x.code();
-        fixed_time_eq(lhs, rhs)
+        // it's a user error to compare two mac results from two different mac
+        if lhs.len() == rhs.len() {
+            CtEqual::ct_eq(lhs, rhs).into()
+        } else {
+            false
+        }
     }
 }
 

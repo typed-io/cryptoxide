@@ -26,7 +26,7 @@
 //! [1]: <https://cr.yp.to/ecdh/curve25519-20060209.pdf>
 //! [2]: <https://en.wikipedia.org/wiki/Curve25519>
 
-use crate::util::fixed_time_eq;
+use crate::constant_time::CtEqual;
 use core::cmp::{min, Eq, Ordering, PartialEq};
 use core::ops::{Add, Mul, Sub};
 
@@ -1103,9 +1103,7 @@ impl Fe {
     }
 
     fn is_nonzero(&self) -> bool {
-        let bs = self.to_bytes();
-        let zero = [0; 32];
-        !fixed_time_eq(bs.as_ref(), zero.as_ref())
+        CtEqual::ct_ne(&self.to_bytes(), &[0; 32]).into()
     }
 
     fn is_negative(&self) -> bool {

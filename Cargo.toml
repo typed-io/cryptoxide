@@ -20,11 +20,12 @@ doctest = false
 [dependencies]
 
 [features]
-default = ["blake2", "sha1", "sha2", "sha3", "chacha", "salsa", "hkdf", "hmac", "pbkdf2", "poly1305", "scrypt", "curve25519", "ed25519"]
+default = ["blake2", "sha1", "sha2", "sha3", "ripemd160", "chacha", "salsa", "hkdf", "hmac", "pbkdf2", "poly1305", "scrypt", "curve25519", "ed25519"]
 blake2 = ["digest", "mac"]
 sha1 = ["digest"]
 sha2 = ["digest"]
 sha3 = ["digest"]
+ripemd160 = ["digest"]
 digest = []
 
 chacha = []

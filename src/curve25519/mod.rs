@@ -695,7 +695,7 @@ const BASE: [u8; 32] = [
 
 /// Computes a shared secret from the curve25519 private key (n) and public
 /// key (p)
-pub fn curve25519(n: &[u8], p: &[u8]) -> [u8; 32] {
+pub fn curve25519(n: &[u8; 32], p: &[u8; 32]) -> [u8; 32] {
     let mut e = [0u8; 32];
     let mut x2;
     let mut z2;
@@ -756,27 +756,28 @@ pub fn curve25519(n: &[u8], p: &[u8]) -> [u8; 32] {
 }
 
 /// Derives a public key from a private key
-pub fn curve25519_base(x: &[u8]) -> [u8; 32] {
+pub fn curve25519_base(x: &[u8; 32]) -> [u8; 32] {
     curve25519(x, &BASE)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{curve25519_base, Fe};
-    use alloc::vec::Vec;
 
     #[test]
     fn from_to_bytes_preserves() {
         for i in 0..50 {
-            let mut e: Vec<u8> = (0u32..32)
-                .map(|idx| (idx * (1289 + i * 761)) as u8)
-                .collect();
+            let mut e = [0u8; 32];
+            for (idx, v) in e.iter_mut().enumerate() {
+                *v = (idx * (1289 + i * 761)) as u8;
+            }
+
             e[0] &= 248;
             e[31] &= 127;
             e[31] |= 64;
-            let fe = Fe::from_bytes(e.as_ref());
+            let fe = Fe::from_bytes(&e);
             let e_preserved = fe.to_bytes();
-            assert!(e == e_preserved.to_vec());
+            assert!(e == e_preserved);
         }
     }
 
@@ -807,13 +808,15 @@ mod tests {
         type Item = Fe;
 
         fn next(&mut self) -> Option<Fe> {
-            let mut e: Vec<u8> = (0..32)
-                .map(|idx| (idx * (1289 + self.which * 761)) as u8)
-                .collect();
+            let mut e = [0u8; 32];
+            for (idx, v) in e.iter_mut().enumerate() {
+                *v = (idx as u32 * (1289 + self.which * 761)) as u8;
+            }
+
             e[0] &= 248;
             e[31] &= 127;
             e[31] |= 64;
-            Some(Fe::from_bytes(e.as_ref()))
+            Some(Fe::from_bytes(&e))
         }
     }
 
@@ -856,7 +859,7 @@ mod tests {
             0x66, 0x45, 0xdf, 0x4c, 0x2f, 0x87, 0xeb, 0xc0, 0x99, 0x2a, 0xb1, 0x77, 0xfb, 0xa5,
             0x1d, 0xb9, 0x2c, 0x2a,
         ];
-        let pk = curve25519_base(sk.as_ref());
+        let pk = curve25519_base(&sk);
         let correct: [u8; 32] = [
             0x85, 0x20, 0xf0, 0x09, 0x89, 0x30, 0xa7, 0x54, 0x74, 0x8b, 0x7d, 0xdc, 0xb4, 0x3e,
             0xf7, 0x5a, 0x0d, 0xbf, 0x3a, 0x0d, 0x26, 0x38, 0x1a, 0xf4, 0xeb, 0xa4, 0xa9, 0x8e,

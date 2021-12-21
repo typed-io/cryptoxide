@@ -372,7 +372,7 @@ impl Mul for &Fe {
 
 impl Fe {
     #[rustfmt::skip]
-    pub fn from_bytes(s: &[u8]) -> Fe {
+    pub fn from_bytes(s: &[u8; 32]) -> Fe {
         let mut h0 = load_4i(&s[0..4]);
         let mut h1 = load_3i(&s[4..7]) << 6;
         let mut h2 = load_3i(&s[7..10]) << 5;

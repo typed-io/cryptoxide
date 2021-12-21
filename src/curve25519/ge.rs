@@ -188,7 +188,7 @@ impl GeP2 {
 }
 
 impl GeP3 {
-    pub fn from_bytes_negate_vartime(s: &[u8]) -> Option<GeP3> {
+    pub fn from_bytes_negate_vartime(s: &[u8; 32]) -> Option<GeP3> {
         let y = Fe::from_bytes(s);
         let z = Fe::ONE;
         let y_squared = y.square();

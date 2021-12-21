@@ -8,10 +8,10 @@
 //! use cryptoxide::ed25519;
 //!
 //! let message = "messages".as_bytes();
-//! let seed = [0u8;32]; // seed only for example !
-//! let (secret, public) = ed25519::keypair(&seed[..]);
-//! let signature = ed25519::signature(message, &secret[..]);
-//! let verified = ed25519::verify(message, &public[..], &signature[..]);
+//! let secret_key = [0u8;32]; // private key only for example !
+//! let (keypair, public) = ed25519::keypair(&secret_key);
+//! let signature = ed25519::signature(message, &keypair);
+//! let verified = ed25519::verify(message, &public, &signature);
 //! assert!(verified);
 //! ```
 //!
@@ -20,11 +20,15 @@ use crate::constant_time::CtEqual;
 use crate::curve25519::{curve25519, ge_scalarmult_base, sc_muladd, sc_reduce, Fe, GeP2, GeP3};
 use crate::digest::Digest;
 use crate::sha2::Sha512;
+use core::convert::TryFrom;
 use core::ops::{Add, Mul, Sub};
 
+#[deprecated(since = "0.4.0", note = "use `PRIVATE_KEY_LENGTH`")]
 pub const SEED_LENGTH: usize = 32;
-pub const PRIVATE_KEY_LENGTH: usize = 64;
+pub const PRIVATE_KEY_LENGTH: usize = 32;
 pub const PUBLIC_KEY_LENGTH: usize = 32;
+pub const KEYPAIR_LENGTH: usize = PRIVATE_KEY_LENGTH + PUBLIC_KEY_LENGTH;
+pub const EXTENDED_KEY_LENGTH: usize = 64;
 pub const SIGNATURE_LENGTH: usize = 64;
 
 static L: [u8; 32] = [
@@ -42,74 +46,86 @@ fn clamp_scalar(scalar: &mut [u8]) {
     scalar[31] |= 0b0100_0000;
 }
 
-/// Create a keypair of secret key and public key
-pub fn keypair(seed: &[u8]) -> ([u8; PRIVATE_KEY_LENGTH], [u8; PUBLIC_KEY_LENGTH]) {
-    assert!(
-        seed.len() == SEED_LENGTH,
-        "Seed should be {} bytes long!",
-        SEED_LENGTH
-    );
+/// Create the extended secret format by hashing the 32 bytes private key with SHA512
+/// and tweaking the first 32 bytes as a scalar using the clamp mechanism in `clamp_scalar`
+///
+/// SCALAR(32bytes) | RANDOM(32bytes) = CLAMP(SHA512(private_key))
+fn extended_secret(private_key: &[u8; PRIVATE_KEY_LENGTH]) -> [u8; EXTENDED_KEY_LENGTH] {
+    let mut hash_output = [0; 64];
+    let mut hasher = Sha512::new();
+    hasher.input(private_key);
+    hasher.result(&mut hash_output);
+    clamp_scalar(&mut hash_output);
+    hash_output
+}
 
-    let mut secret: [u8; PRIVATE_KEY_LENGTH] = {
-        let mut hash_output: [u8; PRIVATE_KEY_LENGTH] = [0; PRIVATE_KEY_LENGTH];
-        let mut hasher = Sha512::new();
-        hasher.input(seed);
-        hasher.result(&mut hash_output);
-        clamp_scalar(&mut hash_output);
-        hash_output
-    };
+/// Extract the private key of a keypair
+pub fn keypair_private(keypair: &[u8; KEYPAIR_LENGTH]) -> &[u8; PRIVATE_KEY_LENGTH] {
+    <&[u8; PRIVATE_KEY_LENGTH]>::try_from(&keypair[0..PRIVATE_KEY_LENGTH]).unwrap()
+}
 
-    let a = ge_scalarmult_base(&secret[0..32]);
-    let public_key = a.to_bytes();
-    for (dest, src) in (&mut secret[32..64]).iter_mut().zip(public_key.iter()) {
-        *dest = *src;
-    }
-    for (dest, src) in (&mut secret[0..32]).iter_mut().zip(seed.iter()) {
-        *dest = *src;
-    }
-    (secret, public_key)
+/// Extract the public key of a keypair
+pub fn keypair_public(keypair: &[u8; KEYPAIR_LENGTH]) -> &[u8; PUBLIC_KEY_LENGTH] {
+    <&[u8; PUBLIC_KEY_LENGTH]>::try_from(&keypair[32..64]).unwrap()
+}
+
+/// generate the public key associated with an extended secret key
+pub fn extended_to_public(extended_secret: &[u8; EXTENDED_KEY_LENGTH]) -> [u8; PUBLIC_KEY_LENGTH] {
+    let a = ge_scalarmult_base(&extended_secret[0..32]);
+    a.to_bytes()
+}
+
+/// Extract the scalar part (first 32 bytes) from the extended key
+fn extended_scalar(extended_secret: &[u8; EXTENDED_KEY_LENGTH]) -> &[u8; 32] {
+    <&[u8; 32]>::try_from(&extended_secret[0..32]).unwrap()
+}
+
+/// keypair of secret key and public key
+///
+/// Given the secret key, it calculate the associated public key and
+/// it returns a convenient keypair array containing both the secret and public key
+pub fn keypair(
+    secret_key: &[u8; PRIVATE_KEY_LENGTH],
+) -> ([u8; KEYPAIR_LENGTH], [u8; PUBLIC_KEY_LENGTH]) {
+    let extended_secret = extended_secret(secret_key);
+    let public_key = extended_to_public(&extended_secret);
+
+    // overwrite extended secret buffer to be KEYPAIR = SECRET_KEY | PUBLIC_KEY
+    let mut output = extended_secret;
+    output[0..32].copy_from_slice(secret_key);
+    output[32..64].copy_from_slice(&public_key);
+
+    (output, public_key)
+}
+
+/// Generate the nonce which is a scalar out of the extended_secret random part and the message itself
+/// using SHA512 and scalar_reduction
+fn signature_nonce(extended_secret: &[u8; EXTENDED_KEY_LENGTH], message: &[u8]) -> [u8; 32] {
+    let mut hash_output: [u8; 64] = [0; 64];
+    let mut hasher = Sha512::new();
+    hasher.input(&extended_secret[32..64]);
+    hasher.input(message);
+    hasher.result(&mut hash_output);
+    sc_reduce(&hash_output)
 }
 
 /// Generate a signature for the given message using a normal ED25519 secret key
-pub fn signature(message: &[u8], secret_key: &[u8]) -> [u8; SIGNATURE_LENGTH] {
-    assert!(
-        secret_key.len() == PRIVATE_KEY_LENGTH,
-        "Private key should be {} bytes long!",
-        PRIVATE_KEY_LENGTH
-    );
+pub fn signature(message: &[u8], keypair: &[u8; KEYPAIR_LENGTH]) -> [u8; SIGNATURE_LENGTH] {
+    let private_key = keypair_private(&keypair);
+    let public_key = keypair_public(&keypair);
+    let az = extended_secret(private_key);
 
-    let seed = &secret_key[0..32];
-    let public_key = &secret_key[32..64];
-    let az: [u8; 64] = {
-        let mut hash_output: [u8; 64] = [0; 64];
-        let mut hasher = Sha512::new();
-        hasher.input(seed);
-        hasher.result(&mut hash_output);
-        clamp_scalar(&mut hash_output);
-        hash_output
-    };
+    let nonce = signature_nonce(&az, message);
 
-    let nonce = {
-        let mut hash_output: [u8; 64] = [0; 64];
-        let mut hasher = Sha512::new();
-        hasher.input(&az[32..64]);
-        hasher.input(message);
-        hasher.result(&mut hash_output);
-        sc_reduce(&hash_output)
-    };
+    let r: GeP3 = ge_scalarmult_base(&nonce[0..32]);
 
     let mut signature: [u8; SIGNATURE_LENGTH] = [0; SIGNATURE_LENGTH];
-    let r: GeP3 = ge_scalarmult_base(&nonce[0..32]);
-    for (result_byte, source_byte) in (&mut signature[0..32]).iter_mut().zip(r.to_bytes().iter()) {
-        *result_byte = *source_byte;
-    }
-    for (result_byte, source_byte) in (&mut signature[32..64]).iter_mut().zip(public_key.iter()) {
-        *result_byte = *source_byte;
-    }
+    signature[0..32].copy_from_slice(&r.to_bytes());
+    signature[32..64].copy_from_slice(public_key);
 
     {
         let mut hasher = Sha512::new();
-        hasher.input(signature.as_ref());
+        hasher.input(&signature);
         hasher.input(message);
         let mut hram: [u8; 64] = [0; 64];
         hasher.result(&mut hram);
@@ -125,51 +141,31 @@ pub fn signature(message: &[u8], secret_key: &[u8]) -> [u8; SIGNATURE_LENGTH] {
     signature
 }
 
-/// generate the public key associated with an extended secret key
-pub fn to_public(extended_secret: &[u8]) -> [u8; PUBLIC_KEY_LENGTH] {
-    let a = ge_scalarmult_base(&extended_secret[0..32]);
-    let public_key = a.to_bytes();
-    public_key
-}
-
 /// Generate a signature for the given message using an extended ED25519 secret key
-pub fn signature_extended(message: &[u8], extended_secret: &[u8]) -> [u8; SIGNATURE_LENGTH] {
-    assert!(
-        extended_secret.len() == PRIVATE_KEY_LENGTH,
-        "Private key should be {} bytes long!",
-        PRIVATE_KEY_LENGTH
-    );
-    let public_key = to_public(extended_secret);
+pub fn signature_extended(
+    message: &[u8],
+    extended_secret: &[u8; EXTENDED_KEY_LENGTH],
+) -> [u8; SIGNATURE_LENGTH] {
+    let public_key = extended_to_public(extended_secret);
+    let nonce = signature_nonce(extended_secret, message);
 
-    let nonce = {
-        let mut hash_output: [u8; 64] = [0; 64];
-        let mut hasher = Sha512::new();
-        hasher.input(&extended_secret[32..64]);
-        hasher.input(message);
-        hasher.result(&mut hash_output);
-        sc_reduce(&hash_output)
-    };
-
-    let mut signature: [u8; SIGNATURE_LENGTH] = [0; SIGNATURE_LENGTH];
     let r: GeP3 = ge_scalarmult_base(&nonce[0..32]);
-    for (result_byte, source_byte) in (&mut signature[0..32]).iter_mut().zip(r.to_bytes().iter()) {
-        *result_byte = *source_byte;
-    }
-    for (result_byte, source_byte) in (&mut signature[32..64]).iter_mut().zip(public_key.iter()) {
-        *result_byte = *source_byte;
-    }
+
+    let mut signature = [0; SIGNATURE_LENGTH];
+    signature[0..32].copy_from_slice(&r.to_bytes());
+    signature[32..64].copy_from_slice(&public_key);
 
     {
         let mut hasher = Sha512::new();
-        hasher.input(signature.as_ref());
+        hasher.input(&signature);
         hasher.input(message);
         let mut hram: [u8; 64] = [0; 64];
         hasher.result(&mut hram);
         let hram = sc_reduce(&mut hram);
         sc_muladd(
             &mut signature[32..64],
-            &hram[0..32],
-            &extended_secret[0..32],
+            &hram,
+            extended_scalar(extended_secret),
             &nonce[0..32],
         );
     }
@@ -196,18 +192,11 @@ fn check_s_lt_l(s: &[u8]) -> bool {
 }
 
 /// Verify that a signature is valid for a given message for an associated public key
-pub fn verify(message: &[u8], public_key: &[u8], signature: &[u8]) -> bool {
-    assert!(
-        public_key.len() == PUBLIC_KEY_LENGTH,
-        "Public key should be {} bytes long!",
-        PUBLIC_KEY_LENGTH
-    );
-    assert!(
-        signature.len() == SIGNATURE_LENGTH,
-        "signature should be {} bytes long!",
-        SIGNATURE_LENGTH
-    );
-    use core::convert::TryFrom;
+pub fn verify(
+    message: &[u8],
+    public_key: &[u8; PUBLIC_KEY_LENGTH],
+    signature: &[u8; SIGNATURE_LENGTH],
+) -> bool {
     let signature_left = <&[u8; 32]>::try_from(&signature[0..32]).unwrap();
     let signature_right = <&[u8; 32]>::try_from(&signature[32..64]).unwrap();
 
@@ -243,22 +232,16 @@ pub fn verify(message: &[u8], public_key: &[u8], signature: &[u8]) -> bool {
     CtEqual::ct_eq(&rcheck, signature_left).into()
 }
 
-/// Curve25519 DH (Diffie Hellman) between a curve25519 public key and a ed25519 private key
-pub fn exchange(public_key: &[u8], private_key: &[u8]) -> [u8; 32] {
+/// Curve25519 DH (Diffie Hellman) between a curve25519 public key and a ED25519 keypair key
+pub fn exchange(public_key: &[u8; 32], private_key: &[u8; PRIVATE_KEY_LENGTH]) -> [u8; 32] {
     let ed_y = Fe::from_bytes(&public_key);
     // Produce public key in Montgomery form.
     let mont_x = edwards_to_montgomery_x(&ed_y);
 
     // Produce private key from seed component (bytes 0 to 32)
     // of the Ed25519 extended private key (64 bytes).
-    let mut hasher = Sha512::new();
-    hasher.input(&private_key[0..32]);
-    let mut hash: [u8; 64] = [0; 64];
-    hasher.result(&mut hash);
-    // Clamp the hash such that it is a valid private key
-    clamp_scalar(&mut hash);
-
-    let shared_mont_x: [u8; 32] = curve25519(&hash, &mont_x.to_bytes()); // priv., pub.
+    let extended_secret = extended_secret(private_key);
+    let shared_mont_x = curve25519(extended_scalar(&extended_secret), &mont_x.to_bytes());
 
     shared_mont_x
 }
@@ -280,11 +263,12 @@ mod tests {
     use crate::curve25519::{curve25519, curve25519_base};
     use crate::digest::Digest;
     use crate::sha2::Sha512;
+    use core::convert::TryFrom;
 
     fn do_keypair_case(seed: [u8; 32], expected_secret: [u8; 64], expected_public: [u8; 32]) {
-        let (actual_secret, actual_public) = keypair(seed.as_ref());
-        assert_eq!(actual_secret.to_vec(), expected_secret.to_vec());
-        assert_eq!(actual_public.to_vec(), expected_public.to_vec());
+        let (actual_secret, actual_public) = keypair(&seed);
+        assert_eq!(actual_secret, expected_secret);
+        assert_eq!(actual_public, expected_public);
     }
 
     #[test]
@@ -331,55 +315,44 @@ mod tests {
 
     #[test]
     fn keypair_matches_mont() {
-        let seed = [
+        let private_key = [
             0x26, 0x27, 0xf6, 0x85, 0x97, 0x15, 0xad, 0x1d, 0xd2, 0x94, 0xdd, 0xc4, 0x76, 0x19,
             0x39, 0x31, 0xf1, 0xad, 0xb5, 0x58, 0xf0, 0x93, 0x97, 0x32, 0x19, 0x2b, 0xd1, 0xc0,
             0xfd, 0x16, 0x8e, 0x4e,
         ];
-        let (ed_private, ed_public) = keypair(seed.as_ref());
+        let (ed_keypair, ed_public) = keypair(&private_key);
 
         let mut hasher = Sha512::new();
-        hasher.input(&ed_private[0..32]);
+        hasher.input(&ed_keypair[0..32]);
         let mut hash: [u8; 64] = [0; 64];
         hasher.result(&mut hash);
 
         super::clamp_scalar(&mut hash);
 
-        let cv_public = curve25519_base(&hash);
+        let curve_scalar = <&[u8; 32]>::try_from(&hash[0..32]).unwrap();
+        let cv_public = curve25519_base(curve_scalar);
 
-        let edx_ss = exchange(&ed_public, &ed_private);
-        let cv_ss = curve25519(&hash, &cv_public);
+        let edx_ss = exchange(&ed_public, &private_key);
+        let cv_ss = curve25519(&curve_scalar, &cv_public);
 
-        assert_eq!(edx_ss.to_vec(), cv_ss.to_vec());
+        assert_eq!(edx_ss, cv_ss);
     }
 
     fn do_sign_verify_case(seed: [u8; 32], message: &[u8], expected_signature: [u8; 64]) {
-        let (secret_key, public_key) = keypair(seed.as_ref());
-        let mut actual_signature = signature(message, secret_key.as_ref());
+        let (secret_key, public_key) = keypair(&seed);
+        let mut actual_signature = signature(message, &secret_key);
         assert_eq!(expected_signature.to_vec(), actual_signature.to_vec());
-        assert!(verify(
-            message,
-            public_key.as_ref(),
-            actual_signature.as_ref()
-        ));
+        assert!(verify(message, &public_key, &actual_signature));
 
         for &(index, flip) in [(0, 1), (31, 0x80), (20, 0xff)].iter() {
             actual_signature[index] ^= flip;
-            assert!(!verify(
-                message,
-                public_key.as_ref(),
-                actual_signature.as_ref()
-            ));
+            assert!(!verify(message, &public_key, &actual_signature));
             actual_signature[index] ^= flip;
         }
 
         let mut public_key_corrupt = public_key;
         public_key_corrupt[0] ^= 1;
-        assert!(!verify(
-            message,
-            public_key_corrupt.as_ref(),
-            actual_signature.as_ref()
-        ));
+        assert!(!verify(message, &public_key_corrupt, &actual_signature,));
     }
 
     #[test]
@@ -390,7 +363,7 @@ mod tests {
                 0x99, 0xa5, 0x75, 0x9f, 0x02, 0x21, 0x1f, 0x85, 0xe5, 0xff, 0x2f, 0x90, 0x4a, 0x78,
                 0x0f, 0x58, 0x00, 0x6f,
             ],
-            [
+            &[
                 0x89, 0x8f, 0x9c, 0x4b, 0x2c, 0x6e, 0xe9, 0xe2, 0x28, 0x76, 0x1c, 0xa5, 0x08, 0x97,
                 0xb7, 0x1f, 0xfe, 0xca, 0x1c, 0x35, 0x28, 0x46, 0xf5, 0xfe, 0x13, 0xf7, 0xd3, 0xd5,
                 0x7e, 0x2c, 0x15, 0xac, 0x60, 0x90, 0x0c, 0xa3, 0x2c, 0x5b, 0x5d, 0xd9, 0x53, 0xc9,
@@ -406,8 +379,7 @@ mod tests {
                 0x39, 0xea, 0xce, 0x6b, 0x28, 0xe4, 0xc3, 0x1d, 0x9d, 0x25, 0x67, 0x41, 0x45, 0x2e,
                 0x83, 0x87, 0xe1, 0x53, 0x6d, 0x03, 0x02, 0x6e, 0xe4, 0x84, 0x10, 0xd4, 0x3b, 0x21,
                 0x91, 0x88, 0xba, 0x14, 0xa8, 0xaf,
-            ]
-            .as_ref(),
+            ],
             [
                 0x91, 0x20, 0x91, 0x66, 0x1e, 0xed, 0x18, 0xa4, 0x03, 0x4b, 0xc7, 0xdb, 0x4b, 0xd6,
                 0x0f, 0xe2, 0xde, 0xeb, 0xf3, 0xff, 0x3b, 0x6b, 0x99, 0x8d, 0xae, 0x20, 0x94, 0xb6,
@@ -422,7 +394,7 @@ mod tests {
                 0xfa, 0x19, 0xf9, 0x92, 0x4f, 0xea, 0x4e, 0x77, 0x33, 0xcd, 0x45, 0xf6, 0xc3, 0x2f,
                 0x21, 0x9a, 0x72, 0x91,
             ],
-            [
+            &[
                 0x77, 0x13, 0x43, 0x5a, 0x0e, 0x34, 0x6f, 0x67, 0x71, 0xae, 0x5a, 0xde, 0xa8, 0x7a,
                 0xe7, 0xa4, 0x52, 0xc6, 0x5d, 0x74, 0x8f, 0x48, 0x69, 0xd3, 0x1e, 0xd3, 0x67, 0x47,
                 0xc3, 0x28, 0xdd, 0xc4, 0xec, 0x0e, 0x48, 0x67, 0x93, 0xa5, 0x1c, 0x67, 0x66, 0xf7,
@@ -430,8 +402,7 @@ mod tests {
                 0xf2, 0x1f, 0x28, 0x0e, 0x49, 0x07, 0xed, 0x89, 0xbe, 0x30, 0x1a, 0x4e, 0xc8, 0x49,
                 0x6e, 0xb6, 0xab, 0x90, 0x00, 0x06, 0xe5, 0xa3, 0xc8, 0xe9, 0xc9, 0x93, 0x62, 0x1d,
                 0x6a, 0x3b, 0x0f, 0x6c, 0xba, 0xd0, 0xfd, 0xde, 0xf3, 0xb9, 0xc8, 0x2d,
-            ]
-            .as_ref(),
+            ],
             [
                 0x4b, 0x8d, 0x9b, 0x1e, 0xca, 0x54, 0x00, 0xea, 0xc6, 0xf5, 0xcc, 0x0c, 0x94, 0x39,
                 0x63, 0x00, 0x52, 0xf7, 0x34, 0xce, 0x45, 0x3e, 0x94, 0x26, 0xf3, 0x19, 0xdd, 0x96,

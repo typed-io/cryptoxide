@@ -7,9 +7,11 @@
 use crate::constant_time::{Choice, CtEqual};
 use core::ops::{Add, Mul, Neg, Sub};
 
+pub mod precomp;
+
 /// Field Element in \Z/(2^255-19)
 #[derive(Clone)]
-pub struct Fe([u64; 5]);
+pub struct Fe(pub(crate) [u64; 5]);
 
 impl CtEqual for Fe {
     fn ct_eq(&self, other: &Self) -> Choice {
@@ -113,6 +115,12 @@ impl Fe {
     }
     pub fn is_negative(&self) -> bool {
         (self.to_bytes()[0] & 1) != 0
+    }
+    pub(crate) fn maybe_swap_with(&mut self, other: &mut Fe, do_swap: i32) {
+        todo!()
+    }
+    pub(crate) fn maybe_set(&mut self, other: &Fe, do_swap: i32) {
+        todo!()
     }
 }
 

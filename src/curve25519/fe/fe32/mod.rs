@@ -1,6 +1,10 @@
 use crate::constant_time::CtEqual;
 use core::cmp::{Eq, PartialEq};
-use core::ops::{Add, Mul, Sub};
+use core::ops::{Add, Mul, Neg, Sub};
+
+pub mod precomp;
+
+use super::load::{load_3i, load_4i};
 
 /// Field Element in \Z/(2^255-19)
 ///
@@ -8,7 +12,7 @@ use core::ops::{Add, Mul, Sub};
 /// t[0]+2^26 t[1]+2^51 t[2]+2^77 t[3]+2^102 t[4]+...+2^230 t[9].
 /// Bounds on each t[i] vary depending on context.
 #[derive(Clone)]
-pub struct Fe(pub [i32; 10]);
+pub struct Fe(pub(crate) [i32; 10]);
 
 impl PartialEq for Fe {
     fn eq(&self, other: &Fe) -> bool {
@@ -34,19 +38,6 @@ impl Fe {
         -21827239, -5839606, -30745221, 13898782, 229458, 15978800, -12551817, -6495438, 29715968,
         9444199,
     ]);
-}
-
-pub(crate) fn load_4u(s: &[u8]) -> u64 {
-    (s[0] as u64) | ((s[1] as u64) << 8) | ((s[2] as u64) << 16) | ((s[3] as u64) << 24)
-}
-pub(crate) fn load_4i(s: &[u8]) -> i64 {
-    load_4u(s) as i64
-}
-pub(crate) fn load_3u(s: &[u8]) -> u64 {
-    (s[0] as u64) | ((s[1] as u64) << 8) | ((s[2] as u64) << 16)
-}
-pub(crate) fn load_3i(s: &[u8]) -> i64 {
-    load_3u(s) as i64
 }
 
 // extended multiplication 32x32 -> 64
@@ -367,6 +358,17 @@ impl Mul for &Fe {
 
         Fe([h0 as i32, h1 as i32, h2 as i32, h3 as i32, h4 as i32,
             h5 as i32, h6 as i32, h7 as i32, h8 as i32, h9 as i32])
+    }
+}
+
+impl Neg for &Fe {
+    type Output = Fe;
+
+    fn neg(self) -> Fe {
+        let &Fe(f) = self;
+        Fe([
+            -f[0], -f[1], -f[2], -f[3], -f[4], -f[5], -f[6], -f[7], -f[8], -f[9],
+        ])
     }
 }
 
@@ -957,13 +959,6 @@ impl Fe {
 
     pub fn is_negative(&self) -> bool {
         (self.to_bytes()[0] & 1) != 0
-    }
-
-    pub fn neg(&self) -> Fe {
-        let &Fe(f) = self;
-        Fe([
-            -f[0], -f[1], -f[2], -f[3], -f[4], -f[5], -f[6], -f[7], -f[8], -f[9],
-        ])
     }
 
     pub fn pow25523(&self) -> Fe {

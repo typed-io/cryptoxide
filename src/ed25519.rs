@@ -247,12 +247,12 @@ pub fn exchange(public_key: &[u8; 32], private_key: &[u8; PRIVATE_KEY_LENGTH]) -
 }
 
 fn edwards_to_montgomery_x(ed_y: &Fe) -> Fe {
-    let ed_z = &Fe([1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let ed_z = &Fe::ONE;
     let temp_x = ed_z.add(ed_y);
     let temp_z = ed_z.sub(ed_y);
     let temp_z_inv = temp_z.invert();
 
-    let mont_x = temp_x.mul(temp_z_inv);
+    let mont_x = temp_x.mul(&temp_z_inv);
 
     mont_x
 }

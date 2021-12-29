@@ -16,7 +16,9 @@ pub struct Fe(pub(crate) [u64; 5]);
 
 impl CtEqual for Fe {
     fn ct_eq(&self, other: &Self) -> Choice {
-        self.0.ct_eq(&other.0)
+        let p1 = self.to_bytes();
+        let p2 = other.to_bytes();
+        p1.ct_eq(&p2)
     }
 }
 impl PartialEq for Fe {
@@ -75,7 +77,7 @@ impl Neg for &Fe {
     type Output = Fe;
 
     fn neg(self) -> Fe {
-        todo!()
+        &Fe::ZERO - &self
     }
 }
 
@@ -243,29 +245,29 @@ mod tests {
 
         // 2^255-20 FieldElement representation
         let fe25520 = Fe([
-            2251799813685228,
-            2251799813685247,
-            2251799813685247,
-            2251799813685247,
-            2251799813685247,
+            0x7FFFFFFFFFFEC,
+            0x7FFFFFFFFFFFF,
+            0x7FFFFFFFFFFFF,
+            0x7FFFFFFFFFFFF,
+            0x7FFFFFFFFFFFF,
         ]);
 
         // 2^255-19 FieldElement representation
         let fe25519 = Fe([
-            2251799813685229,
-            2251799813685247,
-            2251799813685247,
-            2251799813685247,
-            2251799813685247,
+            0x7FFFFFFFFFFED,
+            0x7FFFFFFFFFFFF,
+            0x7FFFFFFFFFFFF,
+            0x7FFFFFFFFFFFF,
+            0x7FFFFFFFFFFFF,
         ]);
 
         // 2^255-18 FieldElement representation
         let fe25518 = Fe([
-            2251799813685230,
-            2251799813685247,
-            2251799813685247,
-            2251799813685247,
-            2251799813685247,
+            0x7FFFFFFFFFFEE,
+            0x7FFFFFFFFFFFF,
+            0x7FFFFFFFFFFFF,
+            0x7FFFFFFFFFFFF,
+            0x7FFFFFFFFFFFF,
         ]);
         assert_eq!(Fe::ZERO.to_bytes(), fe25519.to_bytes());
         assert_eq!(Fe::ONE.to_bytes(), fe25518.to_bytes());

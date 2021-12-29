@@ -2,6 +2,7 @@
 //!
 //! arithmetic calculation helpers:
 //!
+//! * ed25519-donna: https://github.com/floodyberry/ed25519-donna
 //! * Sandy2x: New Curve25519 Speed Records
 
 use crate::constant_time::{Choice, CtEqual};
@@ -88,13 +89,108 @@ impl Mul for &Fe {
     }
 }
 
+const MASK: u64 = (1 << 51) - 1;
+
 impl Fe {
-    pub fn from_bytes(bytes: &[u8; 32]) -> Fe {
-        todo!()
+    /// Create the Field Element from its little-endian byte representation (256 bits)
+    ///
+    /// Note that it doesn't verify that the bytes
+    /// are actually representing an element in the
+    /// range of the field, but will automatically wrap
+    /// the bytes to be in the range
+    pub const fn from_bytes(bytes: &[u8; 32]) -> Fe {
+        // load 8 bytes from input[ofs..ofs+7] as little endian u64
+        #[inline]
+        const fn load(bytes: &[u8; 32], ofs: usize) -> u64 {
+            (bytes[ofs] as u64)
+                | ((bytes[ofs + 1] as u64) << 8)
+                | ((bytes[ofs + 2] as u64) << 16)
+                | ((bytes[ofs + 3] as u64) << 24)
+                | ((bytes[ofs + 4] as u64) << 32)
+                | ((bytes[ofs + 5] as u64) << 40)
+                | ((bytes[ofs + 6] as u64) << 48)
+                | ((bytes[ofs + 7] as u64) << 56)
+        }
+
+        // maps from bytes at:
+        // * bit 0 (byte 0 shift 0)
+        // * bit 51 (byte 6 shift 3)
+        // * bit 102 (byte 12 shift 6)
+        // * bit 153 (byte 19 shift 1)
+        // * bit 204 (byte 25 shift 4)
+        let x0 = load(bytes, 0) & MASK;
+        let x1 = (load(bytes, 6) >> 3) & MASK;
+        let x2 = (load(bytes, 12) >> 6) & MASK;
+        let x3 = (load(bytes, 19) >> 1) & MASK;
+        let x4 = (load(bytes, 24) >> 12) & MASK;
+        Fe([x0, x1, x2, x3, x4])
     }
-    pub fn to_bytes(&self) -> [u8; 32] {
-        todo!()
+
+    /// Represent the Field Element as little-endian canonical bytes (256 bits)
+    ///
+    /// Due to the field size, it's guarantee that the highest bit is always 0
+    pub const fn to_bytes(&self) -> [u8; 32] {
+        let Fe(t) = *self;
+
+        #[inline]
+        const fn carry_full(t: &[u64; 5]) -> [u64; 5] {
+            let t1 = t[1] + (t[0] >> 51);
+            let t2 = t[2] + (t1 >> 51);
+            let t3 = t[3] + (t2 >> 51);
+            let t4 = t[4] + (t3 >> 51);
+            let t0 = (t[0] & MASK) + 19 * (t4 >> 51);
+            [t0, t1 & MASK, t2 & MASK, t3 & MASK, t4 & MASK]
+        }
+
+        #[inline]
+        const fn carry_final(t: &[u64; 5]) -> [u64; 5] {
+            let t1 = t[1] + (t[0] >> 51);
+            let t2 = t[2] + (t1 >> 51);
+            let t3 = t[3] + (t2 >> 51);
+            let t4 = t[4] + (t3 >> 51);
+            [t[0] & MASK, t1 & MASK, t2 & MASK, t3 & MASK, t4 & MASK]
+        }
+
+        let t = carry_full(&t);
+        let mut t = carry_full(&t);
+        t[0] += 19;
+        let mut t = carry_full(&t);
+
+        t[0] += (MASK + 1) - 19;
+        t[1] += MASK;
+        t[2] += MASK;
+        t[3] += MASK;
+        t[4] += MASK;
+
+        let t = carry_final(&t);
+
+        let out0 = t[0] | t[1] << 51;
+        let out1 = (t[1] >> 13) | (t[2] << 38);
+        let out2 = (t[2] >> 26) | (t[3] << 25);
+        let out3 = (t[3] >> 39) | (t[4] << 12);
+
+        let mut out = [0u8; 32];
+
+        macro_rules! write8 {
+            ($ofs:literal, $v:ident) => {
+                let x = $v.to_le_bytes();
+                out[$ofs] = x[0];
+                out[$ofs + 1] = x[1];
+                out[$ofs + 2] = x[2];
+                out[$ofs + 3] = x[3];
+                out[$ofs + 4] = x[4];
+                out[$ofs + 5] = x[5];
+                out[$ofs + 6] = x[6];
+                out[$ofs + 7] = x[7];
+            };
+        }
+        write8!(0, out0);
+        write8!(8, out1);
+        write8!(16, out2);
+        write8!(24, out3);
+        out
     }
+
     pub fn invert(&self) -> Fe {
         todo!()
     }
@@ -126,6 +222,53 @@ impl Fe {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    fn prop_bytes(bytes: &[u8; 32]) {
+        let f = Fe::from_bytes(bytes);
+        let got_bytes = f.to_bytes();
+        assert_eq!(&got_bytes, bytes)
+    }
+
     #[test]
-    fn prop_() {}
+    fn bytes_serialization() {
+        prop_bytes(&[0; 32]);
+        prop_bytes(&[1; 32]);
+        prop_bytes(&[2; 32]);
+        prop_bytes(&[0x5f; 32]);
+        prop_bytes(&[
+            0, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4,
+            5, 1, 0,
+        ]);
+
+        // 2^255-20 FieldElement representation
+        let fe25520 = Fe([
+            2251799813685228,
+            2251799813685247,
+            2251799813685247,
+            2251799813685247,
+            2251799813685247,
+        ]);
+
+        // 2^255-19 FieldElement representation
+        let fe25519 = Fe([
+            2251799813685229,
+            2251799813685247,
+            2251799813685247,
+            2251799813685247,
+            2251799813685247,
+        ]);
+
+        // 2^255-18 FieldElement representation
+        let fe25518 = Fe([
+            2251799813685230,
+            2251799813685247,
+            2251799813685247,
+            2251799813685247,
+            2251799813685247,
+        ]);
+        assert_eq!(Fe::ZERO.to_bytes(), fe25519.to_bytes());
+        assert_eq!(Fe::ONE.to_bytes(), fe25518.to_bytes());
+        assert_eq!((&Fe::ZERO - &Fe::ONE).to_bytes(), fe25520.to_bytes());
+    }
 }

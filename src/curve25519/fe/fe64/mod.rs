@@ -14,11 +14,14 @@ pub mod precomp;
 #[derive(Clone)]
 pub struct Fe(pub(crate) [u64; 5]);
 
-impl CtEqual for Fe {
-    fn ct_eq(&self, other: &Self) -> Choice {
+impl CtEqual for &Fe {
+    fn ct_eq(self, other: Self) -> Choice {
         let p1 = self.to_bytes();
         let p2 = other.to_bytes();
         p1.ct_eq(&p2)
+    }
+    fn ct_ne(self, other: Self) -> Choice {
+        self.ct_eq(other).negate()
     }
 }
 impl PartialEq for Fe {

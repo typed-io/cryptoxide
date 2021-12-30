@@ -35,10 +35,27 @@ impl Fe {
     pub const ZERO: Fe = Fe([0, 0, 0, 0, 0]);
     pub const ONE: Fe = Fe([1, 0, 0, 0, 0]);
 
-    // todo
-    pub const SQRTM1: Fe = Fe([1, 1, 1, 1, 1]);
-    pub const D: Fe = Fe([1, 1, 1, 1, 1]);
-    pub const D2: Fe = Fe([1, 1, 1, 1, 1]);
+    pub const SQRTM1: Fe = Fe([
+        0x61B274A0EA0B0,
+        0xD5A5FC8F189D,
+        0x7EF5E9CBD0C60,
+        0x78595A6804C9E,
+        0x2B8324804FC1D,
+    ]);
+    pub const D: Fe = Fe([
+        0x34DCA135978A3,
+        0x1A8283B156EBD,
+        0x5E7A26001C029,
+        0x739C663A03CBB,
+        0x52036CEE2B6FF,
+    ]);
+    pub const D2: Fe = Fe([
+        0x69B9426B2F159,
+        0x35050762ADD7A,
+        0x3CF44C0038052,
+        0x6738CC7407977,
+        0x2406D9DC56DFF,
+    ]);
 }
 
 impl Add for &Fe {

@@ -109,9 +109,7 @@ impl Mul for &Fe {
     type Output = Fe;
 
     fn mul(self, rhs: &Fe) -> Fe {
-        let Fe([f0, f1, f2, f3, f4]) = *self;
-        let Fe([g0, g1, g2, g3, g4]) = *rhs;
-        todo!()
+            a as u128 * b as u128
     }
 }
 

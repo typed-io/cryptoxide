@@ -58,6 +58,12 @@ impl Fe {
     ]);
 }
 
+
+#[inline]
+const fn mul128(a: u64, b: u64) -> u128 {
+    a as u128 * b as u128
+}
+
 impl Add for &Fe {
     type Output = Fe;
 
@@ -105,6 +111,7 @@ impl Neg for &Fe {
     }
 }
 
+
 impl Mul for &Fe {
     type Output = Fe;
 
@@ -113,11 +120,6 @@ impl Mul for &Fe {
         let Fe([s0, s1, s2, s3, s4]) = *rhs;
 
         let mut t = [0u128; 5];
-
-        #[inline]
-        const fn mul128(a: u64, b: u64) -> u128 {
-            a as u128 * b as u128
-        }
 
         t[0] = mul128(r0, s0);
         t[1] = mul128(r0, s1) + mul128(r1, s0);
@@ -265,9 +267,83 @@ impl Fe {
         let f = Fe([121666, 0, 0, 0, 0]);
         self * &f
     }
+
+    #[rustfmt::skip]
     pub fn square(&self) -> Fe {
-        self * self
+        let Fe([mut r0, mut r1, mut r2, mut r3, mut r4]) = *self;
+
+        let d0 = r0 * 2;
+        let d1 = r1 * 2;
+        let d2 = r2 * 2 * 19;
+        let d419 = r4 * 19;
+        let d4 = d419 * 2;
+
+        let t0 = mul128(r0, r0) + mul128(d4, r1) + mul128(d2 ,r3     );
+        let t1 = mul128(d0, r1) + mul128(d4, r2) + mul128(r3 ,r3 * 19);
+        let t2 = mul128(d0, r2) + mul128(r1, r1) + mul128(d4 ,r3     );
+        let t3 = mul128(d0, r3) + mul128(d1, r2) + mul128(r4 ,d419   );
+        let t4 = mul128(d0, r4) + mul128(d1, r3) + mul128(r2 ,r2     );
+
+        #[inline]
+        fn shl128(v: u128, shift: usize) -> u64 {
+            ((v << shift) >> 64) as u64
+        }
+
+        r0 = (t0 as u64) & MASK;
+        r1 = (t1 as u64) & MASK; let c = shl128(t0, 13); r1 += c;
+        r2 = (t2 as u64) & MASK; let c = shl128(t1, 13); r2 += c;
+        r3 = (t3 as u64) & MASK; let c = shl128(t2, 13); r3 += c;
+        r4 = (t4 as u64) & MASK; let c = shl128(t3, 13); r4 += c; 
+                                    let c = shl128(t4, 13); r0 += c * 19;
+                        let c = r0 >> 51; r0 &= MASK;
+        r1 += c     ;  let c = r1 >> 51; r1 &= MASK;
+        r2 += c     ;  let c = r2 >> 51; r2 &= MASK;
+        r3 += c     ;  let c = r3 >> 51; r3 &= MASK;
+        r4 += c     ;  let c = r4 >> 51; r4 &= MASK;
+        r0 += c * 19;
+
+        Fe([r0, r1, r2, r3, r4])
     }
+
+    #[rustfmt::skip]
+    pub fn square_repeatdly(&self, n: usize) -> Fe {
+        let Fe([mut r0, mut r1, mut r2, mut r3, mut r4]) = *self;
+
+        for _ in 0..n {
+            let d0 = r0 * 2;
+            let d1 = r1 * 2;
+            let d2 = r2 * 2 * 19;
+            let d419 = r4 * 19;
+            let d4 = d419 * 2;
+
+            let t0 = mul128(r0, r0) + mul128(d4, r1) + mul128(d2 ,r3     );
+            let t1 = mul128(d0, r1) + mul128(d4, r2) + mul128(r3 ,r3 * 19);
+            let t2 = mul128(d0, r2) + mul128(r1, r1) + mul128(d4 ,r3     );
+            let t3 = mul128(d0, r3) + mul128(d1, r2) + mul128(r4 ,d419   );
+            let t4 = mul128(d0, r4) + mul128(d1, r3) + mul128(r2 ,r2     );
+
+            #[inline]
+            fn shl128(v: u128, shift: usize) -> u64 {
+                ((v << shift) >> 64) as u64
+            }
+
+            r0 = (t0 as u64) & MASK;
+            r1 = (t1 as u64) & MASK; let c = shl128(t0, 13); r1 += c;
+            r2 = (t2 as u64) & MASK; let c = shl128(t1, 13); r2 += c;
+            r3 = (t3 as u64) & MASK; let c = shl128(t2, 13); r3 += c;
+            r4 = (t4 as u64) & MASK; let c = shl128(t3, 13); r4 += c; 
+                                     let c = shl128(t4, 13); r0 += c * 19;
+                           let c = r0 >> 51; r0 &= MASK;
+            r1 += c     ;  let c = r1 >> 51; r1 &= MASK;
+            r2 += c     ;  let c = r2 >> 51; r2 &= MASK;
+            r3 += c     ;  let c = r3 >> 51; r3 &= MASK;
+            r4 += c     ;  let c = r4 >> 51; r4 &= MASK;
+            r0 += c * 19;
+        }
+
+        Fe([r0, r1, r2, r3, r4])
+    }
+
     pub fn square_and_double(&self) -> Fe {
         let x = self.square();
         &x + &x
@@ -276,6 +352,7 @@ impl Fe {
     pub fn is_nonzero(&self) -> bool {
         CtEqual::ct_ne(&self.to_bytes(), &[0; 32]).into()
     }
+
     pub fn is_negative(&self) -> bool {
         (self.to_bytes()[0] & 1) != 0
     }

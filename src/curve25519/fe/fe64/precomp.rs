@@ -6,44 +6,44 @@ use super::Fe;
 #[rustfmt::skip]
 pub(crate) const BI: [GePrecomp; 8] = [
     GePrecomp {
-        y_plus_x: Fe::ONE,
-        y_minus_x: Fe::ONE,
-        xy2d: Fe::ONE,
+        y_plus_x: Fe([ 0x493c6f58c3b85, 0xdf7181c325f7, 0xf50b0b3e4cb7, 0x5329385a44c32, 0x7cf9d3a33d4b ]),
+        y_minus_x: Fe([ 0x3905d740913e, 0xba2817d673a2, 0x23e2827f4e67c, 0x133d2e0c21a34, 0x44fd2f9298f81 ]),
+        xy2d: Fe([ 0x11205877aaa68, 0x479955893d579, 0x50d66309b67a0, 0x2d42d0dbee5ee, 0x6f117b689f0c6 ]),
     },
     GePrecomp {
-        y_plus_x: Fe::ONE,
-        y_minus_x: Fe::ONE,
-        xy2d: Fe::ONE,
+        y_plus_x: Fe([ 0x5b0a84cee9730, 0x61d10c97155e4, 0x4059cc8096a10, 0x47a608da8014f, 0x7a164e1b9a80f ]),
+        y_minus_x: Fe([ 0x11fe8a4fcd265, 0x7bcb8374faacc, 0x52f5af4ef4d4f, 0x5314098f98d10, 0x2ab91587555bd ]),
+        xy2d: Fe([ 0x6933f0dd0d889, 0x44386bb4c4295, 0x3cb6d3162508c, 0x26368b872a2c6, 0x5a2826af12b9b ]),
     },
     GePrecomp {
-        y_plus_x: Fe::ONE,
-        y_minus_x: Fe::ONE,
-        xy2d: Fe::ONE,
+        y_plus_x: Fe([ 0x2bc4408a5bb33, 0x78ebdda05442, 0x2ffb112354123, 0x375ee8df5862d, 0x2945ccf146e20 ]),
+        y_minus_x: Fe([ 0x182c3a447d6ba, 0x22964e536eff2, 0x192821f540053, 0x2f9f19e788e5c, 0x154a7e73eb1b5 ]),
+        xy2d: Fe([ 0x3dbf1812a8285, 0xfa17ba3f9797, 0x6f69cb49c3820, 0x34d5a0db3858d, 0x43aabe696b3bb ]),
     },
     GePrecomp {
-        y_plus_x: Fe::ONE,
-        y_minus_x: Fe::ONE,
-        xy2d: Fe::ONE,
+        y_plus_x: Fe([ 0x25cd0944ea3bf, 0x75673b81a4d63, 0x150b925d1c0d4, 0x13f38d9294114, 0x461bea69283c9 ]),
+        y_minus_x: Fe([ 0x72c9aaa3221b1, 0x267774474f74d, 0x64b0e9b28085, 0x3f04ef53b27c9, 0x1d6edd5d2e531 ]),
+        xy2d: Fe([ 0x36dc801b8b3a2, 0xe0a7d4935e30, 0x1deb7cecc0d7d, 0x53a94e20dd2c, 0x7a9fbb1c6a0f9 ]),
     },
     GePrecomp {
-        y_plus_x: Fe::ONE,
-        y_minus_x: Fe::ONE,
-        xy2d: Fe::ONE,
+        y_plus_x: Fe([ 0x6678aa6a8632f, 0x5ea3788d8b365, 0x21bd6d6994279, 0x7ace75919e4e3, 0x34b9ed338add7 ]),
+        y_minus_x: Fe([ 0x6217e039d8064, 0x6dea408337e6d, 0x57ac112628206, 0x647cb65e30473, 0x49c05a51fadc9 ]),
+        xy2d: Fe([ 0x4e8bf9045af1b, 0x514e33a45e0d6, 0x7533c5b8bfe0f, 0x583557b7e14c9, 0x73c172021b008 ]),
     },
     GePrecomp {
-        y_plus_x: Fe::ONE,
-        y_minus_x: Fe::ONE,
-        xy2d: Fe::ONE,
+        y_plus_x: Fe([ 0x700848a802ade, 0x1e04605c4e5f7, 0x5c0d01b9767fb, 0x7d7889f42388b, 0x4275aae2546d8 ]),
+        y_minus_x: Fe([ 0x75b0249864348, 0x52ee11070262b, 0x237ae54fb5acd, 0x3bfd1d03aaab5, 0x18ab598029d5c ]),
+        xy2d: Fe([ 0x32cc5fd6089e9, 0x426505c949b05, 0x46a18880c7ad2, 0x4a4221888ccda, 0x3dc65522b53df ]),
     },
     GePrecomp {
-        y_plus_x: Fe::ONE,
-        y_minus_x: Fe::ONE,
-        xy2d: Fe::ONE,
+        y_plus_x: Fe([ 0xc222a2007f6d, 0x356b79bdb77ee, 0x41ee81efe12ce, 0x120a9bd07097d, 0x234fd7eec346f ]),
+        y_minus_x: Fe([ 0x7013b327fbf93, 0x1336eeded6a0d, 0x2b565a2bbf3af, 0x253ce89591955, 0x267882d17602 ]),
+        xy2d: Fe([ 0xa119732ea378, 0x63bf1ba8e2a6c, 0x69f94cc90df9a, 0x431d1779bfc48, 0x497ba6fdaa097 ]),
     },
     GePrecomp {
-        y_plus_x: Fe::ONE,
-        y_minus_x: Fe::ONE,
-        xy2d: Fe::ONE,
+        y_plus_x: Fe([ 0x6cc0313cfeaa0, 0x1a313848da499, 0x7cb534219230a, 0x39596dedefd60, 0x61e22917f12de ]),
+        y_minus_x: Fe([ 0x3cd86468ccf0b, 0x48553221ac081, 0x6c9464b4e0a6e, 0x75fba84180403, 0x43b5cd4218d05 ]),
+        xy2d: Fe([ 0x2762f9bd0b516, 0x1c6e7fbddcbb3, 0x75909c3ace2bd, 0x42101972d3ec9, 0x511d61210ae4d ]),
     },
 ];
 

@@ -61,14 +61,16 @@ impl Fe {
 impl Add for &Fe {
     type Output = Fe;
 
+    #[rustfmt::skip]
     fn add(self, rhs: &Fe) -> Fe {
         let Fe([f0, f1, f2, f3, f4]) = *self;
         let Fe([g0, g1, g2, g3, g4]) = *rhs;
-        let h0 = f0 + g0;
-        let h1 = f1 + g1;
-        let h2 = f2 + g2;
-        let h3 = f3 + g3;
-        let h4 = f4 + g4;
+        let mut h0 = f0 + g0    ; let c = h0 >> 51; h0 &= MASK;
+        let mut h1 = f1 + g1 + c; let c = h1 >> 51; h1 &= MASK;
+        let mut h2 = f2 + g2 + c; let c = h2 >> 51; h2 &= MASK;
+        let mut h3 = f3 + g3 + c; let c = h3 >> 51; h3 &= MASK;
+        let mut h4 = f4 + g4 + c; let c = h4 >> 51; h4 &= MASK;
+        h0 += c * 19;
         Fe([h0, h1, h2, h3, h4])
     }
 }
@@ -76,19 +78,21 @@ impl Add for &Fe {
 impl Sub for &Fe {
     type Output = Fe;
 
+    #[rustfmt::skip]
     fn sub(self, rhs: &Fe) -> Fe {
         // multiple of P
-        const TWO_P0: u64 = 0x0fffffffffffda;
-        const TWO_P1234: u64 = 0x0ffffffffffffe;
+        const FOUR_P0: u64 = 0x1fffffffffffb4;
+        const FOUR_P1234: u64 = 0x1ffffffffffffc;
 
         let Fe([f0, f1, f2, f3, f4]) = *self;
         let Fe([g0, g1, g2, g3, g4]) = *rhs;
 
-        let h0 = f0 + TWO_P0 - g0;
-        let h1 = f1 + TWO_P1234 - g1;
-        let h2 = f2 + TWO_P1234 - g2;
-        let h3 = f3 + TWO_P1234 - g3;
-        let h4 = f4 + TWO_P1234 - g4;
+        let mut h0 = f0 + FOUR_P0    - g0    ; let c = h0 >> 51; h0 &= MASK;
+        let mut h1 = f1 + FOUR_P1234 - g1 + c; let c = h1 >> 51; h1 &= MASK;
+        let mut h2 = f2 + FOUR_P1234 - g2 + c; let c = h2 >> 51; h2 &= MASK;
+        let mut h3 = f3 + FOUR_P1234 - g3 + c; let c = h3 >> 51; h3 &= MASK;
+        let mut h4 = f4 + FOUR_P1234 - g4 + c; let c = h4 >> 51; h4 &= MASK;
+        h0 += c * 19;
         Fe([h0, h1, h2, h3, h4])
     }
 }

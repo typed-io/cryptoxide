@@ -17,7 +17,7 @@
 //!
 
 use crate::constant_time::CtEqual;
-use crate::curve25519::{curve25519, ge_scalarmult_base, sc_muladd, sc_reduce, Fe, GeP2, GeP3};
+use crate::curve25519::{curve25519, ge_scalarmult_base, scalar, Fe, GeP2, GeP3};
 use crate::digest::Digest;
 use crate::sha2::Sha512;
 use core::convert::TryFrom;
@@ -105,7 +105,7 @@ fn signature_nonce(extended_secret: &[u8; EXTENDED_KEY_LENGTH], message: &[u8]) 
     hasher.input(&extended_secret[32..64]);
     hasher.input(message);
     hasher.result(&mut hash_output);
-    sc_reduce(&hash_output)
+    scalar::reduce(&hash_output)
 }
 
 /// Generate a signature for the given message using a normal ED25519 secret key
@@ -128,8 +128,8 @@ pub fn signature(message: &[u8], keypair: &[u8; KEYPAIR_LENGTH]) -> [u8; SIGNATU
         hasher.input(message);
         let mut hram: [u8; 64] = [0; 64];
         hasher.result(&mut hram);
-        let hram = sc_reduce(&hram);
-        sc_muladd(
+        let hram = scalar::reduce(&hram);
+        scalar::muladd(
             &mut signature[32..64],
             &hram[0..32],
             &az[0..32],
@@ -160,8 +160,8 @@ pub fn signature_extended(
         hasher.input(message);
         let mut hram: [u8; 64] = [0; 64];
         hasher.result(&mut hram);
-        let hram = sc_reduce(&mut hram);
-        sc_muladd(
+        let hram = scalar::reduce(&mut hram);
+        scalar::muladd(
             &mut signature[32..64],
             &hram,
             extended_scalar(extended_secret),
@@ -223,7 +223,7 @@ pub fn verify(
     hasher.input(message);
     let mut hash: [u8; 64] = [0; 64];
     hasher.result(&mut hash);
-    let a_scalar = sc_reduce(&mut hash);
+    let a_scalar = scalar::reduce(&mut hash);
 
     let r = GeP2::double_scalarmult_vartime(&a_scalar, a, signature_right);
     let rcheck = r.to_bytes();

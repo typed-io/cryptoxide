@@ -294,12 +294,12 @@ impl Fe {
         r2 = (t2 as u64) & MASK; let c = shl128(t1, 13); r2 += c;
         r3 = (t3 as u64) & MASK; let c = shl128(t2, 13); r3 += c;
         r4 = (t4 as u64) & MASK; let c = shl128(t3, 13); r4 += c; 
-                                    let c = shl128(t4, 13); r0 += c * 19;
-                        let c = r0 >> 51; r0 &= MASK;
-        r1 += c     ;  let c = r1 >> 51; r1 &= MASK;
-        r2 += c     ;  let c = r2 >> 51; r2 &= MASK;
-        r3 += c     ;  let c = r3 >> 51; r3 &= MASK;
-        r4 += c     ;  let c = r4 >> 51; r4 &= MASK;
+                                 let c = shl128(t4, 13); r0 += c * 19;
+                      let c = r0 >> 51; r0 &= MASK;
+        r1 += c     ; let c = r1 >> 51; r1 &= MASK;
+        r2 += c     ; let c = r2 >> 51; r2 &= MASK;
+        r3 += c     ; let c = r3 >> 51; r3 &= MASK;
+        r4 += c     ; let c = r4 >> 51; r4 &= MASK;
         r0 += c * 19;
 
         Fe([r0, r1, r2, r3, r4])
@@ -333,11 +333,11 @@ impl Fe {
             r3 = (t3 as u64) & MASK; let c = shl128(t2, 13); r3 += c;
             r4 = (t4 as u64) & MASK; let c = shl128(t3, 13); r4 += c; 
                                      let c = shl128(t4, 13); r0 += c * 19;
-                           let c = r0 >> 51; r0 &= MASK;
-            r1 += c     ;  let c = r1 >> 51; r1 &= MASK;
-            r2 += c     ;  let c = r2 >> 51; r2 &= MASK;
-            r3 += c     ;  let c = r3 >> 51; r3 &= MASK;
-            r4 += c     ;  let c = r4 >> 51; r4 &= MASK;
+                          let c = r0 >> 51; r0 &= MASK;
+            r1 += c     ; let c = r1 >> 51; r1 &= MASK;
+            r2 += c     ; let c = r2 >> 51; r2 &= MASK;
+            r3 += c     ; let c = r3 >> 51; r3 &= MASK;
+            r4 += c     ; let c = r4 >> 51; r4 &= MASK;
             r0 += c * 19;
         }
 

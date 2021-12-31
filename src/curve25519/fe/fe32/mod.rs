@@ -672,6 +672,15 @@ impl Fe {
             h5 as i32, h6 as i32, h7 as i32, h8 as i32, h9 as i32])
     }
 
+    pub fn square_repeatdly(&self, n: usize) -> Fe {
+        let mut acc = self.square();
+        for _ in 1..n {
+            acc = acc.square();
+        }
+        acc
+    }
+
+
     #[rustfmt::skip]
     pub fn square_and_double(&self) -> Fe {
         let Fe([f0, f1, f2, f3, f4, f5, f6, f7, f8, f9]) = *self;
@@ -799,112 +808,11 @@ impl Fe {
             h5 as i32, h6 as i32, h7 as i32, h8 as i32, h9 as i32])
     }
 
-    pub fn invert(&self) -> Fe {
-        let z1 = self.clone();
-
-        /* qhasm: z2 = z1^2^1 */
-        let z2 = z1.square();
-        /* qhasm: z8 = z2^2^2 */
-        let z8 = z2.square().square();
-        /* qhasm: z9 = z1*z8 */
-        let z9 = z1 * z8;
-
-        /* qhasm: z11 = z2*z9 */
-        let z11 = &z2 * &z9;
-
-        /* qhasm: z22 = z11^2^1 */
-        let z22 = z11.square();
-
-        /* qhasm: z_5_0 = z9*z22 */
-        let z_5_0 = &z9 * &z22;
-
-        /* qhasm: z_10_5 = z_5_0^2^5 */
-        let z_10_5 = (0..5).fold(z_5_0.clone(), |z_5_n, _| z_5_n.square());
-
-        /* qhasm: z_10_0 = z_10_5*z_5_0 */
-        let z_10_0 = &z_10_5 * &z_5_0;
-
-        /* qhasm: z_20_10 = z_10_0^2^10 */
-        let z_20_10 = (0..10).fold(z_10_0.clone(), |x, _| x.square());
-
-        /* qhasm: z_20_0 = z_20_10*z_10_0 */
-        let z_20_0 = &z_20_10 * &z_10_0;
-
-        /* qhasm: z_40_20 = z_20_0^2^20 */
-        let z_40_20 = (0..20).fold(z_20_0.clone(), |x, _| x.square());
-
-        /* qhasm: z_40_0 = z_40_20*z_20_0 */
-        let z_40_0 = &z_40_20 * &z_20_0;
-
-        /* qhasm: z_50_10 = z_40_0^2^10 */
-        let z_50_10 = (0..10).fold(z_40_0, |x, _| x.square());
-
-        /* qhasm: z_50_0 = z_50_10*z_10_0 */
-        let z_50_0 = &z_50_10 * &z_10_0;
-
-        /* qhasm: z_100_50 = z_50_0^2^50 */
-        let z_100_50 = (0..50).fold(z_50_0.clone(), |x, _| x.square());
-
-        /* qhasm: z_100_0 = z_100_50*z_50_0 */
-        let z_100_0 = &z_100_50 * &z_50_0;
-
-        /* qhasm: z_200_100 = z_100_0^2^100 */
-        let z_200_100 = (0..100).fold(z_100_0.clone(), |x, _| x.square());
-
-        /* qhasm: z_200_0 = z_200_100*z_100_0 */
-        /* asm 1: fe_mul(>z_200_0=fe#3,<z_200_100=fe#4,<z_100_0=fe#3); */
-        /* asm 2: fe_mul(>z_200_0=t2,<z_200_100=t3,<z_100_0=t2); */
-        let z_200_0 = &z_200_100 * &z_100_0;
-
-        /* qhasm: z_250_50 = z_200_0^2^50 */
-        let z_250_50 = (0..50).fold(z_200_0, |x, _| x.square());
-
-        /* qhasm: z_250_0 = z_250_50*z_50_0 */
-        let z_250_0 = &z_250_50 * &z_50_0;
-
-        /* qhasm: z_255_5 = z_250_0^2^5 */
-        let z_255_5 = (0..5).fold(z_250_0, |x, _| x.square());
-
-        /* qhasm: z_255_21 = z_255_5*z11 */
-        /* asm 1: fe_mul(>z_255_21=fe#12,<z_255_5=fe#2,<z11=fe#1); */
-        /* asm 2: fe_mul(>z_255_21=out,<z_255_5=t1,<z11=t0); */
-        let z_255_21 = z_255_5 * z11;
-
-        z_255_21
-    }
-
     pub fn is_nonzero(&self) -> bool {
         CtEqual::ct_ne(&self.to_bytes(), &[0; 32]).into()
     }
 
     pub fn is_negative(&self) -> bool {
         (self.to_bytes()[0] & 1) != 0
-    }
-
-    pub fn pow25523(&self) -> Fe {
-        let z2 = self.square();
-        let z8 = (0..2).fold(z2.clone(), |x, _| x.square());
-        let z9 = self.clone() * z8;
-        let z11 = &z2 * &z9;
-        let z22 = z11.square();
-        let z_5_0 = &z9 * &z22;
-        let z_10_5 = (0..5).fold(z_5_0.clone(), |x, _| x.square());
-        let z_10_0 = &z_10_5 * &z_5_0;
-        let z_20_10 = (0..10).fold(z_10_0.clone(), |x, _| x.square());
-        let z_20_0 = &z_20_10 * &z_10_0;
-        let z_40_20 = (0..20).fold(z_20_0.clone(), |x, _| x.square());
-        let z_40_0 = &z_40_20 * &z_20_0;
-        let z_50_10 = (0..10).fold(z_40_0, |x, _| x.square());
-        let z_50_0 = &z_50_10 * &z_10_0;
-        let z_100_50 = (0..50).fold(z_50_0.clone(), |x, _| x.square());
-        let z_100_0 = &z_100_50 * &z_50_0;
-        let z_200_100 = (0..100).fold(z_100_0.clone(), |x, _| x.square());
-        let z_200_0 = &z_200_100 * &z_100_0;
-        let z_250_50 = (0..50).fold(z_200_0, |x, _| x.square());
-        let z_250_0 = &z_250_50 * &z_50_0;
-        let z_252_2 = (0..2).fold(z_250_0, |x, _| x.square());
-        let z_252_3 = z_252_2 * self.clone();
-
-        z_252_3
     }
 }

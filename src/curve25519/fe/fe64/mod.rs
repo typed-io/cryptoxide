@@ -245,13 +245,15 @@ impl Fe {
         z_255_21
     }
     pub fn mul_121666(&self) -> Fe {
-        todo!()
+        let f = Fe([121666, 0, 0, 0, 0]);
+        self * &f
     }
     pub fn square(&self) -> Fe {
-        todo!()
+        self * self
     }
     pub fn square_and_double(&self) -> Fe {
-        todo!()
+        let x = self.square();
+        &x + &x
     }
     pub fn pow25523(&self) -> Fe {
         let z2 = self.square();

@@ -58,7 +58,6 @@ impl Fe {
     ]);
 }
 
-
 #[inline]
 const fn mul128(a: u64, b: u64) -> u128 {
     a as u128 * b as u128
@@ -110,7 +109,6 @@ impl Neg for &Fe {
         &Fe::ZERO - &self
     }
 }
-
 
 impl Mul for &Fe {
     type Output = Fe;
@@ -297,7 +295,7 @@ impl Fe {
         r1 = (t1 as u64) & MASK; let c = shl128(t0, 13); r1 += c;
         r2 = (t2 as u64) & MASK; let c = shl128(t1, 13); r2 += c;
         r3 = (t3 as u64) & MASK; let c = shl128(t2, 13); r3 += c;
-        r4 = (t4 as u64) & MASK; let c = shl128(t3, 13); r4 += c; 
+        r4 = (t4 as u64) & MASK; let c = shl128(t3, 13); r4 += c;
                                  let c = shl128(t4, 13); r0 += c * 19;
                       let c = r0 >> 51; r0 &= MASK;
         r1 += c     ; let c = r1 >> 51; r1 &= MASK;
@@ -335,7 +333,7 @@ impl Fe {
             r1 = (t1 as u64) & MASK; let c = shl128(t0, 13); r1 += c;
             r2 = (t2 as u64) & MASK; let c = shl128(t1, 13); r2 += c;
             r3 = (t3 as u64) & MASK; let c = shl128(t2, 13); r3 += c;
-            r4 = (t4 as u64) & MASK; let c = shl128(t3, 13); r4 += c; 
+            r4 = (t4 as u64) & MASK; let c = shl128(t3, 13); r4 += c;
                                      let c = shl128(t4, 13); r0 += c * 19;
                           let c = r0 >> 51; r0 &= MASK;
             r1 += c     ; let c = r1 >> 51; r1 &= MASK;

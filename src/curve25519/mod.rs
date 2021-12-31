@@ -93,6 +93,7 @@ pub fn ge_scalarmult_base(a: &[u8; 32]) -> GeP3 {
 
     h
 }
+
 /*
 Input:
     s[0]+256*s[1]+...+256^63*s[63] = s
@@ -690,18 +691,15 @@ pub(crate) fn sc_muladd(s: &mut[u8], a: &[u8], b: &[u8], c: &[u8]) {
     s[31] = (s11 >> 17) as u8;
 }
 
-const BASE: [u8; 32] = [
-    9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
-
 /// Computes a shared secret from the curve25519 private key (n) and public
 /// key (p)
 pub fn curve25519(n: &[u8; 32], p: &[u8; 32]) -> [u8; 32] {
     let mut e: [u8; 32] = *n;
 
-    e[0] &= 248;
-    e[31] &= 127;
-    e[31] |= 64;
+    // clear the lowest 3 bits, clear the highest bit and set the 2nd highest bit
+    e[0] &= 0b1111_1000;
+    e[31] &= 0b0111_1111;
+    e[31] |= 0b1000000;
 
     let x1 = Fe::from_bytes(p);
     let mut x2 = Fe::ONE;
@@ -730,7 +728,7 @@ pub fn curve25519(n: &[u8; 32], p: &[u8; 32]) -> [u8; 32] {
         let x4 = &aa * &bb;
         let e = &aa - &bb;
         let t2 = t1.square();
-        let t3 = e.mul_121666();
+        let t3 = e.mul_small::<121666>();
         let x5 = t0.square();
         let t4 = &bb + &t3;
         let z5 = &x1 * &t2;
@@ -747,9 +745,65 @@ pub fn curve25519(n: &[u8; 32], p: &[u8; 32]) -> [u8; 32] {
     (&z2.invert() * &x2).to_bytes()
 }
 
+const BASE: [u8; 32] = [
+    9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+
 /// Derives a public key from a private key
-pub fn curve25519_base(x: &[u8; 32]) -> [u8; 32] {
-    curve25519(x, &BASE)
+///
+/// it's a faster version of `curve25519(x, &BASE)`
+/// with `BASE = [9u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]`
+pub fn curve25519_base(n: &[u8; 32]) -> [u8; 32] {
+    //curve25519(x, &BASE)
+    let mut e: [u8; 32] = *n;
+
+    // clear the lowest 3 bits, clear the highest bit and set the 2nd highest bit
+    e[0] &= 0b1111_1000;
+    e[31] &= 0b0111_1111;
+    e[31] |= 0b1000000;
+
+    let x1 = Fe::from_bytes(&BASE);
+    let mut x2 = Fe::ONE;
+    let mut z2 = Fe::ZERO;
+    let mut x3 = x1.clone();
+    let mut z3 = Fe::ONE;
+
+    let mut swap = 1u64.ct_zero();
+    // pos starts at 254 and goes down to 0
+    for pos in (0usize..255).rev() {
+        let b = ((e[pos / 8] >> (pos & 7)) & 1).ct_nonzero();
+        x2.maybe_swap_with(&mut x3, swap ^ b);
+        z2.maybe_swap_with(&mut z3, swap ^ b);
+        swap = b;
+
+        let d = &x3 - &z3;
+        let b = &x2 - &z2;
+        let a = &x2 + &z2;
+        let c = &x3 + &z3;
+        let da = &d * &a;
+        let cb = &c * &b;
+        let bb = b.square();
+        let aa = a.square();
+        let t0 = &da + &cb;
+        let t1 = &da - &cb;
+        let x4 = &aa * &bb;
+        let e = &aa - &bb;
+        let t2 = t1.square();
+        let t3 = e.mul_small::<121666>();
+        let x5 = t0.square();
+        let t4 = &bb + &t3;
+        let z5 = t2.mul_small::<9>();
+        let z4 = &e * &t4;
+
+        z2 = z4;
+        z3 = z5;
+        x2 = x4;
+        x3 = x5;
+    }
+    x2.maybe_swap_with(&mut x3, swap);
+    z2.maybe_swap_with(&mut z3, swap);
+
+    (&z2.invert() * &x2).to_bytes()
 }
 
 #[cfg(test)]

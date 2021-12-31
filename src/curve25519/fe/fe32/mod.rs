@@ -511,7 +511,7 @@ impl Fe {
     }
 
     /*
-    h = f * 121666
+    h = f * S0
     Can overlap h with f.
 
     Preconditions:
@@ -522,19 +522,19 @@ impl Fe {
     */
 
     #[rustfmt::skip]
-    pub fn mul_121666(&self) -> Fe {
+    pub fn mul_small<const S0: u32>(&self) -> Fe {
         let &Fe(f) = self;
 
-        let mut h0 = (f[0] as i64) * 121666;
-        let mut h1 = (f[1] as i64) * 121666;
-        let mut h2 = (f[2] as i64) * 121666;
-        let mut h3 = (f[3] as i64) * 121666;
-        let mut h4 = (f[4] as i64) * 121666;
-        let mut h5 = (f[5] as i64) * 121666;
-        let mut h6 = (f[6] as i64) * 121666;
-        let mut h7 = (f[7] as i64) * 121666;
-        let mut h8 = (f[8] as i64) * 121666;
-        let mut h9 = (f[9] as i64) * 121666;
+        let mut h0 = (f[0] as i64) * (S0 as i64);
+        let mut h1 = (f[1] as i64) * (S0 as i64);
+        let mut h2 = (f[2] as i64) * (S0 as i64);
+        let mut h3 = (f[3] as i64) * (S0 as i64);
+        let mut h4 = (f[4] as i64) * (S0 as i64);
+        let mut h5 = (f[5] as i64) * (S0 as i64);
+        let mut h6 = (f[6] as i64) * (S0 as i64);
+        let mut h7 = (f[7] as i64) * (S0 as i64);
+        let mut h8 = (f[8] as i64) * (S0 as i64);
+        let mut h9 = (f[9] as i64) * (S0 as i64);
 
         let carry9 = (h9 + (1<<24)) >> 25; h0 += carry9 * 19; h9 -= carry9 << 25;
         let carry1 = (h1 + (1<<24)) >> 25; h2 += carry1; h1 -= carry1 << 25;

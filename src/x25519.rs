@@ -26,12 +26,7 @@
 //! [1]: <https://cr.yp.to/ecdh/curve25519-20060209.pdf>
 //! [2]: <https://en.wikipedia.org/wiki/Curve25519>
 
-use crate::curve25519::curve25519;
-
-// BASE for curve25519, u = 9
-const BASE: [u8; 32] = [
-    9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
+use crate::curve25519::{curve25519, curve25519_base};
 
 macro_rules! bytes_impl {
     ($t:ident, $n:literal) => {
@@ -81,5 +76,5 @@ pub fn dh(n: &SecretKey, p: &PublicKey) -> SharedSecret {
 
 /// Derives a public key from a private key
 pub fn base(x: &SecretKey) -> PublicKey {
-    PublicKey(curve25519(&x.0, &BASE))
+    PublicKey(curve25519_base(&x.0))
 }

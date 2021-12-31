@@ -250,9 +250,26 @@ impl Fe {
         out
     }
 
-    pub fn mul_121666(&self) -> Fe {
-        let f = Fe([121666, 0, 0, 0, 0]);
-        self * &f
+    #[rustfmt::skip]
+    pub(crate) const fn mul_small<const S0: u32>(&self) -> Fe {
+        let Fe([mut r0, mut r1, mut r2, mut r3, mut r4]) = *self;
+        let s0 = S0 as u64;
+
+        let t0 = mul128(r0, s0);
+        let mut t1 = mul128(r1, s0);
+        let mut t2 = mul128(r2, s0);
+        let mut t3 = mul128(r3, s0);
+        let mut t4 = mul128(r4, s0);
+
+        r0 = (t0 as u64) & MASK; let c = (t0 >> 51) as u64; t1 += c as u128;
+        r1 = (t1 as u64) & MASK; let c = (t1 >> 51) as u64; t2 += c as u128;
+        r2 = (t2 as u64) & MASK; let c = (t2 >> 51) as u64; t3 += c as u128;
+        r3 = (t3 as u64) & MASK; let c = (t3 >> 51) as u64; t4 += c as u128;
+        r4 = (t4 as u64) & MASK; let c = (t4 >> 51) as u64; r0 += c * 19;
+                                 let c = r0 >> 51         ; r0 = r0 & MASK;
+        r1 += c;
+
+        Fe([r0, r1, r2, r3, r4])
     }
 
     #[rustfmt::skip]

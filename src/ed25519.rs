@@ -116,9 +116,9 @@ pub fn signature(message: &[u8], keypair: &[u8; KEYPAIR_LENGTH]) -> [u8; SIGNATU
 
     let nonce = signature_nonce(&az, message);
 
-    let r: GeP3 = ge_scalarmult_base(<&[u8; 32]>::try_from(&nonce[0..32]).unwrap());
+    let r: GeP3 = ge_scalarmult_base(&nonce);
 
-    let mut signature: [u8; SIGNATURE_LENGTH] = [0; SIGNATURE_LENGTH];
+    let mut signature = [0; SIGNATURE_LENGTH];
     signature[0..32].copy_from_slice(&r.to_bytes());
     signature[32..64].copy_from_slice(public_key);
 

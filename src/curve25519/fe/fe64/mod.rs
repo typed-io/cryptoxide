@@ -109,7 +109,53 @@ impl Mul for &Fe {
     type Output = Fe;
 
     fn mul(self, rhs: &Fe) -> Fe {
+        let Fe([mut r0, mut r1, mut r2, mut r3, mut r4]) = *self;
+        let Fe([s0, s1, s2, s3, s4]) = *rhs;
+
+        let mut t = [0u128; 5];
+
+        #[inline]
+        const fn mul128(a: u64, b: u64) -> u128 {
             a as u128 * b as u128
+        }
+
+        t[0] = mul128(r0, s0);
+        t[1] = mul128(r0, s1) + mul128(r1, s0);
+        t[2] = mul128(r0, s2) + mul128(r2, s0) + mul128(r1, s1);
+        t[3] = mul128(r0, s3) + mul128(r3, s0) + mul128(r1, s2) + mul128(r2, s1);
+        t[4] = mul128(r0, s4) + mul128(r4, s0) + mul128(r3, s1) + mul128(r1, s3) + mul128(r2, s2);
+
+        r1 *= 19;
+        r2 *= 19;
+        r3 *= 19;
+        r4 *= 19;
+
+        t[0] += mul128(r4, s1) + mul128(r1, s4) + mul128(r2, s3) + mul128(r3, s2);
+        t[1] += mul128(r4, s2) + mul128(r2, s4) + mul128(r3, s3);
+        t[2] += mul128(r4, s3) + mul128(r3, s4);
+        t[3] += mul128(r4, s4);
+
+        let mut c;
+        r0 = (t[0] as u64) & MASK;
+        c = (t[0] >> 51) as u64;
+        t[1] += c as u128;
+        r1 = (t[1] as u64) & MASK;
+        c = (t[1] >> 51) as u64;
+        t[2] += c as u128;
+        r2 = (t[2] as u64) & MASK;
+        c = (t[2] >> 51) as u64;
+        t[3] += c as u128;
+        r3 = (t[3] as u64) & MASK;
+        c = (t[3] >> 51) as u64;
+        t[4] += c as u128;
+        r4 = (t[4] as u64) & MASK;
+        c = (t[4] >> 51) as u64;
+        r0 += c * 19;
+        c = r0 >> 51;
+        r0 = r0 & MASK;
+        r1 += c;
+
+        Fe([r0, r1, r2, r3, r4])
     }
 }
 

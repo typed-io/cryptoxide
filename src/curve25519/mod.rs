@@ -32,6 +32,7 @@ mod ge;
 pub use fe::Fe;
 pub use ge::{GeCached, GeP1P1, GeP2, GeP3, GePrecomp};
 
+use crate::constant_time::CtZero;
 use fe::load::{load_3i, load_4i};
 
 /*
@@ -43,17 +44,17 @@ Preconditions:
   a[31] <= 127
 */
 #[doc(hidden)]
-pub fn ge_scalarmult_base(a: &[u8]) -> GeP3 {
+pub fn ge_scalarmult_base(a: &[u8; 32]) -> GeP3 {
     let mut es: [i8; 64] = [0; 64];
     let mut r: GeP1P1;
     let mut s: GeP2;
     let mut t: GePrecomp;
 
     for i in 0..32 {
-        es[2 * i + 0] = ((a[i] >> 0) & 15) as i8;
-        es[2 * i + 1] = ((a[i] >> 4) & 15) as i8;
+        es[2 * i + 0] = ((a[i] >> 0) & 0b1111) as i8;
+        es[2 * i + 1] = ((a[i] >> 4) & 0b1111) as i8;
     }
-    /* each es[i] is between 0 and 15 */
+    /* each es[i] is between 0 and 0xf */
     /* es[63] is between 0 and 7 */
 
     let mut carry: i8 = 0;
@@ -696,33 +697,24 @@ const BASE: [u8; 32] = [
 /// Computes a shared secret from the curve25519 private key (n) and public
 /// key (p)
 pub fn curve25519(n: &[u8; 32], p: &[u8; 32]) -> [u8; 32] {
-    let mut e = [0u8; 32];
-    let mut x2;
-    let mut z2;
-    let mut x3;
-    let mut z3;
-    let mut swap: i32;
-    let mut b: i32;
+    let mut e: [u8; 32] = *n;
 
-    e.copy_from_slice(&n[0..32]);
     e[0] &= 248;
     e[31] &= 127;
     e[31] |= 64;
 
     let x1 = Fe::from_bytes(p);
-    x2 = Fe::ONE;
-    z2 = Fe::ZERO;
-    x3 = x1.clone();
-    z3 = Fe::ONE;
+    let mut x2 = Fe::ONE;
+    let mut z2 = Fe::ZERO;
+    let mut x3 = x1.clone();
+    let mut z3 = Fe::ONE;
 
-    swap = 0;
+    let mut swap = 1u64.ct_zero();
     // pos starts at 254 and goes down to 0
     for pos in (0usize..255).rev() {
-        b = (e[pos / 8] >> (pos & 7)) as i32;
-        b &= 1;
-        swap ^= b;
-        x2.maybe_swap_with(&mut x3, swap);
-        z2.maybe_swap_with(&mut z3, swap);
+        let b = ((e[pos / 8] >> (pos & 7)) & 1).ct_nonzero();
+        x2.maybe_swap_with(&mut x3, swap ^ b);
+        z2.maybe_swap_with(&mut z3, swap ^ b);
         swap = b;
 
         let d = &x3 - &z3;
@@ -762,6 +754,8 @@ pub fn curve25519_base(x: &[u8; 32]) -> [u8; 32] {
 
 #[cfg(test)]
 mod tests {
+    use crate::constant_time::CtZero;
+
     use super::{curve25519_base, Fe};
 
     #[test]
@@ -781,22 +775,20 @@ mod tests {
         }
     }
 
-    /*
     #[test]
     fn swap_test() {
-        let f_initial = Fe([10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
-        let g_initial = Fe([11, 21, 31, 41, 51, 61, 71, 81, 91, 101]);
-        let mut f = f_initial.clone();
-        let mut g = g_initial.clone();
-        f.maybe_swap_with(&mut g, 0);
-        assert!(f == f_initial);
-        assert!(g == g_initial);
+        for (f_initial, g_initial) in CurveGen::new(1).zip(CurveGen::new(2)).take(40) {
+            let mut f = f_initial.clone();
+            let mut g = g_initial.clone();
+            f.maybe_swap_with(&mut g, 0u64.ct_nonzero());
+            assert!(f == f_initial);
+            assert!(g == g_initial);
 
-        f.maybe_swap_with(&mut g, 1);
-        assert!(f == g_initial);
-        assert!(g == f_initial);
+            f.maybe_swap_with(&mut g, 1u64.ct_nonzero());
+            assert!(f == g_initial);
+            assert!(g == f_initial);
+        }
     }
-    */
 
     struct CurveGen {
         which: u32,

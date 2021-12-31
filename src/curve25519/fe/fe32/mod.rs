@@ -1,4 +1,4 @@
-use crate::constant_time::CtEqual;
+use crate::constant_time::{ct_array32_maybe_set, ct_array32_maybe_swap_with, Choice, CtEqual};
 use core::cmp::{Eq, PartialEq};
 use core::ops::{Add, Mul, Neg, Sub};
 
@@ -502,92 +502,12 @@ impl Fe {
         ]
     }
 
-    pub(crate) fn maybe_swap_with(&mut self, other: &mut Fe, do_swap: i32) {
-        let Fe([f0, f1, f2, f3, f4, f5, f6, f7, f8, f9]) = *self;
-        let Fe([g0, g1, g2, g3, g4, g5, g6, g7, g8, g9]) = *other;
-        let mut x0 = f0 ^ g0;
-        let mut x1 = f1 ^ g1;
-        let mut x2 = f2 ^ g2;
-        let mut x3 = f3 ^ g3;
-        let mut x4 = f4 ^ g4;
-        let mut x5 = f5 ^ g5;
-        let mut x6 = f6 ^ g6;
-        let mut x7 = f7 ^ g7;
-        let mut x8 = f8 ^ g8;
-        let mut x9 = f9 ^ g9;
-        let b = -do_swap;
-        x0 &= b;
-        x1 &= b;
-        x2 &= b;
-        x3 &= b;
-        x4 &= b;
-        x5 &= b;
-        x6 &= b;
-        x7 &= b;
-        x8 &= b;
-        x9 &= b;
-        *self = Fe([
-            f0 ^ x0,
-            f1 ^ x1,
-            f2 ^ x2,
-            f3 ^ x3,
-            f4 ^ x4,
-            f5 ^ x5,
-            f6 ^ x6,
-            f7 ^ x7,
-            f8 ^ x8,
-            f9 ^ x9,
-        ]);
-        *other = Fe([
-            g0 ^ x0,
-            g1 ^ x1,
-            g2 ^ x2,
-            g3 ^ x3,
-            g4 ^ x4,
-            g5 ^ x5,
-            g6 ^ x6,
-            g7 ^ x7,
-            g8 ^ x8,
-            g9 ^ x9,
-        ]);
+    pub(crate) fn maybe_swap_with(&mut self, rhs: &mut Fe, do_swap: Choice) {
+        ct_array32_maybe_swap_with(&mut self.0, &mut rhs.0, do_swap);
     }
 
-    pub(crate) fn maybe_set(&mut self, other: &Fe, do_swap: i32) {
-        let Fe([f0, f1, f2, f3, f4, f5, f6, f7, f8, f9]) = *self;
-        let Fe([g0, g1, g2, g3, g4, g5, g6, g7, g8, g9]) = *other;
-        let mut x0 = f0 ^ g0;
-        let mut x1 = f1 ^ g1;
-        let mut x2 = f2 ^ g2;
-        let mut x3 = f3 ^ g3;
-        let mut x4 = f4 ^ g4;
-        let mut x5 = f5 ^ g5;
-        let mut x6 = f6 ^ g6;
-        let mut x7 = f7 ^ g7;
-        let mut x8 = f8 ^ g8;
-        let mut x9 = f9 ^ g9;
-        let b = -do_swap;
-        x0 &= b;
-        x1 &= b;
-        x2 &= b;
-        x3 &= b;
-        x4 &= b;
-        x5 &= b;
-        x6 &= b;
-        x7 &= b;
-        x8 &= b;
-        x9 &= b;
-        *self = Fe([
-            f0 ^ x0,
-            f1 ^ x1,
-            f2 ^ x2,
-            f3 ^ x3,
-            f4 ^ x4,
-            f5 ^ x5,
-            f6 ^ x6,
-            f7 ^ x7,
-            f8 ^ x8,
-            f9 ^ x9,
-        ]);
+    pub(crate) fn maybe_set(&mut self, rhs: &Fe, do_swap: Choice) {
+        ct_array32_maybe_set(&mut self.0, &rhs.0, do_swap);
     }
 
     /*

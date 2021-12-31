@@ -2,6 +2,7 @@ use core::cmp::{min, Ordering};
 use core::ops::{Add, Neg, Sub};
 
 use super::fe::{precomp, Fe};
+use crate::constant_time::{Choice, CtEqual, CtZero};
 
 #[derive(Clone)]
 pub struct GeP2 {
@@ -395,14 +396,6 @@ impl Sub<&GePrecomp> for &GeP3 {
     }
 }
 
-fn equal(b: u8, c: u8) -> i32 {
-    let x = b ^ c; /* 0: yes; 1..255: no */
-    let mut y = x as u32; /* 0: yes; 1..255: no */
-    y = y.wrapping_sub(1); /* 4294967295: yes; 0..254: no */
-    y >>= 31; /* 1: yes; 0: no */
-    y as i32
-}
-
 impl GePrecomp {
     fn zero() -> GePrecomp {
         GePrecomp {
@@ -412,30 +405,32 @@ impl GePrecomp {
         }
     }
 
-    pub(crate) fn maybe_set(&mut self, other: &GePrecomp, do_swap: i32) {
+    pub(crate) fn maybe_set(&mut self, other: &GePrecomp, do_swap: Choice) {
         self.y_plus_x.maybe_set(&other.y_plus_x, do_swap);
         self.y_minus_x.maybe_set(&other.y_minus_x, do_swap);
         self.xy2d.maybe_set(&other.xy2d, do_swap);
     }
 
     pub(crate) fn select(pos: usize, b: i8) -> GePrecomp {
+        debug_assert!(b >= -8 && b <= 8);
+
         let bnegative = (b as u8) >> 7;
         let babs: u8 = (b - (((-(bnegative as i8)) & b) << 1)) as u8;
         let mut t = GePrecomp::zero();
-        t.maybe_set(&precomp::GE_BASE[pos][0], equal(babs, 1));
-        t.maybe_set(&precomp::GE_BASE[pos][1], equal(babs, 2));
-        t.maybe_set(&precomp::GE_BASE[pos][2], equal(babs, 3));
-        t.maybe_set(&precomp::GE_BASE[pos][3], equal(babs, 4));
-        t.maybe_set(&precomp::GE_BASE[pos][4], equal(babs, 5));
-        t.maybe_set(&precomp::GE_BASE[pos][5], equal(babs, 6));
-        t.maybe_set(&precomp::GE_BASE[pos][6], equal(babs, 7));
-        t.maybe_set(&precomp::GE_BASE[pos][7], equal(babs, 8));
+        t.maybe_set(&precomp::GE_BASE[pos][0], babs.ct_eq(1));
+        t.maybe_set(&precomp::GE_BASE[pos][1], babs.ct_eq(2));
+        t.maybe_set(&precomp::GE_BASE[pos][2], babs.ct_eq(3));
+        t.maybe_set(&precomp::GE_BASE[pos][3], babs.ct_eq(4));
+        t.maybe_set(&precomp::GE_BASE[pos][4], babs.ct_eq(5));
+        t.maybe_set(&precomp::GE_BASE[pos][5], babs.ct_eq(6));
+        t.maybe_set(&precomp::GE_BASE[pos][6], babs.ct_eq(7));
+        t.maybe_set(&precomp::GE_BASE[pos][7], babs.ct_eq(8));
         let minus_t = GePrecomp {
             y_plus_x: t.y_minus_x.clone(),
             y_minus_x: t.y_plus_x.clone(),
             xy2d: t.xy2d.neg(),
         };
-        t.maybe_set(&minus_t, bnegative as i32);
+        t.maybe_set(&minus_t, bnegative.ct_nonzero());
         t
     }
 }

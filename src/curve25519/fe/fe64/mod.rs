@@ -5,7 +5,7 @@
 //! * ed25519-donna: https://github.com/floodyberry/ed25519-donna
 //! * Sandy2x: New Curve25519 Speed Records
 
-use crate::constant_time::{Choice, CtEqual};
+use crate::constant_time::{ct_array64_maybe_set, ct_array64_maybe_swap_with, Choice, CtEqual};
 use core::ops::{Add, Mul, Neg, Sub};
 
 pub mod precomp;
@@ -234,11 +234,13 @@ impl Fe {
     pub fn is_negative(&self) -> bool {
         (self.to_bytes()[0] & 1) != 0
     }
-    pub(crate) fn maybe_swap_with(&mut self, other: &mut Fe, do_swap: i32) {
-        todo!()
+
+    pub(crate) fn maybe_swap_with(&mut self, rhs: &mut Fe, do_swap: Choice) {
+        ct_array64_maybe_swap_with(&mut self.0, &mut rhs.0, do_swap);
     }
-    pub(crate) fn maybe_set(&mut self, other: &Fe, do_swap: i32) {
-        todo!()
+
+    pub(crate) fn maybe_set(&mut self, rhs: &Fe, do_swap: Choice) {
+        ct_array64_maybe_set(&mut self.0, &rhs.0, do_swap);
     }
 }
 

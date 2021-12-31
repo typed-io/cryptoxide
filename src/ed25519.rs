@@ -68,15 +68,15 @@ pub fn keypair_public(keypair: &[u8; KEYPAIR_LENGTH]) -> &[u8; PUBLIC_KEY_LENGTH
     <&[u8; PUBLIC_KEY_LENGTH]>::try_from(&keypair[32..64]).unwrap()
 }
 
-/// generate the public key associated with an extended secret key
-pub fn extended_to_public(extended_secret: &[u8; EXTENDED_KEY_LENGTH]) -> [u8; PUBLIC_KEY_LENGTH] {
-    let a = ge_scalarmult_base(&extended_secret[0..32]);
-    a.to_bytes()
-}
-
 /// Extract the scalar part (first 32 bytes) from the extended key
 fn extended_scalar(extended_secret: &[u8; EXTENDED_KEY_LENGTH]) -> &[u8; 32] {
     <&[u8; 32]>::try_from(&extended_secret[0..32]).unwrap()
+}
+
+/// generate the public key associated with an extended secret key
+pub fn extended_to_public(extended_secret: &[u8; EXTENDED_KEY_LENGTH]) -> [u8; PUBLIC_KEY_LENGTH] {
+    let a = ge_scalarmult_base(extended_scalar(extended_secret));
+    a.to_bytes()
 }
 
 /// keypair of secret key and public key
@@ -116,7 +116,7 @@ pub fn signature(message: &[u8], keypair: &[u8; KEYPAIR_LENGTH]) -> [u8; SIGNATU
 
     let nonce = signature_nonce(&az, message);
 
-    let r: GeP3 = ge_scalarmult_base(&nonce[0..32]);
+    let r: GeP3 = ge_scalarmult_base(<&[u8; 32]>::try_from(&nonce[0..32]).unwrap());
 
     let mut signature: [u8; SIGNATURE_LENGTH] = [0; SIGNATURE_LENGTH];
     signature[0..32].copy_from_slice(&r.to_bytes());
@@ -148,7 +148,7 @@ pub fn signature_extended(
     let public_key = extended_to_public(extended_secret);
     let nonce = signature_nonce(extended_secret, message);
 
-    let r: GeP3 = ge_scalarmult_base(&nonce[0..32]);
+    let r: GeP3 = ge_scalarmult_base(<&[u8; 32]>::try_from(&nonce[0..32]).unwrap());
 
     let mut signature = [0; SIGNATURE_LENGTH];
     signature[0..32].copy_from_slice(&r.to_bytes());

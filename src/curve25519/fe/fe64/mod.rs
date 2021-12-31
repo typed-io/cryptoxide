@@ -218,7 +218,31 @@ impl Fe {
     }
 
     pub fn invert(&self) -> Fe {
-        todo!()
+        let z1 = self;
+        let z2 = z1.square();
+        let z8 = z2.square().square();
+        let z9 = z1 * &z8;
+        let z11 = &z2 * &z9;
+        let z22 = z11.square();
+        let z_5_0 = &z9 * &z22;
+        let z_10_5 = (0..5).fold(z_5_0.clone(), |z_5_n, _| z_5_n.square());
+        let z_10_0 = &z_10_5 * &z_5_0;
+        let z_20_10 = (0..10).fold(z_10_0.clone(), |x, _| x.square());
+        let z_20_0 = &z_20_10 * &z_10_0;
+        let z_40_20 = (0..20).fold(z_20_0.clone(), |x, _| x.square());
+        let z_40_0 = &z_40_20 * &z_20_0;
+        let z_50_10 = (0..10).fold(z_40_0, |x, _| x.square());
+        let z_50_0 = &z_50_10 * &z_10_0;
+        let z_100_50 = (0..50).fold(z_50_0.clone(), |x, _| x.square());
+        let z_100_0 = &z_100_50 * &z_50_0;
+        let z_200_100 = (0..100).fold(z_100_0.clone(), |x, _| x.square());
+        let z_200_0 = &z_200_100 * &z_100_0;
+        let z_250_50 = (0..50).fold(z_200_0, |x, _| x.square());
+        let z_250_0 = &z_250_50 * &z_50_0;
+        let z_255_5 = (0..5).fold(z_250_0, |x, _| x.square());
+        let z_255_21 = &z_255_5 * &z11;
+
+        z_255_21
     }
     pub fn mul_121666(&self) -> Fe {
         todo!()

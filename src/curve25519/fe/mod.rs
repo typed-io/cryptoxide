@@ -1,29 +1,26 @@
+//! Field Element in \Z/(2^255-19)
+//!
+//! The implementation has 2 different limbs representation:
+//! * a 32bits architecture 25-26 bits unsaturated limbs using u32 / u64 for multiplication
+//! * a 64bits architecture 51 bits unsaturated limbs using u64 / u128 for multiplication
+//!
+//! The 32 bits architecture is enabled when selecting the "force-32bits"
+//! feature and also for known 32 bits architecture (currently just arm32).
+//! it's possible that the 32 bits backend get removed alltogether as all main
+//! platform (apart from embedded) are 64bits.
+
 pub(crate) mod load;
 
-#[cfg(not(all(
-    any(target_arch = "x86", target_arch = "x86_64"),
-    target_feature = "sse4.1"
-)))]
+#[cfg(any(any(target_arch = "arm"), feature = "force-32bits"))]
 mod fe32;
 
-#[cfg(all(
-    any(target_arch = "x86", target_arch = "x86_64"),
-    target_feature = "sse4.1",
-    target_feature = "nyip"
-))]
+#[cfg(not(any(any(target_arch = "arm"), feature = "force-32bits")))]
 mod fe64;
 
-#[cfg(not(all(
-    any(target_arch = "x86", target_arch = "x86_64"),
-    target_feature = "sse4.1"
-)))]
+#[cfg(any(any(target_arch = "arm"), feature = "force-32bits"))]
 pub use fe32::*;
 
-#[cfg(all(
-    any(target_arch = "x86", target_arch = "x86_64"),
-    target_feature = "sse4.1",
-    target_feature = "nyip"
-))]
+#[cfg(not(any(any(target_arch = "arm"), feature = "force-32bits")))]
 pub use fe64::*;
 
 impl Fe {

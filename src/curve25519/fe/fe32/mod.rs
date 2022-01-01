@@ -522,7 +522,7 @@ impl Fe {
     */
 
     #[rustfmt::skip]
-    pub fn mul_small<const S0: u32>(&self) -> Fe {
+    pub const fn mul_small<const S0: u32>(&self) -> Fe {
         let &Fe(f) = self;
 
         let mut h0 = (f[0] as i64) * (S0 as i64);

@@ -130,10 +130,10 @@ pub fn signature(message: &[u8], keypair: &[u8; KEYPAIR_LENGTH]) -> [u8; SIGNATU
         hasher.result(&mut hram);
         let hram = scalar::reduce(&hram);
         scalar::muladd(
-            &mut signature[32..64],
-            &hram[0..32],
-            &az[0..32],
-            &nonce[0..32],
+            <&mut [u8; 32]>::try_from(&mut signature[32..64]).unwrap(),
+            &hram,
+            extended_scalar(&az),
+            &nonce,
         );
     }
 
@@ -162,10 +162,10 @@ pub fn signature_extended(
         hasher.result(&mut hram);
         let hram = scalar::reduce(&mut hram);
         scalar::muladd(
-            &mut signature[32..64],
+            <&mut [u8; 32]>::try_from(&mut signature[32..64]).unwrap(),
             &hram,
             extended_scalar(extended_secret),
-            &nonce[0..32],
+            &nonce,
         );
     }
 

@@ -1,8 +1,4 @@
-//! Scalar functions in \Z/(2^252 + 27742317777372353535851937790883648493)
-//!
-//! TODO optimise to 64 bits limbs
-
-use super::fe::load::{load_3i, load_4i};
+use super::super::fe::load::{load_3i, load_4i};
 
 /*
 Input:
@@ -268,7 +264,7 @@ Output:
     where l = 2^252 + 27742317777372353535851937790883648493.
 */
 #[rustfmt::skip]
-pub(crate) fn muladd(s: &mut[u8], a: &[u8], b: &[u8], c: &[u8]) {
+pub(crate) fn muladd(s: &mut[u8;32], a: &[u8;32], b: &[u8;32], c: &[u8;32]) {
     let a0 = 2097151 & load_3i(&a[0..3]);
     let a1 = 2097151 & (load_4i(&a[2..6]) >> 5);
     let a2 = 2097151 & (load_3i(&a[5..8]) >> 2);

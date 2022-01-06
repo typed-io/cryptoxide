@@ -97,7 +97,7 @@ impl GeP2 {
     }
 
     #[allow(clippy::needless_range_loop)]
-    fn slide(a: &[u8]) -> [i8; 256] {
+    fn slide(a: &[u8; 32]) -> [i8; 256] {
         let mut r = [0i8; 256];
         for i in 0..256 {
             r[i] = (1 & (a[i >> 3] >> (i & 7))) as i8;
@@ -135,7 +135,11 @@ impl GeP2 {
     and b = b[0]+256*b[1]+...+256^31 b[31].
     B is the Ed25519 base point (x,4/5) with x positive.
     */
-    pub fn double_scalarmult_vartime(a_scalar: &[u8], a_point: GeP3, b_scalar: &[u8]) -> GeP2 {
+    pub fn double_scalarmult_vartime(
+        a_scalar: &[u8; 32],
+        a_point: GeP3,
+        b_scalar: &[u8; 32],
+    ) -> GeP2 {
         let aslide = GeP2::slide(a_scalar);
         let bslide = GeP2::slide(b_scalar);
 

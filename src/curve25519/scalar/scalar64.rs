@@ -47,9 +47,13 @@ const fn mul128(a: u64, b: u64) -> u128 {
     a as u128 * b as u128
 }
 
+const fn shr128(value: u128, shift: usize) -> u64 {
+    (value >> shift) as u64
+}
+
 const MASK16: u64 = 0x0000_0000_0000_ffff;
-const MASK56: u64 = 0x00ff_ffff_ffff_ffff;
 const MASK40: u64 = 0x0000_00ff_ffff_ffff;
+const MASK56: u64 = 0x00ff_ffff_ffff_ffff;
 
 #[rustfmt::skip]
 fn barrett_reduce256_modm(out: &mut [u64; 5], q1: &[u64; 5], r1: [u64; 5]) {
@@ -60,10 +64,6 @@ fn barrett_reduce256_modm(out: &mut [u64; 5], q1: &[u64; 5], r1: [u64; 5]) {
     let mut f : u64;
     let mut b : u64;
     let mut pb : u64;
-
-    fn shr128(value: u128, shift: usize) -> u64 {
-        (value >> shift) as u64
-    }
 
     // q1 = x >> 248 = 264 bits = 5 56 bit elements
     // q2 = mu * q1

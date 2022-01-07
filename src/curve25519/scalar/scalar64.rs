@@ -152,11 +152,11 @@ pub(crate) fn reduce(s: &[u8; 64]) -> [u8; 32] {
 
         /* r1 = (x mod 256^(32+1)) = x mod (2^8)(31+1) = x & ((1 << 264) - 1) */
         let mut out = [0; 5];
-        out[0] = (                     x0) & 0x00ff_ffff_ffff_ffff;
-        out[1] = ((x0 >> 56) | (x1 <<  8)) & 0x00ff_ffff_ffff_ffff;
-        out[2] = ((x1 >> 48) | (x2 << 16)) & 0x00ff_ffff_ffff_ffff;
-        out[3] = ((x2 >> 40) | (x3 << 24)) & 0x00ff_ffff_ffff_ffff;
-        out[4] = ((x3 >> 32) | (x4 << 32)) & 0x0000_00ff_ffff_ffff;
+        out[0] = (                     x0) & MASK56;
+        out[1] = ((x0 >> 56) | (x1 <<  8)) & MASK56;
+        out[2] = ((x1 >> 48) | (x2 << 16)) & MASK56;
+        out[3] = ((x2 >> 40) | (x3 << 24)) & MASK56;
+        out[4] = ((x3 >> 32) | (x4 << 32)) & MASK40;
 
         /*
         /* under 252 bits, no need to reduce */
@@ -166,14 +166,14 @@ pub(crate) fn reduce(s: &[u8; 64]) -> [u8; 32] {
 
         /* q1 = x >> 248 = 264 bits */
         let mut q1 = [0; 5];
-        q1[0] = ((x3 >> 56) | (x4 <<  8)) & 0xffffffffffffff;
-        q1[1] = ((x4 >> 48) | (x5 << 16)) & 0xffffffffffffff;
-        q1[2] = ((x5 >> 40) | (x6 << 24)) & 0xffffffffffffff;
-        q1[3] = ((x6 >> 32) | (x7 << 32)) & 0xffffffffffffff;
+        q1[0] = ((x3 >> 56) | (x4 <<  8)) & MASK56;
+        q1[1] = ((x4 >> 48) | (x5 << 16)) & MASK56;
+        q1[2] = ((x5 >> 40) | (x6 << 24)) & MASK56;
+        q1[3] = ((x6 >> 32) | (x7 << 32)) & MASK56;
         q1[4] = x7 >> 24;
 
         let mut out2 = [0; 5];
-        barrett_reduce256_modm(&mut out2, &q1, out);
+        barrett_reduce256_modm(&mut out2, &q1, &out);
 
         to_bytes(&out2)
 }

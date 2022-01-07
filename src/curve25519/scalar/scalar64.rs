@@ -1,3 +1,9 @@
+//! Scalar \Z/(2^252 + 27742317777372353535851937790883648493) implementations
+//!
+//! port of <https://github.com/floodyberry/ed25519-donna/blob/master/modm-donna-64bit.h>
+//!
+//! scalar is back by 5 Limbs in 56 bits unsaturated (except last)
+
 const M: [u64; 5] = [
     0x12631a5cf5d3ed,
     0xf9dea2f79cd658,
@@ -45,6 +51,7 @@ const fn mul128(a: u64, b: u64) -> u128 {
     a as u128 * b as u128
 }
 
+#[inline]
 const fn shr128(value: u128, shift: usize) -> u64 {
     (value >> shift) as u64
 }
@@ -81,7 +88,7 @@ fn barrett_reduce256_modm(out: &mut [u64; 5], q1: &[u64; 5], r1: &[u64; 5]) {
     q3[4] |= f << 16;
 
     c = mul128(M[0], q3[0]);
-    r2[0] = (c as u64) & MASK56;  f = shr128(c, 56);
+    r2[0] = (c as u64) & MASK56; f = shr128(c, 56);
     c = mul128(M[0], q3[1]); c += f as u128; mul = mul128(M[1], q3[0]); c += mul;
     r2[1] = (c as u64) & MASK56; f = shr128(c, 56);
     c = mul128(M[0], q3[2]); c += f as u128; mul = mul128(M[2], q3[0]); c += mul; mul = mul128(M[1], q3[1]); c += mul;
@@ -220,6 +227,7 @@ pub(crate) fn reduce(s: &[u8; 64]) -> [u8; 32] {
         to_bytes(&out2)
 }
 
+/// Add 2 scalars and return the reduced scalar
 #[rustfmt::skip]
 fn add(x: &[u64; 5], y: &[u64; 5]) -> [u64; 5] {
     let mut c;
@@ -235,28 +243,30 @@ fn add(x: &[u64; 5], y: &[u64; 5]) -> [u64; 5] {
     r
 }
 
+/// Multiply two scalars and return the reduced scalar
 #[rustfmt::skip]
 fn mul(x: &[u64; 5], y: &[u64; 5]) -> [u64; 5] {
     let mut q1 = [0; 5];
     let mut r1 = [0; 5];
 
-	let c = mul128( x[0], y[0]);
-	let f = c as u64; r1[0] = f & MASK56; let f = shr128(c, 56);
-	let c = mul128( x[0], y[1]); let c = c + (f as u128); let mul = mul128(x[1], y[0]); let c = c + mul;
-	let f = c as u64; r1[1] = f & MASK56; let f = shr128(c, 56);
-	let c = mul128( x[0], y[2]); let c = c + (f as u128); let mul = mul128(x[2], y[0]); let c = c + mul; let mul = mul128(x[1], y[1]); let c = c + mul; 
-	let f = c as u64; r1[2] = f & MASK56; let f = shr128(c, 56);
-	let c = mul128( x[0], y[3]); let c = c + (f as u128); let mul = mul128(x[3], y[0]); let c = c + mul; let mul = mul128(x[1], y[2]); let c = c + mul; let mul = mul128(x[2], y[1]); let c = c + mul; 
-	let f = c as u64; r1[3] = f & MASK56; let f = shr128(c, 56);
-	let c = mul128( x[0], y[4]); let c = c + (f as u128); let mul = mul128(x[4], y[0]); let c = c + mul; let mul = mul128(x[3], y[1]); let c = c + mul; let mul = mul128(x[1], y[3]); let c = c + mul; let mul = mul128(x[2], y[2]); let c = c + mul; 
-	let f = c as u64; r1[4] = f & MASK40; q1[0] = (f >> 24) & 0xffffffff; let f = shr128(c, 56);
-	let c = mul128( x[4], y[1]); let c = c + (f as u128); let mul = mul128(x[1], y[4]); let c = c + mul; let mul = mul128(x[2], y[3]); let c = c + mul; let mul = mul128(x[3], y[2]); let c = c + mul; 
+	let c = mul128(x[0], y[0]);
+	r1[0] = (c as u64) & MASK56; let f = shr128(c, 56);
+	let c = mul128(x[0], y[1]) + (f as u128) + mul128(x[1], y[0]);
+	r1[1] = (c as u64) & MASK56; let f = shr128(c, 56);
+	let c = mul128(x[0], y[2]) + (f as u128) + mul128(x[2], y[0]) + mul128(x[1], y[1]);
+	r1[2] = (c as u64) & MASK56; let f = shr128(c, 56);
+	let c = mul128(x[0], y[3]) + (f as u128) + mul128(x[3], y[0]) + mul128(x[1], y[2]) + mul128(x[2], y[1]);
+	r1[3] = (c as u64) & MASK56; let f = shr128(c, 56);
+	let c = mul128(x[0], y[4]) + (f as u128) + mul128(x[4], y[0]) + mul128(x[3], y[1]) + mul128(x[1], y[3]) + mul128(x[2], y[2]);
+	r1[4] = (c as u64) & MASK40; q1[0] = ((c as u64) >> 24) & 0xffffffff; let f = shr128(c, 56);
+
+	let c = mul128(x[4], y[1]) + (f as u128) + mul128(x[1], y[4]) + mul128(x[2], y[3]) + mul128(x[3], y[2]);
 	let f = c as u64; q1[0] |= (f << 32) & MASK56; q1[1] = (f >> 24) & 0xffffffff; let f = shr128(c, 56);
-	let c = mul128( x[4], y[2]); let c = c + (f as u128); let mul = mul128(x[2], y[4]); let c = c + mul; let mul = mul128(x[3], y[3]); let c = c + mul; 
+	let c = mul128(x[4], y[2]) + (f as u128) + mul128(x[2], y[4]) + mul128(x[3], y[3]);
 	let f = c as u64; q1[1] |= (f << 32) & MASK56; q1[2] = (f >> 24) & 0xffffffff; let f = shr128(c, 56);
-	let c = mul128( x[4], y[3]); let c = c + (f as u128); let mul = mul128(x[3], y[4]); let c = c + mul;
+	let c = mul128(x[4], y[3]) + (f as u128) + mul128(x[3], y[4]);
 	let f = c as u64; q1[2] |= (f << 32) & MASK56; q1[3] = (f >> 24) & 0xffffffff; let f = shr128(c, 56);
-	let c = mul128( x[4], y[4]); let c = c + (f as u128);
+	let c = mul128(x[4], y[4]) + (f as u128);
 	let f = c as u64; q1[3] |= (f << 32) & MASK56; q1[4] = (f >> 24) & 0xffffffff; let f = shr128(c, 56);
 	q1[4] |= f << 32;
 

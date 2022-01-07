@@ -148,7 +148,7 @@ pub fn signature_extended(
     let public_key = extended_to_public(extended_secret);
     let nonce = signature_nonce(extended_secret, message);
 
-    let r: GeP3 = ge_scalarmult_base(<&[u8; 32]>::try_from(&nonce[0..32]).unwrap());
+    let r: GeP3 = ge_scalarmult_base(&nonce);
 
     let mut signature = [0; SIGNATURE_LENGTH];
     signature[0..32].copy_from_slice(&r.to_bytes());

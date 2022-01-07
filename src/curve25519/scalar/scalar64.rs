@@ -33,7 +33,7 @@ fn reduce256_modm(r: &mut [u64; 5]) {
     pb += M[4]; let b = lt_modm(r[4], pb); t[4] = r[4].wrapping_sub(pb).wrapping_add(b << 32);
 
     // keep r if r was smaller than m
-    let mask = b - 1;
+    let mask = b.wrapping_sub(1);
 
     r[0] ^= mask & (r[0] ^ t[0]);
     r[1] ^= mask & (r[1] ^ t[1]);

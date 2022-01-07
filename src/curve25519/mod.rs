@@ -210,6 +210,9 @@ pub fn curve25519_base(n: &[u8; 32]) -> [u8; 32] {
 }
 
 #[cfg(test)]
+pub(super) mod testrng;
+
+#[cfg(test)]
 mod tests {
     use crate::constant_time::CtZero;
 

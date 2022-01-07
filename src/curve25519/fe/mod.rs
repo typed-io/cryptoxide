@@ -9,6 +9,7 @@
 //! it's possible that the 32 bits backend get removed alltogether as all main
 //! platform (apart from embedded) are 64bits.
 
+#[cfg(any(any(target_arch = "arm"), feature = "force-32bits"))]
 pub(crate) mod load;
 
 #[cfg(any(any(target_arch = "arm"), feature = "force-32bits"))]

@@ -1,5 +1,3 @@
-use super::super::fe::load::{load_3i, load_4i};
-
 const M: [u64; 5] = [
     0x12631a5cf5d3ed,
     0xf9dea2f79cd658,

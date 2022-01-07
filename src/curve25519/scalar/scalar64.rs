@@ -65,7 +65,6 @@ fn barrett_reduce256_modm(out: &mut [u64; 5], q1: &[u64; 5], r1: &[u64; 5]) {
     let mut r2 = [0; 5];
     let mut q3 = [0; 5];
     let mut c : u128;
-    let mut mul : u128;
     let mut f : u64;
     let mut b : u64;
     let mut pb : u64;
@@ -74,28 +73,28 @@ fn barrett_reduce256_modm(out: &mut [u64; 5], q1: &[u64; 5], r1: &[u64; 5]) {
     // q2 = mu * q1
     // q3 = (q2 / 256(32+1)) = q2 / (2^8)^(32+1) = q2 >> 264
 
-    c = mul128(MU[0], q1[3]);                 mul = mul128(MU[3], q1[0]); c += mul; mul = mul128(MU[1], q1[2]); c += mul; mul = mul128(MU[2], q1[1]); c += mul; f = shr128(c, 56);
-    c = mul128(MU[0], q1[4]); c += f as u128; mul = mul128(MU[4], q1[0]); c += mul; mul = mul128(MU[3], q1[1]); c += mul; mul = mul128(MU[1], q1[3]); c += mul; mul = mul128(MU[2], q1[2]); c += mul;
+    c = mul128(MU[0], q1[3]) + mul128(MU[3], q1[0]) + mul128(MU[1], q1[2]) + mul128(MU[2], q1[1]); f = shr128(c, 56);
+    c = mul128(MU[0], q1[4]) + (f as u128) + mul128(MU[4], q1[0]) + mul128(MU[3], q1[1]) + mul128(MU[1], q1[3]) + mul128(MU[2], q1[2]);
     f = c as u64; q3[0] = (f >> 40) & MASK16; f = shr128(c, 56);
-    c = mul128(MU[4], q1[1]); c += f as u128; mul = mul128(MU[1], q1[4]); c += mul; mul = mul128(MU[2], q1[3]); c += mul; mul = mul128(MU[3], q1[2]); c += mul;
+    c = mul128(MU[4], q1[1]) + (f as u128) + mul128(MU[1], q1[4]) + mul128(MU[2], q1[3]) + mul128(MU[3], q1[2]);
     f = c as u64; q3[0] |= (f << 16) & MASK56; q3[1] = (f >> 40) & MASK16; f = shr128(c, 56);
-    c = mul128(MU[4], q1[2]); c += f as u128; mul = mul128(MU[2], q1[4]); c += mul; mul = mul128(MU[3], q1[3]); c += mul;
+    c = mul128(MU[4], q1[2]) + (f as u128) + mul128(MU[2], q1[4]) + mul128(MU[3], q1[3]);
     f = c as u64; q3[1] |= (f << 16) & MASK56; q3[2] = (f >> 40) & MASK16; f = shr128(c, 56);
-    c = mul128(MU[4], q1[3]); c += f as u128; mul = mul128(MU[3], q1[4]); c += mul;
+    c = mul128(MU[4], q1[3]) + (f as u128) + mul128(MU[3], q1[4]);
     f = c as u64; q3[2] |= (f << 16) & MASK56; q3[3] = (f >> 40) & MASK16; f = shr128(c, 56);
-    c = mul128(MU[4], q1[4]); c += f as u128;
+    c = mul128(MU[4], q1[4]) + (f as u128);
     f = c as u64; q3[3] |= (f << 16) & MASK56; q3[4] = (f >> 40) & MASK16; f = shr128(c, 56);
     q3[4] |= f << 16;
 
     c = mul128(M[0], q3[0]);
     r2[0] = (c as u64) & MASK56; f = shr128(c, 56);
-    c = mul128(M[0], q3[1]); c += f as u128; mul = mul128(M[1], q3[0]); c += mul;
+    c = mul128(M[0], q3[1]) + (f as u128) + mul128(M[1], q3[0]);
     r2[1] = (c as u64) & MASK56; f = shr128(c, 56);
-    c = mul128(M[0], q3[2]); c += f as u128; mul = mul128(M[2], q3[0]); c += mul; mul = mul128(M[1], q3[1]); c += mul;
+    c = mul128(M[0], q3[2]) + (f as u128) + mul128(M[2], q3[0]) + mul128(M[1], q3[1]);
     r2[2] = (c as u64) & MASK56; f = shr128(c, 56);
-    c = mul128(M[0], q3[3]); c += f as u128; mul = mul128(M[3], q3[0]); c += mul; mul = mul128(M[1], q3[2]); c += mul; mul = mul128(M[2], q3[1]); c += mul;
+    c = mul128(M[0], q3[3]) + (f as u128) + mul128(M[3], q3[0]) + mul128(M[1], q3[2]) + mul128(M[2], q3[1]);
     r2[3] = (c as u64) & MASK56; f = shr128(c, 56);
-    c = mul128(M[0], q3[4]); c += f as u128; mul = mul128(M[4], q3[0]); c += mul; mul = mul128(M[3], q3[1]); c += mul; mul = mul128(M[1], q3[3]); c += mul; mul = mul128(M[2], q3[2]); c += mul;
+    c = mul128(M[0], q3[4]) + (f as u128) + mul128(M[4], q3[0]) + mul128(M[3], q3[1]) + mul128(M[1], q3[3]) + mul128(M[2], q3[2]);
     r2[4] = (c as u64) & MASK40;
 
     pb = 0;

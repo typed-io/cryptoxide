@@ -104,16 +104,60 @@ fn barrett_reduce256_modm(out: &mut [u64; 5], q1: &[u64; 5], r1: [u64; 5]) {
     reduce256_modm(out);
 }
 
-fn to_bytes(limbs: &[u64; 5]) -> [u8; 32] {
-    let mut out_saturated = [0u64; 4];
-    out_saturated[0] = limbs[1] << 56 | limbs[0];
-    out_saturated[1] = limbs[2] << 48 | limbs[1] >> 8;
-    out_saturated[2] = limbs[3] << 40 | limbs[2] >> 16;
-    out_saturated[3] = limbs[4] << 32 | limbs[3] >> 24;
+const fn from_bytes(bytes: &[u8; 32]) -> [u64; 5] {
+    // load 8 bytes from input[ofs..ofs+7] as little endian u64
+    #[inline]
+    const fn load(bytes: &[u8; 32], ofs: usize) -> u64 {
+        (bytes[ofs] as u64)
+            | ((bytes[ofs + 1] as u64) << 8)
+            | ((bytes[ofs + 2] as u64) << 16)
+            | ((bytes[ofs + 3] as u64) << 24)
+            | ((bytes[ofs + 4] as u64) << 32)
+            | ((bytes[ofs + 5] as u64) << 40)
+            | ((bytes[ofs + 6] as u64) << 48)
+            | ((bytes[ofs + 7] as u64) << 56)
+    }
 
-    let mut bytes = [0u8; 32];
-    crate::cryptoutil::write_u64v_le(&mut bytes, &out_saturated);
-    bytes
+    let x0 = load(bytes, 0);
+    let x1 = load(bytes, 8);
+    let x2 = load(bytes, 16);
+    let x3 = load(bytes, 24);
+
+    let out0 = x0 & MASK56;
+    let out1 = (x0 >> 56 | x1 << 8) & MASK56;
+    let out2 = (x1 >> 48 | x2 << 16) & MASK56;
+    let out3 = (x2 >> 40 | x3 << 24) & MASK56;
+    let out4 = x3 >> 32;
+    [out0, out1, out2, out3, out4]
+}
+
+const fn to_bytes(limbs: &[u64; 5]) -> [u8; 32] {
+    // contract limbs into saturated limbs
+    let c0 = limbs[1] << 56 | limbs[0];
+    let c1 = limbs[2] << 48 | limbs[1] >> 8;
+    let c2 = limbs[3] << 40 | limbs[2] >> 16;
+    let c3 = limbs[4] << 32 | limbs[3] >> 24;
+
+    // write saturated limbs into little endian bytes
+    let mut out = [0u8; 32];
+    macro_rules! write8 {
+        ($ofs:literal, $v:ident) => {
+            let x = $v.to_le_bytes();
+            out[$ofs] = x[0];
+            out[$ofs + 1] = x[1];
+            out[$ofs + 2] = x[2];
+            out[$ofs + 3] = x[3];
+            out[$ofs + 4] = x[4];
+            out[$ofs + 5] = x[5];
+            out[$ofs + 6] = x[6];
+            out[$ofs + 7] = x[7];
+        };
+    }
+    write8!(0, c0);
+    write8!(8, c1);
+    write8!(16, c2);
+    write8!(24, c3);
+    out
 }
 
 /*

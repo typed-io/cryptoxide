@@ -188,7 +188,7 @@ impl CtEqual for u8 {
 
 impl CtLesser for u64 {
     fn ct_lt(a: Self, b: Self) -> Choice {
-        Choice((a ^ ((a ^ b) | ((a - b) ^ b))) >> 63)
+        Choice((a ^ ((a ^ b) | ((a.wrapping_sub(b)) ^ b))) >> 63)
     }
 }
 
@@ -405,6 +405,8 @@ mod tests {
 
     #[test]
     fn test_ct_less() {
+        assert!(u64::ct_lt(10, 20).is_true());
+        assert!(u64::ct_gt(10, 20).is_false());
         let a: [u8; 4] = [0u8, 1, 2, 3];
         assert_eq!(<&[u8; 4]>::ct_lt(&a, &[1, 1, 2, 3]).is_true(), true);
     }

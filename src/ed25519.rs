@@ -15,9 +15,14 @@
 //! assert!(verified);
 //! ```
 //!
+//! The signature is 64 bytes composed of `R || S` where R is 32 bytes
+//! and S is 32 bytes also.
+//!
+//! * [RFC8032]<https://www.rfc-editor.org/rfc/rfc8032.txt>
+//!
 
 use crate::constant_time::CtEqual;
-use crate::curve25519::{curve25519, ge_scalarmult_base, scalar, Fe, GeP2, GeP3};
+use crate::curve25519::{curve25519, ge_scalarmult_base, scalar, Fe, GeP2, GeP3, Scalar};
 use crate::digest::Digest;
 use crate::sha2::Sha512;
 use core::convert::TryFrom;
@@ -29,11 +34,6 @@ pub const PUBLIC_KEY_LENGTH: usize = 32;
 pub const KEYPAIR_LENGTH: usize = PRIVATE_KEY_LENGTH + PUBLIC_KEY_LENGTH;
 pub const EXTENDED_KEY_LENGTH: usize = 64;
 pub const SIGNATURE_LENGTH: usize = 64;
-
-static L: [u8; 32] = [
-    0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x14, 0xde, 0xf9, 0xde, 0xa2, 0xf7, 0x9c, 0xd6, 0x58, 0x12, 0x63, 0x1a, 0x5c, 0xf5, 0xd3, 0xed,
-];
 
 // clamp the scalar by:
 // 1. clearing the 3 lower bits,
@@ -99,13 +99,13 @@ pub fn keypair(
 
 /// Generate the nonce which is a scalar out of the extended_secret random part and the message itself
 /// using SHA512 and scalar_reduction
-fn signature_nonce(extended_secret: &[u8; EXTENDED_KEY_LENGTH], message: &[u8]) -> [u8; 32] {
+fn signature_nonce(extended_secret: &[u8; EXTENDED_KEY_LENGTH], message: &[u8]) -> Scalar {
     let mut hash_output: [u8; 64] = [0; 64];
     let mut hasher = Sha512::new();
     hasher.input(&extended_secret[32..64]);
     hasher.input(message);
     hasher.result(&mut hash_output);
-    scalar::reduce(&hash_output)
+    Scalar::reduce_from_wide_bytes(&hash_output)
 }
 
 /// Generate a signature for the given message using a normal ED25519 secret key
@@ -116,7 +116,7 @@ pub fn signature(message: &[u8], keypair: &[u8; KEYPAIR_LENGTH]) -> [u8; SIGNATU
 
     let nonce = signature_nonce(&az, message);
 
-    let r: GeP3 = ge_scalarmult_base(&nonce);
+    let r: GeP3 = ge_scalarmult_base(&nonce.to_bytes());
 
     let mut signature = [0; SIGNATURE_LENGTH];
     signature[0..32].copy_from_slice(&r.to_bytes());
@@ -128,7 +128,7 @@ pub fn signature(message: &[u8], keypair: &[u8; KEYPAIR_LENGTH]) -> [u8; SIGNATU
         hasher.input(message);
         let mut hram: [u8; 64] = [0; 64];
         hasher.result(&mut hram);
-        let hram = scalar::reduce(&hram);
+        let hram = Scalar::reduce_from_wide_bytes(&hram);
         scalar::muladd(
             <&mut [u8; 32]>::try_from(&mut signature[32..64]).unwrap(),
             &hram,
@@ -148,7 +148,7 @@ pub fn signature_extended(
     let public_key = extended_to_public(extended_secret);
     let nonce = signature_nonce(extended_secret, message);
 
-    let r: GeP3 = ge_scalarmult_base(&nonce);
+    let r: GeP3 = ge_scalarmult_base(&nonce.to_bytes());
 
     let mut signature = [0; SIGNATURE_LENGTH];
     signature[0..32].copy_from_slice(&r.to_bytes());
@@ -160,7 +160,7 @@ pub fn signature_extended(
         hasher.input(message);
         let mut hram: [u8; 64] = [0; 64];
         hasher.result(&mut hram);
-        let hram = scalar::reduce(&mut hram);
+        let hram = Scalar::reduce_from_wide_bytes(&mut hram);
         scalar::muladd(
             <&mut [u8; 32]>::try_from(&mut signature[32..64]).unwrap(),
             &hram,
@@ -172,24 +172,6 @@ pub fn signature_extended(
     signature
 }
 
-fn check_s_lt_l(s: &[u8]) -> bool {
-    let mut c: u8 = 0;
-    let mut n: u8 = 1;
-
-    let mut i = 31;
-    loop {
-        c |= ((((s[i] as i32) - (L[i] as i32)) >> 8) as u8) & n;
-        n &= ((((s[i] ^ L[i]) as i32) - 1) >> 8) as u8;
-        if i == 0 {
-            break;
-        } else {
-            i -= 1;
-        }
-    }
-
-    c == 0
-}
-
 /// Verify that a signature is valid for a given message for an associated public key
 pub fn verify(
     message: &[u8],
@@ -199,16 +181,18 @@ pub fn verify(
     let signature_left = <&[u8; 32]>::try_from(&signature[0..32]).unwrap();
     let signature_right = <&[u8; 32]>::try_from(&signature[32..64]).unwrap();
 
-    if check_s_lt_l(signature_right) {
-        return false;
-    }
-
     let a = match GeP3::from_bytes_negate_vartime(public_key) {
         Some(g) => g,
         None => {
             return false;
         }
     };
+
+    let signature_scalar = match Scalar::from_bytes_canonical(signature_right) {
+        None => return false,
+        Some(s) => s,
+    };
+
     let mut d = 0;
     for pk_byte in public_key.iter() {
         d |= *pk_byte;
@@ -223,9 +207,9 @@ pub fn verify(
     hasher.input(message);
     let mut hash: [u8; 64] = [0; 64];
     hasher.result(&mut hash);
-    let a_scalar = scalar::reduce(&mut hash);
+    let a_scalar = Scalar::reduce_from_wide_bytes(&mut hash);
 
-    let r = GeP2::double_scalarmult_vartime(&a_scalar, a, signature_right);
+    let r = GeP2::double_scalarmult_vartime(&a_scalar, a, &signature_scalar);
     let rcheck = r.to_bytes();
 
     CtEqual::ct_eq(&rcheck, signature_left).into()

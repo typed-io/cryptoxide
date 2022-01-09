@@ -1,7 +1,8 @@
-use core::cmp::{min, Ordering};
+use core::cmp::Ordering;
 use core::ops::{Add, Neg, Sub};
 
 use super::fe::{precomp, Fe};
+use super::scalar::Scalar;
 use crate::constant_time::{Choice, CtEqual, CtZero};
 
 #[derive(Clone)]
@@ -96,52 +97,15 @@ impl GeP2 {
         }
     }
 
-    #[allow(clippy::needless_range_loop)]
-    fn slide(a: &[u8; 32]) -> [i8; 256] {
-        let mut r = [0i8; 256];
-        for i in 0..256 {
-            r[i] = (1 & (a[i >> 3] >> (i & 7))) as i8;
-        }
-        for i in 0..256 {
-            if r[i] != 0 {
-                for b in 1..min(7, 256 - i) {
-                    if r[i + b] != 0 {
-                        if r[i] + (r[i + b] << b) <= 15 {
-                            r[i] += r[i + b] << b;
-                            r[i + b] = 0;
-                        } else if r[i] - (r[i + b] << b) >= -15 {
-                            r[i] -= r[i + b] << b;
-                            for k in i + b..256 {
-                                if r[k] == 0 {
-                                    r[k] = 1;
-                                    break;
-                                }
-                                r[k] = 0;
-                            }
-                        } else {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        r
-    }
-
     /*
     r = a * A + b * B
     where a = a[0]+256*a[1]+...+256^31 a[31].
     and b = b[0]+256*b[1]+...+256^31 b[31].
     B is the Ed25519 base point (x,4/5) with x positive.
     */
-    pub fn double_scalarmult_vartime(
-        a_scalar: &[u8; 32],
-        a_point: GeP3,
-        b_scalar: &[u8; 32],
-    ) -> GeP2 {
-        let aslide = GeP2::slide(a_scalar);
-        let bslide = GeP2::slide(b_scalar);
+    pub fn double_scalarmult_vartime(a_scalar: &Scalar, a_point: GeP3, b_scalar: &Scalar) -> GeP2 {
+        let aslide = a_scalar.slide();
+        let bslide = b_scalar.slide();
 
         let a1 = a_point.to_cached();
         let a2 = a_point.dbl().to_p3();

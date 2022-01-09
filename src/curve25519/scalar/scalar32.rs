@@ -1,256 +1,307 @@
 use super::super::fe::load::{load_3i, load_4i};
 
-/*
-Input:
-    s[0]+256*s[1]+...+256^63*s[63] = s
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Scalar([u8; 32]);
 
-Output:
-    s[0]+256*s[1]+...+256^31*s[31] = s mod l
-    where l = 2^252 + 27742317777372353535851937790883648493.
-*/
-#[rustfmt::skip]
-#[must_use]
-pub(crate) fn reduce(s: &[u8; 64]) -> [u8; 32] {
-    let mut s0: i64 = 2097151 & load_3i(s);
-    let mut s1: i64 = 2097151 & (load_4i(&s[2..6]) >> 5);
-    let mut s2: i64 = 2097151 & (load_3i(&s[5..8]) >> 2);
-    let mut s3: i64 = 2097151 & (load_4i(&s[7..11]) >> 7);
-    let mut s4: i64 = 2097151 & (load_4i(&s[10..14]) >> 4);
-    let mut s5: i64 = 2097151 & (load_3i(&s[13..16]) >> 1);
-    let mut s6: i64 = 2097151 & (load_4i(&s[15..19]) >> 6);
-    let mut s7: i64 = 2097151 & (load_3i(&s[18..21]) >> 3);
-    let mut s8: i64 = 2097151 & load_3i(&s[21..24]);
-    let mut s9: i64 = 2097151 & (load_4i(&s[23..27]) >> 5);
-    let mut s10: i64 = 2097151 & (load_3i(&s[26..29]) >> 2);
-    let mut s11: i64 = 2097151 & (load_4i(&s[28..32]) >> 7);
-    let mut s12: i64 = 2097151 & (load_4i(&s[31..35]) >> 4);
-    let mut s13: i64 = 2097151 & (load_3i(&s[34..37]) >> 1);
-    let mut s14: i64 = 2097151 & (load_4i(&s[36..40]) >> 6);
-    let mut s15: i64 = 2097151 & (load_3i(&s[39..42]) >> 3);
-    let mut s16: i64 = 2097151 & load_3i(&s[42..45]);
-    let mut s17: i64 = 2097151 & (load_4i(&s[44..48]) >> 5);
-    let s18: i64 = 2097151 & (load_3i(&s[47..50]) >> 2);
-    let s19: i64 = 2097151 & (load_4i(&s[49..53]) >> 7);
-    let s20: i64 = 2097151 & (load_4i(&s[52..56]) >> 4);
-    let s21: i64 = 2097151 & (load_3i(&s[55..58]) >> 1);
-    let s22: i64 = 2097151 & (load_4i(&s[57..61]) >> 6);
-    let s23: i64 = load_4i(&s[60..64]) >> 3;
-    let mut carry0: i64;
-    let mut carry1: i64;
-    let mut carry2: i64;
-    let mut carry3: i64;
-    let mut carry4: i64;
-    let mut carry5: i64;
-    let mut carry6: i64;
-    let mut carry7: i64;
-    let mut carry8: i64;
-    let mut carry9: i64;
-    let mut carry10: i64;
-    let mut carry11: i64;
-    let carry12: i64;
-    let carry13: i64;
-    let carry14: i64;
-    let carry15: i64;
-    let carry16: i64;
+impl Scalar {
+    pub const ZERO: Self = Scalar([
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0,
+    ]);
 
-    s11 += s23 * 666643;
-    s12 += s23 * 470296;
-    s13 += s23 * 654183;
-    s14 -= s23 * 997805;
-    s15 += s23 * 136657;
-    s16 -= s23 * 683901;
+    pub const fn from_bytes(bytes: &[u8; 32]) -> Self {
+        Scalar(*bytes)
+    }
 
+    pub const fn to_bytes(&self) -> [u8; 32] {
+        self.0
+    }
+}
 
-    s10 += s22 * 666643;
-    s11 += s22 * 470296;
-    s12 += s22 * 654183;
-    s13 -= s22 * 997805;
-    s14 += s22 * 136657;
-    s15 -= s22 * 683901;
+impl Scalar {
+    pub fn from_bytes_canonical(bytes: &[u8; 32]) -> Option<Self> {
+        const L: [u8; 32] = [
+            0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x14, 0xde, 0xf9, 0xde, 0xa2, 0xf7, 0x9c, 0xd6, 0x58, 0x12, 0x63, 0x1a,
+            0x5c, 0xf5, 0xd3, 0xed,
+        ];
 
+        fn check_s_lt_l(s: &[u8; 32]) -> bool {
+            let mut c: u8 = 0;
+            let mut n: u8 = 1;
 
-    s9 += s21 * 666643;
-    s10 += s21 * 470296;
-    s11 += s21 * 654183;
-    s12 -= s21 * 997805;
-    s13 += s21 * 136657;
-    s14 -= s21 * 683901;
+            let mut i = 31;
+            loop {
+                c |= ((((s[i] as i32) - (L[i] as i32)) >> 8) as u8) & n;
+                n &= ((((s[i] ^ L[i]) as i32) - 1) >> 8) as u8;
+                if i == 0 {
+                    break;
+                } else {
+                    i -= 1;
+                }
+            }
 
+            c == 0
+        }
 
-    s8 += s20 * 666643;
-    s9 += s20 * 470296;
-    s10 += s20 * 654183;
-    s11 -= s20 * 997805;
-    s12 += s20 * 136657;
-    s13 -= s20 * 683901;
+        if check_s_lt_l(bytes) {
+            None
+        } else {
+            Some(Scalar::from_bytes(bytes))
+        }
+    }
 
+    /// Create a new scalar from 64 bytes (512 bits) reducing
+    /// the scalar to an element of the field
+    ///
+    /// Input is a little endian 512 bits scalar value:
+    /// s[0]+256*s[1]+...+256^63*s[63] = s
+    ///
+    /// And the output scalar is a `s % order of field`
+    #[rustfmt::skip]
+    #[must_use]
+    pub fn reduce_from_wide_bytes(s: &[u8; 64]) -> Scalar {
+        let mut s0: i64 = 2097151 & load_3i(s);
+        let mut s1: i64 = 2097151 & (load_4i(&s[2..6]) >> 5);
+        let mut s2: i64 = 2097151 & (load_3i(&s[5..8]) >> 2);
+        let mut s3: i64 = 2097151 & (load_4i(&s[7..11]) >> 7);
+        let mut s4: i64 = 2097151 & (load_4i(&s[10..14]) >> 4);
+        let mut s5: i64 = 2097151 & (load_3i(&s[13..16]) >> 1);
+        let mut s6: i64 = 2097151 & (load_4i(&s[15..19]) >> 6);
+        let mut s7: i64 = 2097151 & (load_3i(&s[18..21]) >> 3);
+        let mut s8: i64 = 2097151 & load_3i(&s[21..24]);
+        let mut s9: i64 = 2097151 & (load_4i(&s[23..27]) >> 5);
+        let mut s10: i64 = 2097151 & (load_3i(&s[26..29]) >> 2);
+        let mut s11: i64 = 2097151 & (load_4i(&s[28..32]) >> 7);
+        let mut s12: i64 = 2097151 & (load_4i(&s[31..35]) >> 4);
+        let mut s13: i64 = 2097151 & (load_3i(&s[34..37]) >> 1);
+        let mut s14: i64 = 2097151 & (load_4i(&s[36..40]) >> 6);
+        let mut s15: i64 = 2097151 & (load_3i(&s[39..42]) >> 3);
+        let mut s16: i64 = 2097151 & load_3i(&s[42..45]);
+        let mut s17: i64 = 2097151 & (load_4i(&s[44..48]) >> 5);
+        let s18: i64 = 2097151 & (load_3i(&s[47..50]) >> 2);
+        let s19: i64 = 2097151 & (load_4i(&s[49..53]) >> 7);
+        let s20: i64 = 2097151 & (load_4i(&s[52..56]) >> 4);
+        let s21: i64 = 2097151 & (load_3i(&s[55..58]) >> 1);
+        let s22: i64 = 2097151 & (load_4i(&s[57..61]) >> 6);
+        let s23: i64 = load_4i(&s[60..64]) >> 3;
+        let mut carry0: i64;
+        let mut carry1: i64;
+        let mut carry2: i64;
+        let mut carry3: i64;
+        let mut carry4: i64;
+        let mut carry5: i64;
+        let mut carry6: i64;
+        let mut carry7: i64;
+        let mut carry8: i64;
+        let mut carry9: i64;
+        let mut carry10: i64;
+        let mut carry11: i64;
+        let carry12: i64;
+        let carry13: i64;
+        let carry14: i64;
+        let carry15: i64;
+        let carry16: i64;
 
-    s7 += s19 * 666643;
-    s8 += s19 * 470296;
-    s9 += s19 * 654183;
-    s10 -= s19 * 997805;
-    s11 += s19 * 136657;
-    s12 -= s19 * 683901;
-
-
-    s6 += s18 * 666643;
-    s7 += s18 * 470296;
-    s8 += s18 * 654183;
-    s9 -= s18 * 997805;
-    s10 += s18 * 136657;
-    s11 -= s18 * 683901;
-
-
-    carry6 = (s6 + (1<<20)) >> 21; s7 += carry6; s6 -= carry6 << 21;
-    carry8 = (s8 + (1<<20)) >> 21; s9 += carry8; s8 -= carry8 << 21;
-    carry10 = (s10 + (1<<20)) >> 21; s11 += carry10; s10 -= carry10 << 21;
-    carry12 = (s12 + (1<<20)) >> 21; s13 += carry12; s12 -= carry12 << 21;
-    carry14 = (s14 + (1<<20)) >> 21; s15 += carry14; s14 -= carry14 << 21;
-    carry16 = (s16 + (1<<20)) >> 21; s17 += carry16; s16 -= carry16 << 21;
-
-    carry7 = (s7 + (1<<20)) >> 21; s8 += carry7; s7 -= carry7 << 21;
-    carry9 = (s9 + (1<<20)) >> 21; s10 += carry9; s9 -= carry9 << 21;
-    carry11 = (s11 + (1<<20)) >> 21; s12 += carry11; s11 -= carry11 << 21;
-    carry13 = (s13 + (1<<20)) >> 21; s14 += carry13; s13 -= carry13 << 21;
-    carry15 = (s15 + (1<<20)) >> 21; s16 += carry15; s15 -= carry15 << 21;
-
-    s5 += s17 * 666643;
-    s6 += s17 * 470296;
-    s7 += s17 * 654183;
-    s8 -= s17 * 997805;
-    s9 += s17 * 136657;
-    s10 -= s17 * 683901;
+        s11 += s23 * 666643;
+        s12 += s23 * 470296;
+        s13 += s23 * 654183;
+        s14 -= s23 * 997805;
+        s15 += s23 * 136657;
+        s16 -= s23 * 683901;
 
 
-    s4 += s16 * 666643;
-    s5 += s16 * 470296;
-    s6 += s16 * 654183;
-    s7 -= s16 * 997805;
-    s8 += s16 * 136657;
-    s9 -= s16 * 683901;
+        s10 += s22 * 666643;
+        s11 += s22 * 470296;
+        s12 += s22 * 654183;
+        s13 -= s22 * 997805;
+        s14 += s22 * 136657;
+        s15 -= s22 * 683901;
 
 
-    s3 += s15 * 666643;
-    s4 += s15 * 470296;
-    s5 += s15 * 654183;
-    s6 -= s15 * 997805;
-    s7 += s15 * 136657;
-    s8 -= s15 * 683901;
+        s9 += s21 * 666643;
+        s10 += s21 * 470296;
+        s11 += s21 * 654183;
+        s12 -= s21 * 997805;
+        s13 += s21 * 136657;
+        s14 -= s21 * 683901;
 
 
-    s2 += s14 * 666643;
-    s3 += s14 * 470296;
-    s4 += s14 * 654183;
-    s5 -= s14 * 997805;
-    s6 += s14 * 136657;
-    s7 -= s14 * 683901;
+        s8 += s20 * 666643;
+        s9 += s20 * 470296;
+        s10 += s20 * 654183;
+        s11 -= s20 * 997805;
+        s12 += s20 * 136657;
+        s13 -= s20 * 683901;
 
 
-    s1 += s13 * 666643;
-    s2 += s13 * 470296;
-    s3 += s13 * 654183;
-    s4 -= s13 * 997805;
-    s5 += s13 * 136657;
-    s6 -= s13 * 683901;
+        s7 += s19 * 666643;
+        s8 += s19 * 470296;
+        s9 += s19 * 654183;
+        s10 -= s19 * 997805;
+        s11 += s19 * 136657;
+        s12 -= s19 * 683901;
 
 
-    s0 += s12 * 666643;
-    s1 += s12 * 470296;
-    s2 += s12 * 654183;
-    s3 -= s12 * 997805;
-    s4 += s12 * 136657;
-    s5 -= s12 * 683901;
-    s12 = 0;
-
-    carry0 = (s0 + (1<<20)) >> 21; s1 += carry0; s0 -= carry0 << 21;
-    carry2 = (s2 + (1<<20)) >> 21; s3 += carry2; s2 -= carry2 << 21;
-    carry4 = (s4 + (1<<20)) >> 21; s5 += carry4; s4 -= carry4 << 21;
-    carry6 = (s6 + (1<<20)) >> 21; s7 += carry6; s6 -= carry6 << 21;
-    carry8 = (s8 + (1<<20)) >> 21; s9 += carry8; s8 -= carry8 << 21;
-    carry10 = (s10 + (1<<20)) >> 21; s11 += carry10; s10 -= carry10 << 21;
-
-    carry1 = (s1 + (1<<20)) >> 21; s2 += carry1; s1 -= carry1 << 21;
-    carry3 = (s3 + (1<<20)) >> 21; s4 += carry3; s3 -= carry3 << 21;
-    carry5 = (s5 + (1<<20)) >> 21; s6 += carry5; s5 -= carry5 << 21;
-    carry7 = (s7 + (1<<20)) >> 21; s8 += carry7; s7 -= carry7 << 21;
-    carry9 = (s9 + (1<<20)) >> 21; s10 += carry9; s9 -= carry9 << 21;
-    carry11 = (s11 + (1<<20)) >> 21; s12 += carry11; s11 -= carry11 << 21;
-
-    s0 += s12 * 666643;
-    s1 += s12 * 470296;
-    s2 += s12 * 654183;
-    s3 -= s12 * 997805;
-    s4 += s12 * 136657;
-    s5 -= s12 * 683901;
-    s12 = 0;
-
-    carry0 = s0 >> 21; s1 += carry0; s0 -= carry0 << 21;
-    carry1 = s1 >> 21; s2 += carry1; s1 -= carry1 << 21;
-    carry2 = s2 >> 21; s3 += carry2; s2 -= carry2 << 21;
-    carry3 = s3 >> 21; s4 += carry3; s3 -= carry3 << 21;
-    carry4 = s4 >> 21; s5 += carry4; s4 -= carry4 << 21;
-    carry5 = s5 >> 21; s6 += carry5; s5 -= carry5 << 21;
-    carry6 = s6 >> 21; s7 += carry6; s6 -= carry6 << 21;
-    carry7 = s7 >> 21; s8 += carry7; s7 -= carry7 << 21;
-    carry8 = s8 >> 21; s9 += carry8; s8 -= carry8 << 21;
-    carry9 = s9 >> 21; s10 += carry9; s9 -= carry9 << 21;
-    carry10 = s10 >> 21; s11 += carry10; s10 -= carry10 << 21;
-    carry11 = s11 >> 21; s12 += carry11; s11 -= carry11 << 21;
-
-    s0 += s12 * 666643;
-    s1 += s12 * 470296;
-    s2 += s12 * 654183;
-    s3 -= s12 * 997805;
-    s4 += s12 * 136657;
-    s5 -= s12 * 683901;
+        s6 += s18 * 666643;
+        s7 += s18 * 470296;
+        s8 += s18 * 654183;
+        s9 -= s18 * 997805;
+        s10 += s18 * 136657;
+        s11 -= s18 * 683901;
 
 
-    carry0 = s0 >> 21; s1 += carry0; s0 -= carry0 << 21;
-    carry1 = s1 >> 21; s2 += carry1; s1 -= carry1 << 21;
-    carry2 = s2 >> 21; s3 += carry2; s2 -= carry2 << 21;
-    carry3 = s3 >> 21; s4 += carry3; s3 -= carry3 << 21;
-    carry4 = s4 >> 21; s5 += carry4; s4 -= carry4 << 21;
-    carry5 = s5 >> 21; s6 += carry5; s5 -= carry5 << 21;
-    carry6 = s6 >> 21; s7 += carry6; s6 -= carry6 << 21;
-    carry7 = s7 >> 21; s8 += carry7; s7 -= carry7 << 21;
-    carry8 = s8 >> 21; s9 += carry8; s8 -= carry8 << 21;
-    carry9 = s9 >> 21; s10 += carry9; s9 -= carry9 << 21;
-    carry10 = s10 >> 21; s11 += carry10; s10 -= carry10 << 21;
+        carry6 = (s6 + (1<<20)) >> 21; s7 += carry6; s6 -= carry6 << 21;
+        carry8 = (s8 + (1<<20)) >> 21; s9 += carry8; s8 -= carry8 << 21;
+        carry10 = (s10 + (1<<20)) >> 21; s11 += carry10; s10 -= carry10 << 21;
+        carry12 = (s12 + (1<<20)) >> 21; s13 += carry12; s12 -= carry12 << 21;
+        carry14 = (s14 + (1<<20)) >> 21; s15 += carry14; s14 -= carry14 << 21;
+        carry16 = (s16 + (1<<20)) >> 21; s17 += carry16; s16 -= carry16 << 21;
 
-    let mut out = [0u8; 32];
-    out[0] = (s0 >> 0) as u8;
-    out[1] = (s0 >> 8) as u8;
-    out[2] = ((s0 >> 16) | (s1 << 5)) as u8;
-    out[3] = (s1 >> 3) as u8;
-    out[4] = (s1 >> 11) as u8;
-    out[5] = ((s1 >> 19) | (s2 << 2)) as u8;
-    out[6] = (s2 >> 6) as u8;
-    out[7] = ((s2 >> 14) | (s3 << 7)) as u8;
-    out[8] = (s3 >> 1) as u8;
-    out[9] = (s3 >> 9) as u8;
-    out[10] = ((s3 >> 17) | (s4 << 4)) as u8;
-    out[11] = (s4 >> 4) as u8;
-    out[12] = (s4 >> 12) as u8;
-    out[13] = ((s4 >> 20) | (s5 << 1)) as u8;
-    out[14] = (s5 >> 7) as u8;
-    out[15] = ((s5 >> 15) | (s6 << 6)) as u8;
-    out[16] = (s6 >> 2) as u8;
-    out[17] = (s6 >> 10) as u8;
-    out[18] = ((s6 >> 18) | (s7 << 3)) as u8;
-    out[19] = (s7 >> 5) as u8;
-    out[20] = (s7 >> 13) as u8;
-    out[21] = (s8 >> 0) as u8;
-    out[22] = (s8 >> 8) as u8;
-    out[23] = ((s8 >> 16) | (s9 << 5)) as u8;
-    out[24] = (s9 >> 3) as u8;
-    out[25] = (s9 >> 11) as u8;
-    out[26] = ((s9 >> 19) | (s10 << 2)) as u8;
-    out[27] = (s10 >> 6) as u8;
-    out[28] = ((s10 >> 14) | (s11 << 7)) as u8;
-    out[29] = (s11 >> 1) as u8;
-    out[30] = (s11 >> 9) as u8;
-    out[31] = (s11 >> 17) as u8;
-    out
+        carry7 = (s7 + (1<<20)) >> 21; s8 += carry7; s7 -= carry7 << 21;
+        carry9 = (s9 + (1<<20)) >> 21; s10 += carry9; s9 -= carry9 << 21;
+        carry11 = (s11 + (1<<20)) >> 21; s12 += carry11; s11 -= carry11 << 21;
+        carry13 = (s13 + (1<<20)) >> 21; s14 += carry13; s13 -= carry13 << 21;
+        carry15 = (s15 + (1<<20)) >> 21; s16 += carry15; s15 -= carry15 << 21;
+
+        s5 += s17 * 666643;
+        s6 += s17 * 470296;
+        s7 += s17 * 654183;
+        s8 -= s17 * 997805;
+        s9 += s17 * 136657;
+        s10 -= s17 * 683901;
+
+
+        s4 += s16 * 666643;
+        s5 += s16 * 470296;
+        s6 += s16 * 654183;
+        s7 -= s16 * 997805;
+        s8 += s16 * 136657;
+        s9 -= s16 * 683901;
+
+
+        s3 += s15 * 666643;
+        s4 += s15 * 470296;
+        s5 += s15 * 654183;
+        s6 -= s15 * 997805;
+        s7 += s15 * 136657;
+        s8 -= s15 * 683901;
+
+
+        s2 += s14 * 666643;
+        s3 += s14 * 470296;
+        s4 += s14 * 654183;
+        s5 -= s14 * 997805;
+        s6 += s14 * 136657;
+        s7 -= s14 * 683901;
+
+
+        s1 += s13 * 666643;
+        s2 += s13 * 470296;
+        s3 += s13 * 654183;
+        s4 -= s13 * 997805;
+        s5 += s13 * 136657;
+        s6 -= s13 * 683901;
+
+
+        s0 += s12 * 666643;
+        s1 += s12 * 470296;
+        s2 += s12 * 654183;
+        s3 -= s12 * 997805;
+        s4 += s12 * 136657;
+        s5 -= s12 * 683901;
+        s12 = 0;
+
+        carry0 = (s0 + (1<<20)) >> 21; s1 += carry0; s0 -= carry0 << 21;
+        carry2 = (s2 + (1<<20)) >> 21; s3 += carry2; s2 -= carry2 << 21;
+        carry4 = (s4 + (1<<20)) >> 21; s5 += carry4; s4 -= carry4 << 21;
+        carry6 = (s6 + (1<<20)) >> 21; s7 += carry6; s6 -= carry6 << 21;
+        carry8 = (s8 + (1<<20)) >> 21; s9 += carry8; s8 -= carry8 << 21;
+        carry10 = (s10 + (1<<20)) >> 21; s11 += carry10; s10 -= carry10 << 21;
+
+        carry1 = (s1 + (1<<20)) >> 21; s2 += carry1; s1 -= carry1 << 21;
+        carry3 = (s3 + (1<<20)) >> 21; s4 += carry3; s3 -= carry3 << 21;
+        carry5 = (s5 + (1<<20)) >> 21; s6 += carry5; s5 -= carry5 << 21;
+        carry7 = (s7 + (1<<20)) >> 21; s8 += carry7; s7 -= carry7 << 21;
+        carry9 = (s9 + (1<<20)) >> 21; s10 += carry9; s9 -= carry9 << 21;
+        carry11 = (s11 + (1<<20)) >> 21; s12 += carry11; s11 -= carry11 << 21;
+
+        s0 += s12 * 666643;
+        s1 += s12 * 470296;
+        s2 += s12 * 654183;
+        s3 -= s12 * 997805;
+        s4 += s12 * 136657;
+        s5 -= s12 * 683901;
+        s12 = 0;
+
+        carry0 = s0 >> 21; s1 += carry0; s0 -= carry0 << 21;
+        carry1 = s1 >> 21; s2 += carry1; s1 -= carry1 << 21;
+        carry2 = s2 >> 21; s3 += carry2; s2 -= carry2 << 21;
+        carry3 = s3 >> 21; s4 += carry3; s3 -= carry3 << 21;
+        carry4 = s4 >> 21; s5 += carry4; s4 -= carry4 << 21;
+        carry5 = s5 >> 21; s6 += carry5; s5 -= carry5 << 21;
+        carry6 = s6 >> 21; s7 += carry6; s6 -= carry6 << 21;
+        carry7 = s7 >> 21; s8 += carry7; s7 -= carry7 << 21;
+        carry8 = s8 >> 21; s9 += carry8; s8 -= carry8 << 21;
+        carry9 = s9 >> 21; s10 += carry9; s9 -= carry9 << 21;
+        carry10 = s10 >> 21; s11 += carry10; s10 -= carry10 << 21;
+        carry11 = s11 >> 21; s12 += carry11; s11 -= carry11 << 21;
+
+        s0 += s12 * 666643;
+        s1 += s12 * 470296;
+        s2 += s12 * 654183;
+        s3 -= s12 * 997805;
+        s4 += s12 * 136657;
+        s5 -= s12 * 683901;
+
+
+        carry0 = s0 >> 21; s1 += carry0; s0 -= carry0 << 21;
+        carry1 = s1 >> 21; s2 += carry1; s1 -= carry1 << 21;
+        carry2 = s2 >> 21; s3 += carry2; s2 -= carry2 << 21;
+        carry3 = s3 >> 21; s4 += carry3; s3 -= carry3 << 21;
+        carry4 = s4 >> 21; s5 += carry4; s4 -= carry4 << 21;
+        carry5 = s5 >> 21; s6 += carry5; s5 -= carry5 << 21;
+        carry6 = s6 >> 21; s7 += carry6; s6 -= carry6 << 21;
+        carry7 = s7 >> 21; s8 += carry7; s7 -= carry7 << 21;
+        carry8 = s8 >> 21; s9 += carry8; s8 -= carry8 << 21;
+        carry9 = s9 >> 21; s10 += carry9; s9 -= carry9 << 21;
+        carry10 = s10 >> 21; s11 += carry10; s10 -= carry10 << 21;
+
+        let mut out = [0u8; 32];
+        out[0] = (s0 >> 0) as u8;
+        out[1] = (s0 >> 8) as u8;
+        out[2] = ((s0 >> 16) | (s1 << 5)) as u8;
+        out[3] = (s1 >> 3) as u8;
+        out[4] = (s1 >> 11) as u8;
+        out[5] = ((s1 >> 19) | (s2 << 2)) as u8;
+        out[6] = (s2 >> 6) as u8;
+        out[7] = ((s2 >> 14) | (s3 << 7)) as u8;
+        out[8] = (s3 >> 1) as u8;
+        out[9] = (s3 >> 9) as u8;
+        out[10] = ((s3 >> 17) | (s4 << 4)) as u8;
+        out[11] = (s4 >> 4) as u8;
+        out[12] = (s4 >> 12) as u8;
+        out[13] = ((s4 >> 20) | (s5 << 1)) as u8;
+        out[14] = (s5 >> 7) as u8;
+        out[15] = ((s5 >> 15) | (s6 << 6)) as u8;
+        out[16] = (s6 >> 2) as u8;
+        out[17] = (s6 >> 10) as u8;
+        out[18] = ((s6 >> 18) | (s7 << 3)) as u8;
+        out[19] = (s7 >> 5) as u8;
+        out[20] = (s7 >> 13) as u8;
+        out[21] = (s8 >> 0) as u8;
+        out[22] = (s8 >> 8) as u8;
+        out[23] = ((s8 >> 16) | (s9 << 5)) as u8;
+        out[24] = (s9 >> 3) as u8;
+        out[25] = (s9 >> 11) as u8;
+        out[26] = ((s9 >> 19) | (s10 << 2)) as u8;
+        out[27] = (s10 >> 6) as u8;
+        out[28] = ((s10 >> 14) | (s11 << 7)) as u8;
+        out[29] = (s11 >> 1) as u8;
+        out[30] = (s11 >> 9) as u8;
+        out[31] = (s11 >> 17) as u8;
+        Scalar(out)
+    }
 }
 
 /*
@@ -264,7 +315,7 @@ Output:
     where l = 2^252 + 27742317777372353535851937790883648493.
 */
 #[rustfmt::skip]
-pub(crate) fn muladd(s: &mut[u8;32], a: &[u8;32], b: &[u8;32], c: &[u8;32]) {
+pub(crate) fn muladd(s: &mut [u8; 32], Scalar(a): &Scalar, b: &[u8; 32], Scalar(c): &Scalar) {
     let a0 = 2097151 & load_3i(&a[0..3]);
     let a1 = 2097151 & (load_4i(&a[2..6]) >> 5);
     let a2 = 2097151 & (load_3i(&a[5..8]) >> 2);

@@ -7,10 +7,46 @@ mod scalar32;
 mod scalar64;
 
 #[cfg(any(any(target_arch = "arm"), feature = "force-32bits"))]
-pub(crate) use scalar32::*;
+pub use scalar32::*;
 
 #[cfg(not(any(any(target_arch = "arm"), feature = "force-32bits")))]
-pub(crate) use scalar64::*;
+pub use scalar64::*;
+
+impl Scalar {
+    #[allow(clippy::needless_range_loop)]
+    pub(crate) fn slide(&self) -> [i8; 256] {
+        let a = self.to_bytes();
+        let mut r = [0i8; 256];
+        for i in 0..256 {
+            r[i] = (1 & (a[i >> 3] >> (i & 7))) as i8;
+        }
+        for i in 0..256 {
+            if r[i] != 0 {
+                for b in 1..core::cmp::min(7, 256 - i) {
+                    if r[i + b] != 0 {
+                        if r[i] + (r[i + b] << b) <= 15 {
+                            r[i] += r[i + b] << b;
+                            r[i + b] = 0;
+                        } else if r[i] - (r[i + b] << b) >= -15 {
+                            r[i] -= r[i + b] << b;
+                            for k in i + b..256 {
+                                if r[k] == 0 {
+                                    r[k] = 1;
+                                    break;
+                                }
+                                r[k] = 0;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        r
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -105,7 +141,12 @@ mod tests {
 
         for (i, iv) in ivs.iter().enumerate() {
             let mut out = [0u8; 32];
-            muladd(&mut out, &iv.a, &iv.b, &iv.c);
+            muladd(
+                &mut out,
+                &Scalar::from_bytes(&iv.a),
+                &iv.b,
+                &Scalar::from_bytes(&iv.c),
+            );
             assert_eq!(iv.r, out, "IV test {} failed", i);
         }
     }

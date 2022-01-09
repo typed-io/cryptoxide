@@ -28,10 +28,11 @@
 
 mod fe;
 mod ge;
-pub(crate) mod scalar;
+pub mod scalar;
 
 pub use fe::Fe;
 pub use ge::{GeCached, GeP1P1, GeP2, GeP3, GePrecomp};
+pub use scalar::Scalar;
 
 use crate::constant_time::CtZero;
 

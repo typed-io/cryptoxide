@@ -4,37 +4,52 @@
 //!
 //! scalar is back by 5 Limbs in 56 bits unsaturated (except last)
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Scalar([u64; 5]);
+
+/// Order of Scalar : M = 2^252 + 27742317777372353535851937790883648493
 const M: [u64; 5] = [
-    0x12631a5cf5d3ed,
-    0xf9dea2f79cd658,
-    0x000000000014de,
-    0x00000000000000,
-    0x00000010000000,
+    0x0012_631a_5cf5_d3ed,
+    0x00f9_dea2_f79c_d658,
+    0x0000_0000_0000_14de,
+    0x0000_0000_0000_0000,
+    0x0000_0000_1000_0000,
 ];
 
 const MU: [u64; 5] = [
-    0x9ce5a30a2c131b,
-    0x215d086329a7ed,
-    0xffffffffeb2106,
-    0xffffffffffffff,
-    0x00000fffffffff,
+    0x009c_e5a3_0a2c_131b,
+    0x0021_5d08_6329_a7ed,
+    0x00ff_ffff_ffeb_2106,
+    0x00ff_ffff_ffff_ffff,
+    0x0000_000f_ffff_ffff,
 ];
 
 #[inline]
-const fn lt_modm(a: u64, b: u64) -> u64 {
+const fn lt(a: u64, b: u64) -> u64 {
     (a.wrapping_sub(b)) >> 63
 }
 
+const fn lt_order(v: &[u64; 5]) -> bool {
+    // v - L < 0 => borrow is 1
+    let b = lt(v[0], M[0]);
+    let b = lt(v[1], b + M[1]);
+    let b = lt(v[2], b + M[2]);
+    let b = lt(v[3], b + M[3]);
+    let b = lt(v[4], b + M[4]);
+    b == 1
+}
+
 #[rustfmt::skip]
-fn reduce256_modm(r: &mut [u64; 5]) {
+const fn reduce256(mut r: [u64; 5]) -> [u64;5] {
     // t = r - m
     let mut t = [0u64; 5];
-    let mut pb = 0;
-    pb += M[0]; let b = lt_modm(r[0], pb); t[0] = r[0].wrapping_sub(pb).wrapping_add(b << 56); pb = b;
-    pb += M[1]; let b = lt_modm(r[1], pb); t[1] = r[1].wrapping_sub(pb).wrapping_add(b << 56); pb = b;
-    pb += M[2]; let b = lt_modm(r[2], pb); t[2] = r[2].wrapping_sub(pb).wrapping_add(b << 56); pb = b;
-    pb += M[3]; let b = lt_modm(r[3], pb); t[3] = r[3].wrapping_sub(pb).wrapping_add(b << 56); pb = b;
-    pb += M[4]; let b = lt_modm(r[4], pb); t[4] = r[4].wrapping_sub(pb).wrapping_add(b << 32);
+    let mut pb;
+
+    let b = lt(r[0], M[0]); t[0] = r[0].wrapping_sub(M[0]).wrapping_add(b << 56); pb = b + M[1];
+    let b = lt(r[1], pb); t[1] = r[1].wrapping_sub(pb).wrapping_add(b << 56); pb = b + M[2];
+    let b = lt(r[2], pb); t[2] = r[2].wrapping_sub(pb).wrapping_add(b << 56); pb = b + M[3];
+    let b = lt(r[3], pb); t[3] = r[3].wrapping_sub(pb).wrapping_add(b << 56); pb = b + M[4];
+    let b = lt(r[4], pb); t[4] = r[4].wrapping_sub(pb).wrapping_add(b << 32);
 
     // keep r if r was smaller than m
     let mask = b.wrapping_sub(1);
@@ -44,6 +59,7 @@ fn reduce256_modm(r: &mut [u64; 5]) {
     r[2] ^= mask & (r[2] ^ t[2]);
     r[3] ^= mask & (r[3] ^ t[3]);
     r[4] ^= mask & (r[4] ^ t[4]);
+    r
 }
 
 #[inline]
@@ -60,8 +76,79 @@ const MASK16: u64 = 0x0000_0000_0000_ffff;
 const MASK40: u64 = 0x0000_00ff_ffff_ffff;
 const MASK56: u64 = 0x00ff_ffff_ffff_ffff;
 
+impl Scalar {
+    pub const ZERO: Self = Scalar([0, 0, 0, 0, 0]);
+    pub const ONE: Self = Scalar([1, 0, 0, 0, 0]);
+
+    pub const fn from_bytes(bytes: &[u8; 32]) -> Self {
+        // load 8 bytes from input[ofs..ofs+7] as little endian u64
+        #[inline]
+        const fn load(bytes: &[u8; 32], ofs: usize) -> u64 {
+            (bytes[ofs] as u64)
+                | ((bytes[ofs + 1] as u64) << 8)
+                | ((bytes[ofs + 2] as u64) << 16)
+                | ((bytes[ofs + 3] as u64) << 24)
+                | ((bytes[ofs + 4] as u64) << 32)
+                | ((bytes[ofs + 5] as u64) << 40)
+                | ((bytes[ofs + 6] as u64) << 48)
+                | ((bytes[ofs + 7] as u64) << 56)
+        }
+
+        let x0 = load(bytes, 0);
+        let x1 = load(bytes, 8);
+        let x2 = load(bytes, 16);
+        let x3 = load(bytes, 24);
+
+        let out0 = x0 & MASK56;
+        let out1 = (x0 >> 56 | x1 << 8) & MASK56;
+        let out2 = (x1 >> 48 | x2 << 16) & MASK56;
+        let out3 = (x2 >> 40 | x3 << 24) & MASK56;
+        let out4 = x3 >> 32;
+        Scalar([out0, out1, out2, out3, out4])
+    }
+
+    // Same as from_bytes but check whether the value
+    pub fn from_bytes_canonical(bytes: &[u8; 32]) -> Option<Self> {
+        let scalar = Self::from_bytes(bytes);
+        if lt_order(&scalar.0) {
+            Some(scalar)
+        } else {
+            None
+        }
+    }
+
+    pub const fn to_bytes(&self) -> [u8; 32] {
+        // contract limbs into saturated limbs
+        let c0 = self.0[1] << 56 | self.0[0];
+        let c1 = self.0[2] << 48 | self.0[1] >> 8;
+        let c2 = self.0[3] << 40 | self.0[2] >> 16;
+        let c3 = self.0[4] << 32 | self.0[3] >> 24;
+
+        // write saturated limbs into little endian bytes
+        let mut out = [0u8; 32];
+        macro_rules! write8 {
+            ($ofs:literal, $v:ident) => {
+                let x = $v.to_le_bytes();
+                out[$ofs] = x[0];
+                out[$ofs + 1] = x[1];
+                out[$ofs + 2] = x[2];
+                out[$ofs + 3] = x[3];
+                out[$ofs + 4] = x[4];
+                out[$ofs + 5] = x[5];
+                out[$ofs + 6] = x[6];
+                out[$ofs + 7] = x[7];
+            };
+        }
+        write8!(0, c0);
+        write8!(8, c1);
+        write8!(16, c2);
+        write8!(24, c3);
+        out
+    }
+}
+
 #[rustfmt::skip]
-fn barrett_reduce256_modm(out: &mut [u64; 5], q1: &[u64; 5], r1: &[u64; 5]) {
+const fn barrett_reduce256(q1: &[u64; 5], r1: &[u64; 5]) -> [u64; 5] {
     let mut r2 = [0; 5];
     let mut q3 = [0; 5];
     let mut c : u128;
@@ -97,84 +184,28 @@ fn barrett_reduce256_modm(out: &mut [u64; 5], q1: &[u64; 5], r1: &[u64; 5]) {
     c = mul128(M[0], q3[4]) + (f as u128) + mul128(M[4], q3[0]) + mul128(M[3], q3[1]) + mul128(M[1], q3[3]) + mul128(M[2], q3[2]);
     r2[4] = (c as u64) & MASK40;
 
+    let mut out = [0u64;5];
+
     pb = 0;
-    pb += r2[0]; b = lt_modm(r1[0], pb); out[0] = r1[0].wrapping_sub(pb).wrapping_add(b << 56); pb = b;
-    pb += r2[1]; b = lt_modm(r1[1], pb); out[1] = r1[1].wrapping_sub(pb).wrapping_add(b << 56); pb = b;
-    pb += r2[2]; b = lt_modm(r1[2], pb); out[2] = r1[2].wrapping_sub(pb).wrapping_add(b << 56); pb = b;
-    pb += r2[3]; b = lt_modm(r1[3], pb); out[3] = r1[3].wrapping_sub(pb).wrapping_add(b << 56); pb = b;
-    pb += r2[4]; b = lt_modm(r1[4], pb); out[4] = r1[4].wrapping_sub(pb).wrapping_add(b << 40);
+    pb += r2[0]; b = lt(r1[0], pb); out[0] = r1[0].wrapping_sub(pb).wrapping_add(b << 56); pb = b;
+    pb += r2[1]; b = lt(r1[1], pb); out[1] = r1[1].wrapping_sub(pb).wrapping_add(b << 56); pb = b;
+    pb += r2[2]; b = lt(r1[2], pb); out[2] = r1[2].wrapping_sub(pb).wrapping_add(b << 56); pb = b;
+    pb += r2[3]; b = lt(r1[3], pb); out[3] = r1[3].wrapping_sub(pb).wrapping_add(b << 56); pb = b;
+    pb += r2[4]; b = lt(r1[4], pb); out[4] = r1[4].wrapping_sub(pb).wrapping_add(b << 40);
 
-    reduce256_modm(out);
-    reduce256_modm(out);
+    reduce256(reduce256(out))
 }
 
-const fn from_bytes(bytes: &[u8; 32]) -> [u64; 5] {
-    // load 8 bytes from input[ofs..ofs+7] as little endian u64
-    #[inline]
-    const fn load(bytes: &[u8; 32], ofs: usize) -> u64 {
-        (bytes[ofs] as u64)
-            | ((bytes[ofs + 1] as u64) << 8)
-            | ((bytes[ofs + 2] as u64) << 16)
-            | ((bytes[ofs + 3] as u64) << 24)
-            | ((bytes[ofs + 4] as u64) << 32)
-            | ((bytes[ofs + 5] as u64) << 40)
-            | ((bytes[ofs + 6] as u64) << 48)
-            | ((bytes[ofs + 7] as u64) << 56)
-    }
-
-    let x0 = load(bytes, 0);
-    let x1 = load(bytes, 8);
-    let x2 = load(bytes, 16);
-    let x3 = load(bytes, 24);
-
-    let out0 = x0 & MASK56;
-    let out1 = (x0 >> 56 | x1 << 8) & MASK56;
-    let out2 = (x1 >> 48 | x2 << 16) & MASK56;
-    let out3 = (x2 >> 40 | x3 << 24) & MASK56;
-    let out4 = x3 >> 32;
-    [out0, out1, out2, out3, out4]
-}
-
-const fn to_bytes(limbs: &[u64; 5]) -> [u8; 32] {
-    // contract limbs into saturated limbs
-    let c0 = limbs[1] << 56 | limbs[0];
-    let c1 = limbs[2] << 48 | limbs[1] >> 8;
-    let c2 = limbs[3] << 40 | limbs[2] >> 16;
-    let c3 = limbs[4] << 32 | limbs[3] >> 24;
-
-    // write saturated limbs into little endian bytes
-    let mut out = [0u8; 32];
-    macro_rules! write8 {
-        ($ofs:literal, $v:ident) => {
-            let x = $v.to_le_bytes();
-            out[$ofs] = x[0];
-            out[$ofs + 1] = x[1];
-            out[$ofs + 2] = x[2];
-            out[$ofs + 3] = x[3];
-            out[$ofs + 4] = x[4];
-            out[$ofs + 5] = x[5];
-            out[$ofs + 6] = x[6];
-            out[$ofs + 7] = x[7];
-        };
-    }
-    write8!(0, c0);
-    write8!(8, c1);
-    write8!(16, c2);
-    write8!(24, c3);
-    out
-}
-
-/*
-Input:
-    s[0]+256*s[1]+...+256^63*s[63] = s
-
-Output:
-    s[0]+256*s[1]+...+256^31*s[31] = s mod l
-    where l = 2^252 + 27742317777372353535851937790883648493.
-*/
-#[rustfmt::skip]
-#[must_use]
-pub(crate) fn reduce(s: &[u8; 64]) -> [u8; 32] {
+impl Scalar {
+    /// Create a new scalar from 64 bytes (512 bits) reducing
+    /// the scalar to an element of the field
+    ///
+    /// Input is a little endian 512 bits scalar value:
+    /// s[0]+256*s[1]+...+256^63*s[63] = s
+    ///
+    /// And the output scalar is a `s % order of field`
+    #[must_use]
+    pub const fn reduce_from_wide_bytes(s: &[u8; 64]) -> Scalar {
         // load 8 bytes from input[ofs..ofs+7] as little endian u64
         #[inline]
         const fn load(bytes: &[u8; 64], ofs: usize) -> u64 {
@@ -200,35 +231,27 @@ pub(crate) fn reduce(s: &[u8; 64]) -> [u8; 32] {
 
         /* r1 = (x mod 256^(32+1)) = x mod (2^8)(31+1) = x & ((1 << 264) - 1) */
         let mut out = [0; 5];
-        out[0] = (                     x0) & MASK56;
-        out[1] = ((x0 >> 56) | (x1 <<  8)) & MASK56;
+        out[0] = x0 & MASK56;
+        out[1] = ((x0 >> 56) | (x1 << 8)) & MASK56;
         out[2] = ((x1 >> 48) | (x2 << 16)) & MASK56;
         out[3] = ((x2 >> 40) | (x3 << 24)) & MASK56;
         out[4] = ((x3 >> 32) | (x4 << 32)) & MASK40;
 
-        /*
-        /* under 252 bits, no need to reduce */
-        if (len < 32)
-                return;
-        */
-
         /* q1 = x >> 248 = 264 bits */
         let mut q1 = [0; 5];
-        q1[0] = ((x3 >> 56) | (x4 <<  8)) & MASK56;
+        q1[0] = ((x3 >> 56) | (x4 << 8)) & MASK56;
         q1[1] = ((x4 >> 48) | (x5 << 16)) & MASK56;
         q1[2] = ((x5 >> 40) | (x6 << 24)) & MASK56;
         q1[3] = ((x6 >> 32) | (x7 << 32)) & MASK56;
         q1[4] = x7 >> 24;
 
-        let mut out2 = [0; 5];
-        barrett_reduce256_modm(&mut out2, &q1, &out);
-
-        to_bytes(&out2)
+        Scalar(barrett_reduce256(&q1, &out))
+    }
 }
 
 /// Add 2 scalars and return the reduced scalar
 #[rustfmt::skip]
-fn add(x: &[u64; 5], y: &[u64; 5]) -> [u64; 5] {
+const fn add(Scalar(x): &Scalar, Scalar(y): &Scalar) -> Scalar {
     let mut c;
     let mut r = [0; 5];
 
@@ -238,13 +261,12 @@ fn add(x: &[u64; 5], y: &[u64; 5]) -> [u64; 5] {
 	c += x[3] + y[3]; r[3] = c & MASK56; c >>= 56;
 	c += x[4] + y[4]; r[4] = c;
 
-	reduce256_modm(&mut r);
-    r
+	Scalar(reduce256(r))
 }
 
 /// Multiply two scalars and return the reduced scalar
 #[rustfmt::skip]
-fn mul(x: &[u64; 5], y: &[u64; 5]) -> [u64; 5] {
+const fn mul(Scalar(x): &Scalar, Scalar(y): &Scalar) -> Scalar {
     let mut q1 = [0; 5];
     let mut r1 = [0; 5];
 
@@ -269,9 +291,7 @@ fn mul(x: &[u64; 5], y: &[u64; 5]) -> [u64; 5] {
 	let f = c as u64; q1[3] |= (f << 32) & MASK56; q1[4] = (f >> 24) & 0xffffffff; let f = shr128(c, 56);
 	q1[4] |= f << 32;
 
-    let mut out = [0;5];
-	barrett_reduce256_modm(&mut out, &q1, &r1);
-    out
+	Scalar(barrett_reduce256(&q1, &r1))
 }
 
 /*
@@ -285,15 +305,13 @@ Output:
     where l = 2^252 + 27742317777372353535851937790883648493.
 */
 #[rustfmt::skip]
-pub(crate) fn muladd(s: &mut [u8; 32], a: &[u8; 32], b: &[u8; 32], c: &[u8; 32]) {
-    let a = from_bytes(a);
-    let b = from_bytes(b);
-    let c = from_bytes(c);
+pub(crate) fn muladd(s: &mut [u8; 32], a: &Scalar, b: &[u8; 32], c: &Scalar) {
+    let b = Scalar::from_bytes(b);
 
     let m = mul(&a, &b);
     let r = add(&m, &c);
 
-    *s = to_bytes(&r);
+    *s = r.to_bytes();
 }
 
 #[cfg(test)]
@@ -301,16 +319,16 @@ mod tests {
     use super::*;
     use crate::curve25519::testrng::{GeneratorOf, GeneratorOf2, GeneratorRaw};
 
-    fn next_scalar(gen: &mut GeneratorRaw) -> [u64; 5] {
+    fn next_scalar(gen: &mut GeneratorRaw) -> Scalar {
         let mut bytes = gen.bytes();
         bytes[31] &= 0x0f; // 2^252 max for simplicity
-        from_bytes(&bytes)
+        Scalar::from_bytes(&bytes)
     }
 
     #[test]
     fn serialization() {
         for scalar in GeneratorOf::new(0, 100, next_scalar) {
-            let after_serialization = from_bytes(&to_bytes(&scalar));
+            let after_serialization = Scalar::from_bytes(&scalar.to_bytes());
             assert_eq!(scalar, after_serialization);
         }
     }
@@ -339,10 +357,10 @@ mod tests {
         }];
 
         for (i, iv) in ivs.iter().enumerate() {
-            let a = from_bytes(&iv.a);
-            let b = from_bytes(&iv.b);
+            let a = Scalar::from_bytes(&iv.a);
+            let b = Scalar::from_bytes(&iv.b);
             let r = add(&a, &b);
-            assert_eq!(to_bytes(&r), iv.r, "iv test {} failed", i);
+            assert_eq!(r.to_bytes(), iv.r, "iv test {} failed", i);
         }
     }
 
@@ -361,14 +379,37 @@ mod tests {
     }
 
     #[test]
+    fn canonical() {
+        const L: [u8; 32] = [
+            237, 211, 245, 92, 26, 99, 18, 88, 214, 156, 247, 162, 222, 249, 222, 20, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16,
+        ];
+        const LM1: [u8; 32] = [
+            236, 211, 245, 92, 26, 99, 18, 88, 214, 156, 247, 162, 222, 249, 222, 20, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16,
+        ];
+        const LP1: [u8; 32] = [
+            238, 211, 245, 92, 26, 99, 18, 88, 214, 156, 247, 162, 222, 249, 222, 20, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16,
+        ];
+        assert!(Scalar::from_bytes_canonical(&Scalar::ZERO.to_bytes()).is_some());
+        assert!(Scalar::from_bytes_canonical(&Scalar::ONE.to_bytes()).is_some());
+        // order
+        assert!(Scalar::from_bytes_canonical(&LM1).is_some());
+        assert!(Scalar::from_bytes_canonical(&L).is_none());
+        assert!(Scalar::from_bytes_canonical(&LP1).is_none());
+    }
+
+    #[test]
     fn reduction() {
-        assert_eq!(reduce(&[0; 64]), [0; 32]);
+        assert_eq!(Scalar::reduce_from_wide_bytes(&[0; 64]).to_bytes(), [0; 32]);
         assert_eq!(
-            reduce(&[
+            Scalar::reduce_from_wide_bytes(&[
                 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0,
-            ]),
+            ])
+            .to_bytes(),
             [
                 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0,
@@ -376,12 +417,13 @@ mod tests {
         );
 
         assert_eq!(
-            reduce(&[
+            Scalar::reduce_from_wide_bytes(&[
                 30, 1, 102, 252, 230, 223, 126, 62, 154, 62, 25, 173, 159, 16, 157, 227, 21, 140,
                 223, 132, 84, 209, 86, 118, 35, 85, 26, 144, 12, 4, 76, 170, 93, 151, 77, 147, 32,
                 213, 10, 135, 235, 26, 71, 94, 108, 45, 193, 229, 106, 233, 198, 109, 246, 81, 108,
                 91, 63, 108, 220, 6, 119, 115, 9, 117
-            ]),
+            ])
+            .to_bytes(),
             [
                 4, 135, 152, 112, 4, 206, 189, 109, 105, 80, 162, 79, 191, 218, 37, 85, 225, 159,
                 163, 149, 143, 3, 101, 222, 2, 81, 255, 223, 235, 242, 30, 12

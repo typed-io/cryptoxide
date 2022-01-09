@@ -15,11 +15,7 @@ pub use scalar64::*;
 impl Scalar {
     #[allow(clippy::needless_range_loop)]
     pub(crate) fn slide(&self) -> [i8; 256] {
-        let a = self.to_bytes();
-        let mut r = [0i8; 256];
-        for i in 0..256 {
-            r[i] = (1 & (a[i >> 3] >> (i & 7))) as i8;
-        }
+        let mut r = self.bits();
         for i in 0..256 {
             if r[i] != 0 {
                 for b in 1..core::cmp::min(7, 256 - i) {

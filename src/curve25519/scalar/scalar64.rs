@@ -145,6 +145,22 @@ impl Scalar {
         write8!(24, c3);
         out
     }
+
+    #[inline]
+    pub(crate) fn bits(&self) -> [i8; 256] {
+        // contract limbs into saturated limbs
+        let mut c = [0; 4];
+        c[0] = self.0[1] << 56 | self.0[0];
+        c[1] = self.0[2] << 48 | self.0[1] >> 8;
+        c[2] = self.0[3] << 40 | self.0[2] >> 16;
+        c[3] = self.0[4] << 32 | self.0[3] >> 24;
+
+        let mut r = [0i8; 256];
+        for i in 0..256 {
+            r[i] = (1 & (c[i >> 6] >> (i & 0x3f))) as i8;
+        }
+        r
+    }
 }
 
 #[rustfmt::skip]

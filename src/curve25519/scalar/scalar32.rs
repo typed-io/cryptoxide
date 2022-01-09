@@ -16,9 +16,7 @@ impl Scalar {
     pub const fn to_bytes(&self) -> [u8; 32] {
         self.0
     }
-}
 
-impl Scalar {
     pub fn from_bytes_canonical(bytes: &[u8; 32]) -> Option<Self> {
         const L: [u8; 32] = [
             0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -49,6 +47,16 @@ impl Scalar {
         } else {
             Some(Scalar::from_bytes(bytes))
         }
+    }
+
+    #[inline]
+    pub(crate) fn bits(&self) -> [i8; 256] {
+        let a: &[u8; 32] = &self.0;
+        let mut r = [0i8; 256];
+        for i in 0..256 {
+            r[i] = (1 & (a[i >> 3] >> (i & 7))) as i8;
+        }
+        r
     }
 
     /// Create a new scalar from 64 bytes (512 bits) reducing

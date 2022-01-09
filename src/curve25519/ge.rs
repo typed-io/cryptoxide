@@ -194,16 +194,21 @@ impl GeP2 {
 
 impl GeP3 {
     pub fn from_bytes_negate_vartime(s: &[u8; 32]) -> Option<GeP3> {
+        // See RFC8032 5.3.1 decoding process
+        //
+        // y (255 bits) | sign(x) (1 bit) = s
+        // let u = y^2 - 1
+        //     v = d * y^2 + 1
+        //     x = u * v^3 * (u * v^7)^((p-5)/8)
         let y = Fe::from_bytes(s);
-        let z = Fe::ONE;
-        let y_squared = y.square();
-        let u = &y_squared - &Fe::ONE;
-        let v = &(&y_squared * &Fe::D) + &Fe::ONE;
-        let v_raise_3 = &v.square() * &v;
-        let v_raise_7 = &v_raise_3.square() * &v;
-        let uv7 = &v_raise_7 * &u; // Is this commutative? u comes second in the code, but not in the notation...
+        let y2 = y.square();
+        let u = &y2 - &Fe::ONE;
+        let v = &(&y2 * &Fe::D) + &Fe::ONE;
+        let v3 = &v.square() * &v;
+        let v7 = &v3.square() * &v;
+        let uv7 = &v7 * &u;
 
-        let mut x = &(&uv7.pow25523() * &v_raise_3) * &u;
+        let mut x = &(&uv7.pow25523() * &v3) * &u;
 
         let vxx = &x.square() * &v;
         let check = &vxx - &u;
@@ -224,7 +229,7 @@ impl GeP3 {
         Some(GeP3 {
             x: x,
             y: y,
-            z: z,
+            z: Fe::ONE,
             t: t,
         })
     }

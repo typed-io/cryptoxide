@@ -16,8 +16,8 @@ pub struct Fe(pub(crate) [u64; 5]);
 
 impl CtEqual for &Fe {
     fn ct_eq(self, other: Self) -> Choice {
-        let p1 = self.to_bytes();
-        let p2 = other.to_bytes();
+        let p1 = self.to_packed();
+        let p2 = other.to_packed();
         p1.ct_eq(&p2)
     }
     fn ct_ne(self, other: Self) -> Choice {
@@ -61,6 +61,11 @@ impl Fe {
 #[inline]
 const fn mul128(a: u64, b: u64) -> u128 {
     a as u128 * b as u128
+}
+
+#[inline]
+fn shl128(v: u128, shift: usize) -> u64 {
+    ((v << shift) >> 64) as u64
 }
 
 impl Add for &Fe {
@@ -183,10 +188,7 @@ impl Fe {
         Fe([x0, x1, x2, x3, x4])
     }
 
-    /// Represent the Field Element as little-endian canonical bytes (256 bits)
-    ///
-    /// Due to the field size, it's guarantee that the highest bit is always 0
-    pub const fn to_bytes(&self) -> [u8; 32] {
+    pub(crate) const fn to_packed(&self) -> [u64; 4] {
         let Fe(t) = *self;
 
         #[inline]
@@ -225,7 +227,14 @@ impl Fe {
         let out1 = (t[1] >> 13) | (t[2] << 38);
         let out2 = (t[2] >> 26) | (t[3] << 25);
         let out3 = (t[3] >> 39) | (t[4] << 12);
+        [out0, out1, out2, out3]
+    }
 
+    /// Represent the Field Element as little-endian canonical bytes (256 bits)
+    ///
+    /// Due to the field size, it's guarantee that the highest bit is always 0
+    pub const fn to_bytes(&self) -> [u8; 32] {
+        let [out0, out1, out2, out3] = self.to_packed();
         let mut out = [0u8; 32];
 
         macro_rules! write8 {
@@ -270,6 +279,7 @@ impl Fe {
         Fe([r0, r1, r2, r3, r4])
     }
 
+    /// Compute the square of the field element
     #[rustfmt::skip]
     pub fn square(&self) -> Fe {
         let Fe([mut r0, mut r1, mut r2, mut r3, mut r4]) = *self;
@@ -285,11 +295,6 @@ impl Fe {
         let t2 = mul128(d0, r2) + mul128(r1, r1) + mul128(d4 ,r3     );
         let t3 = mul128(d0, r3) + mul128(d1, r2) + mul128(r4 ,d419   );
         let t4 = mul128(d0, r4) + mul128(d1, r3) + mul128(r2 ,r2     );
-
-        #[inline]
-        fn shl128(v: u128, shift: usize) -> u64 {
-            ((v << shift) >> 64) as u64
-        }
 
         r0 = (t0 as u64) & MASK;
         r1 = (t1 as u64) & MASK; let c = shl128(t0, 13); r1 += c;
@@ -307,6 +312,11 @@ impl Fe {
         Fe([r0, r1, r2, r3, r4])
     }
 
+    /// Compute the (2^N) square of the field element
+    ///
+    /// This is performed by repeated squaring of the element
+    ///
+    /// square_repeadtly(n) = ((X^2)^2)^2... = X^(2^N)
     #[rustfmt::skip]
     pub fn square_repeatdly(&self, n: usize) -> Fe {
         let Fe([mut r0, mut r1, mut r2, mut r3, mut r4]) = *self;
@@ -323,11 +333,6 @@ impl Fe {
             let t2 = mul128(d0, r2) + mul128(r1, r1) + mul128(d4 ,r3     );
             let t3 = mul128(d0, r3) + mul128(d1, r2) + mul128(r4 ,d419   );
             let t4 = mul128(d0, r4) + mul128(d1, r3) + mul128(r2 ,r2     );
-
-            #[inline]
-            fn shl128(v: u128, shift: usize) -> u64 {
-                ((v << shift) >> 64) as u64
-            }
 
             r0 = (t0 as u64) & MASK;
             r1 = (t1 as u64) & MASK; let c = shl128(t0, 13); r1 += c;
@@ -346,9 +351,15 @@ impl Fe {
         Fe([r0, r1, r2, r3, r4])
     }
 
+    /// Compute the square of the element and returns its double
+    ///
+    /// this is more efficient than squaring and adding the result together
     pub fn square_and_double(&self) -> Fe {
-        let x = self.square();
-        &x + &x
+        let mut x = self.square();
+        for e in x.0.iter_mut() {
+            *e *= 2;
+        }
+        x
     }
 
     pub fn is_nonzero(&self) -> bool {
@@ -356,7 +367,7 @@ impl Fe {
     }
 
     pub fn is_negative(&self) -> bool {
-        (self.to_bytes()[0] & 1) != 0
+        (self.to_packed()[0] & 1) != 0
     }
 
     pub(crate) fn maybe_swap_with(&mut self, rhs: &mut Fe, do_swap: Choice) {

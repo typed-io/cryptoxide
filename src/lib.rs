@@ -66,6 +66,10 @@ pub mod chacha20poly1305;
 
 #[cfg(feature = "curve25519")]
 pub mod curve25519;
+
+#[cfg(feature = "x25519")]
+pub mod x25519;
+
 pub mod digest;
 
 #[cfg(feature = "ed25519")]

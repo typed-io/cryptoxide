@@ -121,9 +121,12 @@ pub struct ContextDecryption<const ROUNDS: usize>(Context<ROUNDS>);
 #[derive(Debug, Clone)]
 pub struct Tag(pub [u8; 16]);
 
-impl CtEqual for Tag {
-    fn ct_eq(&self, other: &Self) -> Choice {
+impl CtEqual for &Tag {
+    fn ct_eq(self, other: Self) -> Choice {
         self.0.ct_eq(&other.0)
+    }
+    fn ct_ne(self, b: Self) -> Choice {
+        self.ct_eq(b).negate()
     }
 }
 

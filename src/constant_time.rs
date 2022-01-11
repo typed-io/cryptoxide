@@ -140,16 +140,6 @@ pub trait CtEqual<Rhs: ?Sized = Self> {
     fn ct_ne(self, b: Rhs) -> Choice;
 }
 
-/// Set the out value conditionally to be either the left operand or the right operand
-/// depending on the choice value
-///
-/// ```rust
-/// self = if choice { a } else { b };
-/// ```
-pub trait CtConditionalSet<Operand: ?Sized = Self> {
-    fn ct_conditional_set(&mut self, a: &Operand, b: &Operand, selector: Choice);
-}
-
 impl CtZero for u64 {
     fn ct_zero(self) -> Choice {
         Choice(1 ^ ((self | self.wrapping_neg()) >> 63))

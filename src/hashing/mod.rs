@@ -1,3 +1,5 @@
+//! Cryptographic Hash Functions root module
+
 #[cfg(feature = "blake2")]
 mod blake2;
 

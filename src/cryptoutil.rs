@@ -128,6 +128,15 @@ pub(crate) struct FixedBuffer<const N: usize> {
     buffer_idx: usize,
 }
 
+impl<const N: usize> PartialEq for FixedBuffer<N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.buffer_idx == other.buffer_idx
+            && self.buffer[0..self.buffer_idx] == other.buffer[0..self.buffer_idx]
+    }
+}
+
+impl<const N: usize> Eq for FixedBuffer<N> {}
+
 impl<const N: usize> FixedBuffer<N> {
     /// Create a new buffer
     pub const fn new() -> Self {

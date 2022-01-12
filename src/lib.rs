@@ -70,7 +70,10 @@ pub mod curve25519;
 #[cfg(feature = "x25519")]
 pub mod x25519;
 
+#[cfg(feature = "digest")]
 pub mod digest;
+
+pub mod hashing;
 
 #[cfg(feature = "ed25519")]
 pub mod ed25519;

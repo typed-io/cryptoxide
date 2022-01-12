@@ -1,3 +1,13 @@
+//! An implementation of the Keccak cryptographic hash algorithms.
+//!
+//! Keccak is the NIST submission for SHA-3 without padding changes
+//!
+//! The following variants are defined:
+//!
+//! * `Keccak224`
+//! * `Keccak256`
+//! * `Keccak384`
+//! * `Keccak512`
 use super::sha3::{constants, constants::Const, Engine, B};
 
 macro_rules! keccak_impl {

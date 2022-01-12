@@ -6,7 +6,6 @@
 //!  * `SHA3-256`
 //!  * `SHA3-384`
 //!  * `SHA3-512`
-//!  * `Keccak224`, `Keccak256`, `Keccak384`, `Keccak512` (NIST submission without padding changes)
 //!
 //! Based on an [implementation by Sébastien Martini](https://github.com/seb-m/crypto.rs/blob/master/src/sha3.rs)
 //!

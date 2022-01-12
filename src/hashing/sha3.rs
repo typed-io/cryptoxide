@@ -15,26 +15,22 @@
 //! An example of using `SHA3-256` is:
 //!
 //! ```rust
-//! use cryptoxide::{digest::Digest, sha3::Sha3_256};
+//! use cryptoxide::{hashing::sha3};
 //!
 //! // create a SHA3-256 context
-//! let mut context = Sha3_256::new();
+//! let mut context = sha3::Sha3_256::new();
 //!
-//! // write input message
-//! context.input(b"abc");
+//! // append input and get output digest
+//! let out : [u8; 32] = context.update(b"abc").finalize();
 //!
-//! // get hash digest
-//! let mut out = [0u8; 32];
-//! context.result(&mut out);
 //! ```
 
 use alloc::vec;
 use core::cmp;
 
 use crate::cryptoutil::{read_u64v_le, write_u64v_le, zero};
-use crate::digest::Digest;
 
-const B: usize = 200;
+pub(super) const B: usize = 200;
 const NROUNDS: usize = 24;
 const RC: [u64; 24] = [
     0x0000000000000001,
@@ -123,7 +119,7 @@ fn keccak_f(state: &mut [u8]) {
     write_u64v_le(state, &s);
 }
 
-mod constants {
+pub(super) mod constants {
     pub trait Const {
         const DIGEST_LENGTH: usize;
         const IS_KECCAK: bool;
@@ -134,7 +130,7 @@ mod constants {
     macro_rules! sha3_const {
         ($C: ident, $DIGEST_LENGTH: expr, $IS_KECCAK: expr) => {
             #[allow(non_camel_case_types)]
-            pub(super) struct $C;
+            pub struct $C;
             impl Const for $C {
                 const DIGEST_LENGTH: usize = $DIGEST_LENGTH;
                 const IS_KECCAK: bool = $IS_KECCAK;
@@ -174,7 +170,7 @@ mod constants {
 
 use core::marker::PhantomData;
 
-struct Engine<E> {
+pub(super) struct Engine<E> {
     state: [u8; B], // B bytes
     mode: PhantomData<E>,
     can_absorb: bool,  // Can absorb
@@ -211,7 +207,7 @@ impl<E: constants::Const> Engine<E> {
         }
     }
 
-    fn finalize(&mut self) {
+    pub(super) fn finalize(&mut self) {
         assert!(self.can_absorb);
 
         let output_bits = E::DIGEST_LENGTH * 8;
@@ -275,7 +271,7 @@ impl<E: constants::Const> Engine<E> {
         self.can_absorb = false;
     }
 
-    fn process(&mut self, data: &[u8]) {
+    pub(super) fn process(&mut self, data: &[u8]) {
         if !self.can_absorb {
             panic!("Invalid state, absorb phase already finalized.");
         }
@@ -305,14 +301,14 @@ impl<E: constants::Const> Engine<E> {
         }
     }
 
-    fn reset(&mut self) {
+    pub(super) fn reset(&mut self) {
         self.can_absorb = true;
         self.can_squeeze = true;
         self.offset = 0;
         zero(&mut self.state);
     }
 
-    fn output(&mut self, out: &mut [u8]) {
+    pub(super) fn output(&mut self, out: &mut [u8]) {
         if !self.can_squeeze {
             panic!("Nothing left to squeeze.");
         }
@@ -378,181 +374,240 @@ pub fn shake_256() -> Sha3 {
 use self::constants::Const;
 
 macro_rules! sha3_impl {
-    ($C: ident, $doc:expr) => {
-        #[doc=$doc]
-        #[derive(Clone)]
-        pub struct $C(Engine<constants::$C>);
+    ($C: ident, $context:ident, $doc:expr) => {
+        /// Hash Algorithm
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub struct $C;
 
         impl $C {
-            pub fn new() -> Self {
-                Self(Engine::new())
+            pub const DIGEST_BITS: usize = constants::$C::DIGEST_LENGTH * 8;
+            pub const BLOCK_BYTES: usize = B - constants::$C::CAPACITY;
+
+            /// Create a new context for this algorithm
+            pub fn new() -> $context {
+                $context::new()
             }
         }
 
-        impl Digest for $C {
-            fn input(&mut self, data: &[u8]) {
+        #[doc=$doc]
+        #[derive(Clone)]
+        pub struct $context(Engine<constants::$C>);
+
+        impl $context {
+            pub fn new() -> Self {
+                Self(Engine::new())
+            }
+
+            pub fn update_mut(&mut self, data: &[u8]) {
                 self.0.process(data)
             }
 
-            fn result(&mut self, out: &mut [u8]) {
-                self.0.output(out)
+            pub fn update(mut self, data: &[u8]) -> Self {
+                self.0.process(data);
+                self
             }
 
-            fn reset(&mut self) {
+            pub fn finalize_reset(&mut self) -> [u8; constants::$C::DIGEST_LENGTH] {
+                let mut out = [0; constants::$C::DIGEST_LENGTH];
+                self.0.output(&mut out);
+                self.0.reset();
+                out
+            }
+
+            pub fn finalize(mut self) -> [u8; constants::$C::DIGEST_LENGTH] {
+                let mut out = [0; constants::$C::DIGEST_LENGTH];
+                self.0.output(&mut out);
+                out
+            }
+
+            pub fn reset(&mut self) {
                 self.0.reset()
-            }
-
-            fn output_bits(&self) -> usize {
-                constants::$C::DIGEST_LENGTH * 8
-            }
-
-            fn block_size(&self) -> usize {
-                self.0.rate()
             }
         }
     };
 }
 
-sha3_impl!(Sha3_224, "A SHA3 224 context");
-sha3_impl!(Sha3_256, "A SHA3 256 context");
-sha3_impl!(Sha3_384, "A SHA3 384 context");
-sha3_impl!(Sha3_512, "A SHA3 512 context");
+sha3_impl!(Sha3_224, Context224, "A SHA3 224 context");
+sha3_impl!(Sha3_256, Context256, "A SHA3 256 context");
+sha3_impl!(Sha3_384, Context384, "A SHA3 384 context");
+sha3_impl!(Sha3_512, Context512, "A SHA3 512 context");
 
-sha3_impl!(Keccak224, "A Keccak224 context");
-sha3_impl!(Keccak256, "A Keccak256 context");
-sha3_impl!(Keccak384, "A Keccak384 context");
-sha3_impl!(Keccak512, "A Keccak512 context");
+sha3_impl!(Keccak224, ContextKeccak224, "A Keccak224 context");
+sha3_impl!(Keccak256, ContextKeccak256, "A Keccak256 context");
+sha3_impl!(Keccak384, ContextKeccak384, "A Keccak384 context");
+sha3_impl!(Keccak512, ContextKeccak512, "A Keccak512 context");
 
 #[cfg(test)]
 mod tests {
+    use super::super::tests::{test_hashing, Test};
     use super::*;
-    use crate::digest::Digest;
-
-    struct Test {
-        input: &'static str,
-        output_str: &'static str,
-    }
-
-    fn test_hash<D: Digest>(mut sh: D, tests: &[Test]) {
-        // Test that it works when accepting the message all at once
-        for t in tests.iter() {
-            sh.input_str(t.input);
-
-            let out_str = sh.result_str();
-            assert_eq!(&out_str[..], t.output_str);
-
-            sh.reset();
-        }
-
-        // Test that it works when accepting the message in pieces
-        for t in tests.iter() {
-            let len = t.input.len();
-            let mut left = len;
-            while left > 0 {
-                let take = (left + 1) / 2;
-                sh.input_str(&t.input[len - left..take + len - left]);
-                left -= take;
-            }
-
-            let out_str = sh.result_str();
-            assert_eq!(&out_str[..], t.output_str);
-
-            sh.reset();
-        }
-    }
 
     #[test]
     fn test_sha3_224() {
-        let wikipedia_tests = [
+        let tests = [
             Test {
-                input: "",
-                output_str: "6b4e03423667dbb73b6e15454f0eb1abd4597f9a1b078e3f5b5a6bc7",
+                input: b"",
+                output: [
+                    0x6b, 0x4e, 0x03, 0x42, 0x36, 0x67, 0xdb, 0xb7, 0x3b, 0x6e, 0x15, 0x45, 0x4f,
+                    0x0e, 0xb1, 0xab, 0xd4, 0x59, 0x7f, 0x9a, 0x1b, 0x07, 0x8e, 0x3f, 0x5b, 0x5a,
+                    0x6b, 0xc7,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog",
-                output_str: "d15dadceaa4d5d7bb3b48f446421d542e08ad8887305e28d58335795",
+                input: b"The quick brown fox jumps over the lazy dog",
+                output: [
+                    0xd1, 0x5d, 0xad, 0xce, 0xaa, 0x4d, 0x5d, 0x7b, 0xb3, 0xb4, 0x8f, 0x44, 0x64,
+                    0x21, 0xd5, 0x42, 0xe0, 0x8a, 0xd8, 0x88, 0x73, 0x05, 0xe2, 0x8d, 0x58, 0x33,
+                    0x57, 0x95,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog.",
-                output_str: "2d0708903833afabdd232a20201176e8b58c5be8a6fe74265ac54db0",
+                input: b"The quick brown fox jumps over the lazy dog.",
+                output: [
+                    0x2d, 0x07, 0x08, 0x90, 0x38, 0x33, 0xaf, 0xab, 0xdd, 0x23, 0x2a, 0x20, 0x20,
+                    0x11, 0x76, 0xe8, 0xb5, 0x8c, 0x5b, 0xe8, 0xa6, 0xfe, 0x74, 0x26, 0x5a, 0xc5,
+                    0x4d, 0xb0,
+                ],
             },
         ];
-        test_hash(Sha3_224::new(), &wikipedia_tests[..]);
+        test_hashing(
+            &tests,
+            Sha3_224,
+            |_| Context224::new(),
+            |ctx, input| ctx.update(input),
+            |ctx, input| ctx.update_mut(input),
+            |ctx| ctx.finalize(),
+            |ctx| ctx.finalize_reset(),
+            |ctx| ctx.reset(),
+        )
     }
 
     #[test]
     fn test_sha3_256() {
-        let wikipedia_tests = [
+        let tests = [
             Test {
-                input: "",
-                output_str: "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a",
+                input: b"",
+                output: [
+                    0xa7, 0xff, 0xc6, 0xf8, 0xbf, 0x1e, 0xd7, 0x66, 0x51, 0xc1, 0x47, 0x56, 0xa0,
+                    0x61, 0xd6, 0x62, 0xf5, 0x80, 0xff, 0x4d, 0xe4, 0x3b, 0x49, 0xfa, 0x82, 0xd8,
+                    0x0a, 0x4b, 0x80, 0xf8, 0x43, 0x4a,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog",
-                output_str: "69070dda01975c8c120c3aada1b282394e7f032fa9cf32f4cb2259a0897dfc04",
+                input: b"The quick brown fox jumps over the lazy dog",
+                output: [
+                    0x69, 0x07, 0x0d, 0xda, 0x01, 0x97, 0x5c, 0x8c, 0x12, 0x0c, 0x3a, 0xad, 0xa1,
+                    0xb2, 0x82, 0x39, 0x4e, 0x7f, 0x03, 0x2f, 0xa9, 0xcf, 0x32, 0xf4, 0xcb, 0x22,
+                    0x59, 0xa0, 0x89, 0x7d, 0xfc, 0x04,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog.",
-                output_str: "a80f839cd4f83f6c3dafc87feae470045e4eb0d366397d5c6ce34ba1739f734d",
+                input: b"The quick brown fox jumps over the lazy dog.",
+                output: [
+                    0xa8, 0x0f, 0x83, 0x9c, 0xd4, 0xf8, 0x3f, 0x6c, 0x3d, 0xaf, 0xc8, 0x7f, 0xea,
+                    0xe4, 0x70, 0x04, 0x5e, 0x4e, 0xb0, 0xd3, 0x66, 0x39, 0x7d, 0x5c, 0x6c, 0xe3,
+                    0x4b, 0xa1, 0x73, 0x9f, 0x73, 0x4d,
+                ],
             },
         ];
-        test_hash(Sha3_256::new(), &wikipedia_tests[..]);
+        test_hashing(
+            &tests,
+            Sha3_256,
+            |_| Context256::new(),
+            |ctx, input| ctx.update(input),
+            |ctx, input| ctx.update_mut(input),
+            |ctx| ctx.finalize(),
+            |ctx| ctx.finalize_reset(),
+            |ctx| ctx.reset(),
+        )
     }
 
     #[test]
     fn test_sha3_384() {
-        let wikipedia_tests = [
+        let tests = [
             Test {
-                input: "",
-                output_str: "0c63a75b845e4f7d01107d852e4c2485c51a50aaaa94fc61995e71bbee983a2ac3713831264adb47fb6bd1e058d5f004",
+                input: b"",
+                output: [
+                    0x0c, 0x63, 0xa7, 0x5b, 0x84, 0x5e, 0x4f, 0x7d, 0x01, 0x10, 0x7d, 0x85, 0x2e,
+                    0x4c, 0x24, 0x85, 0xc5, 0x1a, 0x50, 0xaa, 0xaa, 0x94, 0xfc, 0x61, 0x99, 0x5e,
+                    0x71, 0xbb, 0xee, 0x98, 0x3a, 0x2a, 0xc3, 0x71, 0x38, 0x31, 0x26, 0x4a, 0xdb,
+                    0x47, 0xfb, 0x6b, 0xd1, 0xe0, 0x58, 0xd5, 0xf0, 0x04,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog",
-                output_str: "7063465e08a93bce31cd89d2e3ca8f602498696e253592ed26f07bf7e703cf328581e1471a7ba7ab119b1a9ebdf8be41",
+                input: b"The quick brown fox jumps over the lazy dog",
+                output: [
+                    0x70, 0x63, 0x46, 0x5e, 0x08, 0xa9, 0x3b, 0xce, 0x31, 0xcd, 0x89, 0xd2, 0xe3,
+                    0xca, 0x8f, 0x60, 0x24, 0x98, 0x69, 0x6e, 0x25, 0x35, 0x92, 0xed, 0x26, 0xf0,
+                    0x7b, 0xf7, 0xe7, 0x03, 0xcf, 0x32, 0x85, 0x81, 0xe1, 0x47, 0x1a, 0x7b, 0xa7,
+                    0xab, 0x11, 0x9b, 0x1a, 0x9e, 0xbd, 0xf8, 0xbe, 0x41,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog.",
-                output_str: "1a34d81695b622df178bc74df7124fe12fac0f64ba5250b78b99c1273d4b080168e10652894ecad5f1f4d5b965437fb9",
+                input: b"The quick brown fox jumps over the lazy dog.",
+                output: [
+                    0x1a, 0x34, 0xd8, 0x16, 0x95, 0xb6, 0x22, 0xdf, 0x17, 0x8b, 0xc7, 0x4d, 0xf7,
+                    0x12, 0x4f, 0xe1, 0x2f, 0xac, 0x0f, 0x64, 0xba, 0x52, 0x50, 0xb7, 0x8b, 0x99,
+                    0xc1, 0x27, 0x3d, 0x4b, 0x08, 0x01, 0x68, 0xe1, 0x06, 0x52, 0x89, 0x4e, 0xca,
+                    0xd5, 0xf1, 0xf4, 0xd5, 0xb9, 0x65, 0x43, 0x7f, 0xb9,
+                ],
             },
         ];
-        test_hash(Sha3_384::new(), &wikipedia_tests[..]);
+        test_hashing(
+            &tests,
+            Sha3_384,
+            |_| Context384::new(),
+            |ctx, input| ctx.update(input),
+            |ctx, input| ctx.update_mut(input),
+            |ctx| ctx.finalize(),
+            |ctx| ctx.finalize_reset(),
+            |ctx| ctx.reset(),
+        )
     }
 
     #[test]
     fn test_sha3_512() {
-        let wikipedia_tests = [
+        let tests = [
             Test {
-                input: "",
-                output_str: "a69f73cca23a9ac5c8b567dc185a756e97c982164fe25859e0d1dcc1475c80a615b2123af1f5f94c11e3e9402c3ac558f500199d95b6d3e301758586281dcd26"
+                input: b"",
+                output: [
+                    0xa6, 0x9f, 0x73, 0xcc, 0xa2, 0x3a, 0x9a, 0xc5, 0xc8, 0xb5, 0x67, 0xdc, 0x18,
+                    0x5a, 0x75, 0x6e, 0x97, 0xc9, 0x82, 0x16, 0x4f, 0xe2, 0x58, 0x59, 0xe0, 0xd1,
+                    0xdc, 0xc1, 0x47, 0x5c, 0x80, 0xa6, 0x15, 0xb2, 0x12, 0x3a, 0xf1, 0xf5, 0xf9,
+                    0x4c, 0x11, 0xe3, 0xe9, 0x40, 0x2c, 0x3a, 0xc5, 0x58, 0xf5, 0x00, 0x19, 0x9d,
+                    0x95, 0xb6, 0xd3, 0xe3, 0x01, 0x75, 0x85, 0x86, 0x28, 0x1d, 0xcd, 0x26,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog",
-                output_str: "01dedd5de4ef14642445ba5f5b97c15e47b9ad931326e4b0727cd94cefc44fff23f07bf543139939b49128caf436dc1bdee54fcb24023a08d9403f9b4bf0d450",
+                input: b"The quick brown fox jumps over the lazy dog",
+                output: [
+                    0x01, 0xde, 0xdd, 0x5d, 0xe4, 0xef, 0x14, 0x64, 0x24, 0x45, 0xba, 0x5f, 0x5b,
+                    0x97, 0xc1, 0x5e, 0x47, 0xb9, 0xad, 0x93, 0x13, 0x26, 0xe4, 0xb0, 0x72, 0x7c,
+                    0xd9, 0x4c, 0xef, 0xc4, 0x4f, 0xff, 0x23, 0xf0, 0x7b, 0xf5, 0x43, 0x13, 0x99,
+                    0x39, 0xb4, 0x91, 0x28, 0xca, 0xf4, 0x36, 0xdc, 0x1b, 0xde, 0xe5, 0x4f, 0xcb,
+                    0x24, 0x02, 0x3a, 0x08, 0xd9, 0x40, 0x3f, 0x9b, 0x4b, 0xf0, 0xd4, 0x50,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog.",
-                output_str: "18f4f4bd419603f95538837003d9d254c26c23765565162247483f65c50303597bc9ce4d289f21d1c2f1f458828e33dc442100331b35e7eb031b5d38ba6460f8"
+                input: b"The quick brown fox jumps over the lazy dog.",
+                output: [
+                    0x18, 0xf4, 0xf4, 0xbd, 0x41, 0x96, 0x03, 0xf9, 0x55, 0x38, 0x83, 0x70, 0x03,
+                    0xd9, 0xd2, 0x54, 0xc2, 0x6c, 0x23, 0x76, 0x55, 0x65, 0x16, 0x22, 0x47, 0x48,
+                    0x3f, 0x65, 0xc5, 0x03, 0x03, 0x59, 0x7b, 0xc9, 0xce, 0x4d, 0x28, 0x9f, 0x21,
+                    0xd1, 0xc2, 0xf1, 0xf4, 0x58, 0x82, 0x8e, 0x33, 0xdc, 0x44, 0x21, 0x00, 0x33,
+                    0x1b, 0x35, 0xe7, 0xeb, 0x03, 0x1b, 0x5d, 0x38, 0xba, 0x64, 0x60, 0xf8,
+                ],
             },
         ];
-        test_hash(Sha3_512::new(), &wikipedia_tests[..]);
-    }
-
-    #[test]
-    fn test_keccak_512() {
-        let wikipedia_tests = [
-            Test {
-                input: "",
-                output_str: "0eab42de4c3ceb9235fc91acffe746b29c29a8c366b7c60e4e67c466f36a4304c00fa9caf9d87976ba469bcbe06713b435f091ef2769fb160cdab33d3670680e",
-            },
-            Test {
-                input: "The quick brown fox jumps over the lazy dog",
-                output_str: "d135bb84d0439dbac432247ee573a23ea7d3c9deb2a968eb31d47c4fb45f1ef4422d6c531b5b9bd6f449ebcc449ea94d0a8f05f62130fda612da53c79659f609",
-            },
-            Test {
-                input: "The quick brown fox jumps over the lazy dog.",
-                output_str: "ab7192d2b11f51c7dd744e7b3441febf397ca07bf812cceae122ca4ded6387889064f8db9230f173f6d1ab6e24b6e50f065b039f799f5592360a6558eb52d760"
-            },
-        ];
-        test_hash(Keccak512::new(), &wikipedia_tests[..]);
+        test_hashing(
+            &tests,
+            Sha3_512,
+            |_| Context512::new(),
+            |ctx, input| ctx.update(input),
+            |ctx, input| ctx.update_mut(input),
+            |ctx| ctx.finalize(),
+            |ctx| ctx.finalize_reset(),
+            |ctx| ctx.reset(),
+        )
     }
 }

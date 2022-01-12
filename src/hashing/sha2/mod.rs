@@ -18,43 +18,31 @@
 //! An example of using `Sha256` is:
 //!
 //! ```rust
-//! use self::cryptoxide::digest::Digest;
-//! use self::cryptoxide::sha2::Sha256;
+//! use cryptoxide::hashing::sha2::Sha256;
 //!
 //! // create a Sha256 object
-//! let mut hasher = Sha256::new();
+//! let mut context = Sha256::new();
 //!
 //! // write input message
-//! hasher.input_str("hello world");
+//! context.update_mut(b"hello world");
 //!
 //! // read hash digest
-//! let hex = hasher.result_str();
-//!
-//! assert_eq!(hex,
-//!            concat!("b94d27b9934d3e08a52e52d7da7dabfa",
-//!                    "c484efe37a5380ee9088f7ace2efcde9"));
+//! let output = context.finalize();
 //! ```
 //!
 //! An example of using `Sha512` is:
 //!
 //! ```rust
-//! use self::cryptoxide::digest::Digest;
-//! use self::cryptoxide::sha2::Sha512;
+//! use cryptoxide::hashing::sha2::Sha512;
 //!
 //! // create a Sha512 object
-//! let mut hasher = Sha512::new();
+//! let mut context = Sha512::new();
 //!
 //! // write input message
-//! hasher.input_str("hello world");
+//! context.update_mut(b"hello world");
 //!
 //! // read hash digest
-//! let hex = hasher.result_str();
-//!
-//! assert_eq!(hex,
-//!            concat!("309ecc489c12d6eb4cc40f50c902f2b4",
-//!                    "d0ed77ee511a7c7a9bcd3ca86d4cd86f",
-//!                    "989dd35bc5ff499670da34255b45b0cf",
-//!                    "d830e81f605dcf7dc5542e93ae9cd76f"));
+//! let output = context.finalize();
 //! ```
 
 mod eng256;
@@ -64,60 +52,90 @@ mod impl512;
 mod initials;
 
 use crate::cryptoutil::FixedBuffer;
-use crate::digest::Digest;
 use initials::*;
 
 macro_rules! digest {
-    ($name: ident, $init: ident, $output_fn: ident, $output_bits: expr, $block_size: expr, $state: ident) => {
+    (256 $name:ident, $ctxname:ident, $output_fn: ident, $output_bits:expr, $state:ident) => {
+        digest!(
+            @internal
+            $name,
+            $ctxname,
+            Engine256,
+            $output_fn,
+            $output_bits,
+            64,
+            $state
+        );
+    };
+    (512 $name:ident, $ctxname:ident, $output_fn:ident, $output_bits:expr, $state:ident) => {
+        digest!(
+            @internal
+            $name,
+            $ctxname,
+            Engine512,
+            $output_fn,
+            $output_bits,
+            128,
+            $state
+        );
+    };
+    (@internal $name:ident, $ctxname:ident, $init:ident, $output_fn:ident, $output_bits:expr, $block_size:literal, $state: ident) => {
+        /// Hash Algorithm
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub struct $name;
+
+        impl $name {
+            pub const DIGEST_BITS: usize = $output_bits;
+            pub const BLOCK_BYTES: usize = $block_size;
+
+            /// Create a new context for this algorithm
+            pub fn new() -> $ctxname {
+                $ctxname::new()
+            }
+        }
+
         /// The hash algorithm context
         #[derive(Clone)]
-        pub struct $name {
+        pub struct $ctxname {
             engine: $init,
         }
 
-        impl $name {
+        impl $ctxname {
             /// Create a new hashing algorithm context
             pub const fn new() -> Self {
                 Self {
                     engine: $init::new(&$state),
                 }
             }
-        }
 
-        impl Digest for $name {
-            fn input(&mut self, d: &[u8]) {
-                self.engine.input(d)
+            pub fn update_mut(&mut self, input: &[u8]) {
+                self.engine.input(input)
             }
 
-            fn result(&mut self, out: &mut [u8]) {
+            pub fn update(mut self, input: &[u8]) -> Self {
+                self.engine.input(input);
+                self
+            }
+
+            pub fn finalize(mut self) -> [u8; $output_bits / 8] {
+                let mut out = [0; $output_bits / 8];
                 self.engine.finish();
-                self.engine.state.$output_fn(&mut out[0..$output_bits / 8]);
+                self.engine.state.$output_fn(&mut out);
+                out
             }
 
-            fn reset(&mut self) {
+            pub fn finalize_reset(&mut self) -> [u8; $output_bits / 8] {
+                let mut out = [0; $output_bits / 8];
+                self.engine.finish();
+                self.engine.state.$output_fn(&mut out);
+                self.reset();
+                out
+            }
+
+            pub fn reset(&mut self) {
                 self.engine.reset(&$state);
             }
-
-            fn output_bits(&self) -> usize {
-                $output_bits
-            }
-
-            fn block_size(&self) -> usize {
-                $block_size
-            }
         }
-    };
-}
-
-macro_rules! digest512 {
-    ($name: ident, $output_fn: ident, $output_bits: expr, $state: ident) => {
-        digest!($name, Engine512, $output_fn, $output_bits, 128, $state);
-    };
-}
-
-macro_rules! digest256 {
-    ($name: ident, $output_fn: ident, $output_bits: expr, $state: ident) => {
-        digest!($name, Engine256, $output_fn, $output_bits, 64, $state);
     };
 }
 
@@ -219,207 +237,285 @@ impl Engine256 {
     }
 }
 
-digest512!(Sha512, output_512bits_at, 512, H512);
-digest512!(Sha384, output_384bits_at, 384, H384);
-digest512!(Sha512Trunc256, output_256bits_at, 256, H512_TRUNC_256);
-digest512!(Sha512Trunc224, output_224bits_at, 224, H512_TRUNC_224);
-digest256!(Sha256, output_256bits_at, 256, H256);
-digest256!(Sha224, output_224bits_at, 224, H224);
+digest!(512 Sha512, Context512, output_512bits_at, 512, H512);
+digest!(512 Sha384, Context384, output_384bits_at, 384, H384);
+digest!(
+    512
+    Sha512Trunc256,
+    Context512_256,
+    output_256bits_at,
+    256,
+    H512_TRUNC_256
+);
+digest!(
+    512
+    Sha512Trunc224,
+    Context512_224,
+    output_224bits_at,
+    224,
+    H512_TRUNC_224
+);
+digest!(256 Sha256, Context256, output_256bits_at, 256, H256);
+digest!(256 Sha224, Context224, output_224bits_at, 224, H224);
 
 #[cfg(test)]
 mod tests {
-    use super::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
-    use crate::cryptoutil::test::test_digest_1million_random;
-    use crate::digest::Digest;
-
-    struct Test {
-        input: &'static str,
-        output_str: &'static str,
-    }
-
-    fn test_hash<D: Digest>(mut sh: D, tests: &[Test]) {
-        // Test that it works when accepting the message all at once
-        for t in tests.iter() {
-            sh.input_str(t.input);
-
-            let out_str = sh.result_str();
-            assert_eq!(&out_str[..], t.output_str);
-
-            sh.reset();
-        }
-
-        // Test that it works when accepting the message in pieces
-        for t in tests.iter() {
-            let len = t.input.len();
-            let mut left = len;
-            while left > 0 {
-                let take = (left + 1) / 2;
-                sh.input_str(&t.input[len - left..take + len - left]);
-                left -= take;
-            }
-
-            let out_str = sh.result_str();
-            assert_eq!(&out_str[..], t.output_str);
-
-            sh.reset();
-        }
-
-        // Test that an arbitrary large message has the same result as one with small piece
-        let mut v = [0u8; 512];
-        for (i, vi) in v.iter_mut().enumerate() {
-            *vi = i as u8;
-        }
-        sh.input(&v[..]);
-        let out_str = sh.result_str();
-        sh.reset();
-
-        for i in 0..v.len() / 16 {
-            sh.input(&v[i * 16..i * 16 + 16]);
-        }
-        let out_str2 = sh.result_str();
-
-        assert_eq!(&out_str, &out_str2);
-        //assert_eq!(0, 1);
-    }
+    use super::super::tests::{test_hashing, Test};
+    use super::*;
 
     #[test]
     fn test_sha512() {
         // Examples from wikipedia
-        let wikipedia_tests = [
+        let tests = [
             Test {
-                input: "",
-                output_str: "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e"
+                input: b"",
+                output: [
+                    0xcf, 0x83, 0xe1, 0x35, 0x7e, 0xef, 0xb8, 0xbd, 0xf1, 0x54, 0x28, 0x50, 0xd6,
+                    0x6d, 0x80, 0x07, 0xd6, 0x20, 0xe4, 0x05, 0x0b, 0x57, 0x15, 0xdc, 0x83, 0xf4,
+                    0xa9, 0x21, 0xd3, 0x6c, 0xe9, 0xce, 0x47, 0xd0, 0xd1, 0x3c, 0x5d, 0x85, 0xf2,
+                    0xb0, 0xff, 0x83, 0x18, 0xd2, 0x87, 0x7e, 0xec, 0x2f, 0x63, 0xb9, 0x31, 0xbd,
+                    0x47, 0x41, 0x7a, 0x81, 0xa5, 0x38, 0x32, 0x7a, 0xf9, 0x27, 0xda, 0x3e,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog",
-                output_str: "07e547d9586f6a73f73fbac0435ed76951218fb7d0c8d788a309d785436bbb642e93a252a954f23912547d1e8a3b5ed6e1bfd7097821233fa0538f3db854fee6"
+                input: b"The quick brown fox jumps over the lazy dog",
+                output: [
+                    0x07, 0xe5, 0x47, 0xd9, 0x58, 0x6f, 0x6a, 0x73, 0xf7, 0x3f, 0xba, 0xc0, 0x43,
+                    0x5e, 0xd7, 0x69, 0x51, 0x21, 0x8f, 0xb7, 0xd0, 0xc8, 0xd7, 0x88, 0xa3, 0x09,
+                    0xd7, 0x85, 0x43, 0x6b, 0xbb, 0x64, 0x2e, 0x93, 0xa2, 0x52, 0xa9, 0x54, 0xf2,
+                    0x39, 0x12, 0x54, 0x7d, 0x1e, 0x8a, 0x3b, 0x5e, 0xd6, 0xe1, 0xbf, 0xd7, 0x09,
+                    0x78, 0x21, 0x23, 0x3f, 0xa0, 0x53, 0x8f, 0x3d, 0xb8, 0x54, 0xfe, 0xe6,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog.",
-                output_str: "91ea1245f20d46ae9a037a989f54f1f790f0a47607eeb8a14d12890cea77a1bbc6c7ed9cf205e67b7f2b8fd4c7dfd3a7a8617e45f3c463d481c7e586c39ac1ed"
+                input: b"The quick brown fox jumps over the lazy dog.",
+                output: [
+                    0x91, 0xea, 0x12, 0x45, 0xf2, 0x0d, 0x46, 0xae, 0x9a, 0x03, 0x7a, 0x98, 0x9f,
+                    0x54, 0xf1, 0xf7, 0x90, 0xf0, 0xa4, 0x76, 0x07, 0xee, 0xb8, 0xa1, 0x4d, 0x12,
+                    0x89, 0x0c, 0xea, 0x77, 0xa1, 0xbb, 0xc6, 0xc7, 0xed, 0x9c, 0xf2, 0x05, 0xe6,
+                    0x7b, 0x7f, 0x2b, 0x8f, 0xd4, 0xc7, 0xdf, 0xd3, 0xa7, 0xa8, 0x61, 0x7e, 0x45,
+                    0xf3, 0xc4, 0x63, 0xd4, 0x81, 0xc7, 0xe5, 0x86, 0xc3, 0x9a, 0xc1, 0xed,
+                ],
             },
         ];
-        test_hash(Sha512::new(), &wikipedia_tests[..]);
+        test_hashing(
+            &tests,
+            Sha512,
+            |_| Context512::new(),
+            |ctx, input| ctx.update(input),
+            |ctx, input| ctx.update_mut(input),
+            |ctx| ctx.finalize(),
+            |ctx| ctx.finalize_reset(),
+            |ctx| ctx.reset(),
+        )
     }
 
     #[test]
     fn test_sha384() {
         // Examples from wikipedia
-        let wikipedia_tests = [
+        let tests = [
             Test {
-                input: "",
-                output_str: "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b"
+                input: b"",
+                output: [
+                    0x38, 0xb0, 0x60, 0xa7, 0x51, 0xac, 0x96, 0x38, 0x4c, 0xd9, 0x32, 0x7e, 0xb1,
+                    0xb1, 0xe3, 0x6a, 0x21, 0xfd, 0xb7, 0x11, 0x14, 0xbe, 0x07, 0x43, 0x4c, 0x0c,
+                    0xc7, 0xbf, 0x63, 0xf6, 0xe1, 0xda, 0x27, 0x4e, 0xde, 0xbf, 0xe7, 0x6f, 0x65,
+                    0xfb, 0xd5, 0x1a, 0xd2, 0xf1, 0x48, 0x98, 0xb9, 0x5b,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog",
-                output_str: "ca737f1014a48f4c0b6dd43cb177b0afd9e5169367544c494011e3317dbf9a509cb1e5dc1e85a941bbee3d7f2afbc9b1"
+                input: b"The quick brown fox jumps over the lazy dog",
+                output: [
+                    0xca, 0x73, 0x7f, 0x10, 0x14, 0xa4, 0x8f, 0x4c, 0x0b, 0x6d, 0xd4, 0x3c, 0xb1,
+                    0x77, 0xb0, 0xaf, 0xd9, 0xe5, 0x16, 0x93, 0x67, 0x54, 0x4c, 0x49, 0x40, 0x11,
+                    0xe3, 0x31, 0x7d, 0xbf, 0x9a, 0x50, 0x9c, 0xb1, 0xe5, 0xdc, 0x1e, 0x85, 0xa9,
+                    0x41, 0xbb, 0xee, 0x3d, 0x7f, 0x2a, 0xfb, 0xc9, 0xb1,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog.",
-                output_str: "ed892481d8272ca6df370bf706e4d7bc1b5739fa2177aae6c50e946678718fc67a7af2819a021c2fc34e91bdb63409d7"
+                input: b"The quick brown fox jumps over the lazy dog.",
+                output: [
+                    0xed, 0x89, 0x24, 0x81, 0xd8, 0x27, 0x2c, 0xa6, 0xdf, 0x37, 0x0b, 0xf7, 0x06,
+                    0xe4, 0xd7, 0xbc, 0x1b, 0x57, 0x39, 0xfa, 0x21, 0x77, 0xaa, 0xe6, 0xc5, 0x0e,
+                    0x94, 0x66, 0x78, 0x71, 0x8f, 0xc6, 0x7a, 0x7a, 0xf2, 0x81, 0x9a, 0x02, 0x1c,
+                    0x2f, 0xc3, 0x4e, 0x91, 0xbd, 0xb6, 0x34, 0x09, 0xd7,
+                ],
             },
         ];
-
-        test_hash(Sha384::new(), &wikipedia_tests);
+        test_hashing(
+            &tests,
+            Sha384,
+            |_| Context384::new(),
+            |ctx, input| ctx.update(input),
+            |ctx, input| ctx.update_mut(input),
+            |ctx| ctx.finalize(),
+            |ctx| ctx.finalize_reset(),
+            |ctx| ctx.reset(),
+        )
     }
 
     #[test]
     fn test_sha512_256() {
         // Examples from wikipedia
-        let wikipedia_tests = [
+        let tests = [
             Test {
-                input: "",
-                output_str: "c672b8d1ef56ed28ab87c3622c5114069bdd3ad7b8f9737498d0c01ecef0967a",
+                input: b"",
+                output: [
+                    0xc6, 0x72, 0xb8, 0xd1, 0xef, 0x56, 0xed, 0x28, 0xab, 0x87, 0xc3, 0x62, 0x2c,
+                    0x51, 0x14, 0x06, 0x9b, 0xdd, 0x3a, 0xd7, 0xb8, 0xf9, 0x73, 0x74, 0x98, 0xd0,
+                    0xc0, 0x1e, 0xce, 0xf0, 0x96, 0x7a,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog",
-                output_str: "dd9d67b371519c339ed8dbd25af90e976a1eeefd4ad3d889005e532fc5bef04d",
+                input: b"The quick brown fox jumps over the lazy dog",
+                output: [
+                    0xdd, 0x9d, 0x67, 0xb3, 0x71, 0x51, 0x9c, 0x33, 0x9e, 0xd8, 0xdb, 0xd2, 0x5a,
+                    0xf9, 0x0e, 0x97, 0x6a, 0x1e, 0xee, 0xfd, 0x4a, 0xd3, 0xd8, 0x89, 0x00, 0x5e,
+                    0x53, 0x2f, 0xc5, 0xbe, 0xf0, 0x4d,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog.",
-                output_str: "1546741840f8a492b959d9b8b2344b9b0eb51b004bba35c0aebaac86d45264c3",
+                input: b"The quick brown fox jumps over the lazy dog.",
+                output: [
+                    0x15, 0x46, 0x74, 0x18, 0x40, 0xf8, 0xa4, 0x92, 0xb9, 0x59, 0xd9, 0xb8, 0xb2,
+                    0x34, 0x4b, 0x9b, 0x0e, 0xb5, 0x1b, 0x00, 0x4b, 0xba, 0x35, 0xc0, 0xae, 0xba,
+                    0xac, 0x86, 0xd4, 0x52, 0x64, 0xc3,
+                ],
             },
         ];
-        test_hash(Sha512Trunc256::new(), &wikipedia_tests);
+        test_hashing(
+            &tests,
+            Sha512Trunc256,
+            |_| Context512_256::new(),
+            |ctx, input| ctx.update(input),
+            |ctx, input| ctx.update_mut(input),
+            |ctx| ctx.finalize(),
+            |ctx| ctx.finalize_reset(),
+            |ctx| ctx.reset(),
+        )
     }
 
     #[test]
     fn test_sha512_224() {
         // Examples from wikipedia
-        let wikipedia_tests = [
+        let tests = [
             Test {
-                input: "",
-                output_str: "6ed0dd02806fa89e25de060c19d3ac86cabb87d6a0ddd05c333b84f4",
+                input: b"",
+                output: [
+                    0x6e, 0xd0, 0xdd, 0x02, 0x80, 0x6f, 0xa8, 0x9e, 0x25, 0xde, 0x06, 0x0c, 0x19,
+                    0xd3, 0xac, 0x86, 0xca, 0xbb, 0x87, 0xd6, 0xa0, 0xdd, 0xd0, 0x5c, 0x33, 0x3b,
+                    0x84, 0xf4,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog",
-                output_str: "944cd2847fb54558d4775db0485a50003111c8e5daa63fe722c6aa37",
+                input: b"The quick brown fox jumps over the lazy dog",
+                output: [
+                    0x94, 0x4c, 0xd2, 0x84, 0x7f, 0xb5, 0x45, 0x58, 0xd4, 0x77, 0x5d, 0xb0, 0x48,
+                    0x5a, 0x50, 0x00, 0x31, 0x11, 0xc8, 0xe5, 0xda, 0xa6, 0x3f, 0xe7, 0x22, 0xc6,
+                    0xaa, 0x37,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog.",
-                output_str: "6d6a9279495ec4061769752e7ff9c68b6b0b3c5a281b7917ce0572de",
+                input: b"The quick brown fox jumps over the lazy dog.",
+                output: [
+                    0x6d, 0x6a, 0x92, 0x79, 0x49, 0x5e, 0xc4, 0x06, 0x17, 0x69, 0x75, 0x2e, 0x7f,
+                    0xf9, 0xc6, 0x8b, 0x6b, 0x0b, 0x3c, 0x5a, 0x28, 0x1b, 0x79, 0x17, 0xce, 0x05,
+                    0x72, 0xde,
+                ],
             },
         ];
-        test_hash(Sha512Trunc224::new(), &wikipedia_tests);
+        test_hashing(
+            &tests,
+            Sha512Trunc224,
+            |_| Context512_224::new(),
+            |ctx, input| ctx.update(input),
+            |ctx, input| ctx.update_mut(input),
+            |ctx| ctx.finalize(),
+            |ctx| ctx.finalize_reset(),
+            |ctx| ctx.reset(),
+        )
     }
 
     #[test]
     fn test_sha256() {
         // Examples from wikipedia
-        let wikipedia_tests = [
+        let tests = [
             Test {
-                input: "",
-                output_str: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                input: b"",
+                output: [
+                    0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4, 0xc8, 0x99,
+                    0x6f, 0xb9, 0x24, 0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c, 0xa4, 0x95,
+                    0x99, 0x1b, 0x78, 0x52, 0xb8, 0x55,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog",
-                output_str: "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592",
+                input: b"The quick brown fox jumps over the lazy dog",
+                output: [
+                    0xd7, 0xa8, 0xfb, 0xb3, 0x07, 0xd7, 0x80, 0x94, 0x69, 0xca, 0x9a, 0xbc, 0xb0,
+                    0x08, 0x2e, 0x4f, 0x8d, 0x56, 0x51, 0xe4, 0x6d, 0x3c, 0xdb, 0x76, 0x2d, 0x02,
+                    0xd0, 0xbf, 0x37, 0xc9, 0xe5, 0x92,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog.",
-                output_str: "ef537f25c895bfa782526529a9b63d97aa631564d5d789c2b765448c8635fb6c",
+                input: b"The quick brown fox jumps over the lazy dog.",
+                output: [
+                    0xef, 0x53, 0x7f, 0x25, 0xc8, 0x95, 0xbf, 0xa7, 0x82, 0x52, 0x65, 0x29, 0xa9,
+                    0xb6, 0x3d, 0x97, 0xaa, 0x63, 0x15, 0x64, 0xd5, 0xd7, 0x89, 0xc2, 0xb7, 0x65,
+                    0x44, 0x8c, 0x86, 0x35, 0xfb, 0x6c,
+                ],
             },
         ];
-        test_hash(Sha256::new(), &wikipedia_tests);
+        test_hashing(
+            &tests,
+            Sha256,
+            |_| Context256::new(),
+            |ctx, input| ctx.update(input),
+            |ctx, input| ctx.update_mut(input),
+            |ctx| ctx.finalize(),
+            |ctx| ctx.finalize_reset(),
+            |ctx| ctx.reset(),
+        )
     }
 
     #[test]
     fn test_sha224() {
         // Examples from wikipedia
-        let wikipedia_tests = [
+        let tests = [
             Test {
-                input: "",
-                output_str: "d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f",
+                input: b"",
+                output: [
+                    0xd1, 0x4a, 0x02, 0x8c, 0x2a, 0x3a, 0x2b, 0xc9, 0x47, 0x61, 0x02, 0xbb, 0x28,
+                    0x82, 0x34, 0xc4, 0x15, 0xa2, 0xb0, 0x1f, 0x82, 0x8e, 0xa6, 0x2a, 0xc5, 0xb3,
+                    0xe4, 0x2f,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog",
-                output_str: "730e109bd7a8a32b1cb9d9a09aa2325d2430587ddbc0c38bad911525",
+                input: b"The quick brown fox jumps over the lazy dog",
+                output: [
+                    0x73, 0x0e, 0x10, 0x9b, 0xd7, 0xa8, 0xa3, 0x2b, 0x1c, 0xb9, 0xd9, 0xa0, 0x9a,
+                    0xa2, 0x32, 0x5d, 0x24, 0x30, 0x58, 0x7d, 0xdb, 0xc0, 0xc3, 0x8b, 0xad, 0x91,
+                    0x15, 0x25,
+                ],
             },
             Test {
-                input: "The quick brown fox jumps over the lazy dog.",
-                output_str: "619cba8e8e05826e9b8c519c0a5c68f4fb653e8a3d8aa04bb2c8cd4c",
+                input: b"The quick brown fox jumps over the lazy dog.",
+                output: [
+                    0x61, 0x9c, 0xba, 0x8e, 0x8e, 0x05, 0x82, 0x6e, 0x9b, 0x8c, 0x51, 0x9c, 0x0a,
+                    0x5c, 0x68, 0xf4, 0xfb, 0x65, 0x3e, 0x8a, 0x3d, 0x8a, 0xa0, 0x4b, 0xb2, 0xc8,
+                    0xcd, 0x4c,
+                ],
             },
         ];
-        test_hash(Sha224::new(), &wikipedia_tests);
-    }
-
-    #[test]
-    fn test_1million_random_sha512() {
-        let mut sh = Sha512::new();
-        test_digest_1million_random(
-            &mut sh,
-            128,
-            "e718483d0ce769644e2e42c7bc15b4638e1f98b13b2044285632a803afa973ebde0ff244877ea60a4cb0432ce577c31beb009c5c2c49aa2e4eadb217ad8cc09b");
-    }
-
-    #[test]
-    fn test_1million_random_sha256() {
-        let mut sh = Sha256::new();
-        test_digest_1million_random(
-            &mut sh,
-            64,
-            "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0",
-        );
+        test_hashing(
+            &tests,
+            Sha224,
+            |_| Context224::new(),
+            |ctx, input| ctx.update(input),
+            |ctx, input| ctx.update_mut(input),
+            |ctx| ctx.finalize(),
+            |ctx| ctx.finalize_reset(),
+            |ctx| ctx.reset(),
+        )
     }
 }
 

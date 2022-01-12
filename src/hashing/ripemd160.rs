@@ -5,27 +5,35 @@
 //! five functions in the family: RIPEMD, RIPEMD-128, RIPEMD-160, RIPEMD-256,
 //! and RIPEMD-320, of which RIPEMD-160 is the most common.
 //!
-//!
 //! ```
-//! use cryptoxide::{ripemd160::Ripemd160, digest::Digest};
+//! use cryptoxide::hashing::ripemd160;
 //!
-//! let mut digest = [0u8; 20];
-//! let mut context = Ripemd160::new();
-//!
-//! context.input(b"hello world");
-//! context.result(&mut digest);
+//! let digest = ripemd160::Context::new().update(b"hello world").finalize();
 //! ```
 
 use crate::cryptoutil::{read_u32v_le, write_u32_le, FixedBuffer};
-use crate::digest::Digest;
 
 // Some unexported constants
 const DIGEST_BUF_LEN: usize = 5;
 const WORK_BUF_LEN: usize = 16;
 
+/// Ripemd160 algorithm
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Ripemd160;
+
+impl Ripemd160 {
+    pub const DIGEST_BITS: usize = 160;
+    pub const BLOCK_BITS: usize = 512;
+
+    /// Create a new context for this algorithm
+    pub fn new() -> Context {
+        Context::new()
+    }
+}
+
 /// Structure representing the state of a Ripemd160 computation
-#[derive(Clone)]
-pub struct Ripemd160 {
+#[derive(Clone, PartialEq, Eq)]
+pub struct Context {
     h: [u32; DIGEST_BUF_LEN],
     processed_bytes: u64,
     buffer: FixedBuffer<64>,
@@ -325,27 +333,18 @@ fn process_msg_block(data: &[u8], h: &mut [u32; DIGEST_BUF_LEN]) {
 // initial state value
 const H: [u32; 5] = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0];
 
-impl Ripemd160 {
+impl Context {
     // Construct a new `Ripemd160` object
-    pub const fn new() -> Ripemd160 {
-        Ripemd160 {
+    pub const fn new() -> Self {
+        Self {
             h: H,
             processed_bytes: 0u64,
             buffer: FixedBuffer::new(),
             computed: false,
         }
     }
-}
 
-impl Digest for Ripemd160 {
-    fn reset(&mut self) {
-        self.processed_bytes = 0;
-        self.h = H;
-        self.buffer.reset();
-        self.computed = false;
-    }
-
-    fn input(&mut self, msg: &[u8]) {
+    pub fn update_mut(&mut self, msg: &[u8]) {
         assert!(!self.computed);
         // Assumes that msg.len() can be converted to u64 without overflow
         self.processed_bytes += msg.len() as u64;
@@ -355,7 +354,19 @@ impl Digest for Ripemd160 {
         });
     }
 
-    fn result(&mut self, out: &mut [u8]) {
+    pub fn update(mut self, input: &[u8]) -> Self {
+        self.update_mut(input);
+        self
+    }
+
+    pub fn reset(&mut self) {
+        self.processed_bytes = 0;
+        self.h = H;
+        self.buffer.reset();
+        self.computed = false;
+    }
+
+    pub fn finalize_reset(&mut self) -> [u8; 20] {
         if !self.computed {
             let st_h = &mut self.h;
 
@@ -369,118 +380,71 @@ impl Digest for Ripemd160 {
             self.computed = true;
         }
 
+        let mut out = [0; 20];
         write_u32_le(&mut out[0..4], self.h[0]);
         write_u32_le(&mut out[4..8], self.h[1]);
         write_u32_le(&mut out[8..12], self.h[2]);
         write_u32_le(&mut out[12..16], self.h[3]);
         write_u32_le(&mut out[16..20], self.h[4]);
+        self.reset();
+        out
     }
 
-    fn output_bits(&self) -> usize {
-        160
-    }
-
-    fn block_size(&self) -> usize {
-        64
+    pub fn finalize(mut self) -> [u8; 20] {
+        self.finalize_reset()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    //use cryptoutil::test::test_digest_1million_random;
-    use crate::digest::Digest;
-    use crate::ripemd160::Ripemd160;
-
-    #[derive(Clone)]
-    struct Test {
-        input: &'static str,
-        output: [u8; 20],
-        output_str: &'static str,
-    }
+    use super::super::tests::{test_hashing, Test};
+    use super::*;
 
     #[test]
     fn test() {
         let tests = vec![
             // Test messages from FIPS 180-1
             Test {
-                input: "abc",
+                input: b"abc",
                 output: [
-                    0x8eu8, 0xb2u8, 0x08u8, 0xf7u8, 0xe0u8, 0x5du8, 0x98u8, 0x7au8, 0x9bu8, 0x04u8,
-                    0x4au8, 0x8eu8, 0x98u8, 0xc6u8, 0xb0u8, 0x87u8, 0xf1u8, 0x5au8, 0x0bu8, 0xfcu8,
+                    0x8e, 0xb2, 0x08, 0xf7, 0xe0, 0x5d, 0x98, 0x7a, 0x9b, 0x04, 0x4a, 0x8e, 0x98,
+                    0xc6, 0xb0, 0x87, 0xf1, 0x5a, 0x0b, 0xfc,
                 ],
-                output_str: "8eb208f7e05d987a9b044a8e98c6b087f15a0bfc",
             },
             Test {
-                input: "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
+                input: b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
                 output: [
-                    0x12u8, 0xa0u8, 0x53u8, 0x38u8, 0x4au8, 0x9cu8, 0x0cu8, 0x88u8, 0xe4u8, 0x05u8,
-                    0xa0u8, 0x6cu8, 0x27u8, 0xdcu8, 0xf4u8, 0x9au8, 0xdau8, 0x62u8, 0xebu8, 0x2bu8,
+                    0x12, 0xa0, 0x53, 0x38, 0x4a, 0x9c, 0x0c, 0x88, 0xe4, 0x05, 0xa0, 0x6c, 0x27,
+                    0xdc, 0xf4, 0x9a, 0xda, 0x62, 0xeb, 0x2b,
                 ],
-                output_str: "12a053384a9c0c88e405a06c27dcf49ada62eb2b",
             },
             // Examples from wikipedia
             Test {
-                input: "The quick brown fox jumps over the lazy dog",
+                input: b"The quick brown fox jumps over the lazy dog",
                 output: [
-                    0x37u8, 0xf3u8, 0x32u8, 0xf6u8, 0x8du8, 0xb7u8, 0x7bu8, 0xd9u8, 0xd7u8, 0xedu8,
-                    0xd4u8, 0x96u8, 0x95u8, 0x71u8, 0xadu8, 0x67u8, 0x1cu8, 0xf9u8, 0xddu8, 0x3bu8,
+                    0x37, 0xf3, 0x32, 0xf6, 0x8d, 0xb7, 0x7b, 0xd9, 0xd7, 0xed, 0xd4, 0x96, 0x95,
+                    0x71, 0xad, 0x67, 0x1c, 0xf9, 0xdd, 0x3b,
                 ],
-                output_str: "37f332f68db77bd9d7edd4969571ad671cf9dd3b",
             },
             Test {
-                input: "The quick brown fox jumps over the lazy cog",
+                input: b"The quick brown fox jumps over the lazy cog",
                 output: [
-                    0x13u8, 0x20u8, 0x72u8, 0xdfu8, 0x69u8, 0x09u8, 0x33u8, 0x83u8, 0x5eu8, 0xb8u8,
-                    0xb6u8, 0xadu8, 0x0bu8, 0x77u8, 0xe7u8, 0xb6u8, 0xf1u8, 0x4au8, 0xcau8, 0xd7u8,
+                    0x13, 0x20, 0x72, 0xdf, 0x69, 0x09, 0x33, 0x83, 0x5e, 0xb8, 0xb6, 0xad, 0x0b,
+                    0x77, 0xe7, 0xb6, 0xf1, 0x4a, 0xca, 0xd7,
                 ],
-                output_str: "132072df690933835eb8b6ad0b77e7b6f14acad7",
             },
         ];
-
-        // Test that it works when accepting the message all at once
-
-        let mut out = [0u8; 20];
-
-        let mut sh = Ripemd160::new();
-        for t in tests.iter() {
-            sh.input_str(t.input);
-            sh.result(&mut out);
-            assert_eq!(&t.output[..], &out[..]);
-
-            let out_str = sh.result_str();
-            assert_eq!(out_str.len(), 40);
-            assert_eq!(&out_str[..], t.output_str);
-
-            sh.reset();
-        }
-
-        // Test that it works when accepting the message in pieces
-        for t in tests.iter() {
-            let len = t.input.len();
-            let mut left = len;
-            while left > 0 {
-                let take = (left + 1) / 2;
-                sh.input_str(&t.input[len - left..take + len - left]);
-                left = left - take;
-            }
-            sh.result(&mut out);
-            assert_eq!(&t.output[..], &out[..]);
-
-            let out_str = sh.result_str();
-            assert_eq!(out_str.len(), 40);
-            assert!(&out_str[..] == t.output_str);
-
-            sh.reset();
-        }
+        test_hashing(
+            &tests,
+            Ripemd160,
+            |_| Context::new(),
+            |ctx, input| ctx.update(input),
+            |ctx, input| ctx.update_mut(input),
+            |ctx| ctx.finalize(),
+            |ctx| ctx.finalize_reset(),
+            |ctx| ctx.reset(),
+        )
     }
-
-    /*
-    #[test]
-    fn test_1million_random_ripemd160() {
-        let mut sh = Ripemd160::new();
-        test_digest_1million_random(&mut sh, 64, "52783243c1697bdbe16d37f97f68f08325dc1528");
-    }
-    */
 }
 
 #[cfg(all(test, feature = "with-bench"))]

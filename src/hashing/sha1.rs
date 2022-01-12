@@ -10,16 +10,12 @@
 //! # Example
 //!
 //! ```
-//! use cryptoxide::{sha1::Sha1, digest::Digest};
+//! use cryptoxide::hashing::sha1;
 //!
-//! let mut digest = [0u8; 20];
-//! let mut context = Sha1::new();
-//! context.input(b"hello world");
-//! context.result(&mut digest);
+//! let digest = sha1::Context::new().update(b"hello world").finalize();
 //! ```
 
 use crate::cryptoutil::{read_u32v_be, write_u32_be, FixedBuffer};
-use crate::digest::Digest;
 use crate::simd::u32x4;
 
 const STATE_LEN: usize = 5;
@@ -336,7 +332,7 @@ fn sha1_digest_block(state: &mut [u32; 5], block: &[u8]) {
     sha1_digest_block_u32(state, &block2);
 }
 
-fn add_input(st: &mut Sha1, msg: &[u8]) {
+fn add_input(st: &mut Context, msg: &[u8]) {
     assert!((!st.computed));
     // Assumes that msg.len() can be converted to u64 without overflow
     st.processed_bytes += msg.len() as u64;
@@ -346,7 +342,7 @@ fn add_input(st: &mut Sha1, msg: &[u8]) {
     });
 }
 
-fn mk_result(st: &mut Sha1, rs: &mut [u8; 20]) {
+fn mk_result(st: &mut Context, rs: &mut [u8; 20]) {
     if !st.computed {
         let st_h = &mut st.h;
         st.buffer
@@ -364,9 +360,23 @@ fn mk_result(st: &mut Sha1, rs: &mut [u8; 20]) {
     write_u32_be(&mut rs[16..20], st.h[4]);
 }
 
+/// Sha1 Algorithm
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Sha1;
+
+impl Sha1 {
+    pub const DIGEST_BITS: usize = 160;
+    pub const BLOCK_BYTES: usize = 64;
+
+    /// Create a new context for this algorithm
+    pub fn new() -> Context {
+        Context::new()
+    }
+}
+
 /// Structure representing the state of a Sha1 computation
 #[derive(Clone)]
-pub struct Sha1 {
+pub struct Context {
     h: [u32; STATE_LEN],
     processed_bytes: u64,
     buffer: FixedBuffer<64>,
@@ -380,125 +390,97 @@ const H3: u32 = 0x10325476u32;
 const H4: u32 = 0xC3D2E1F0u32;
 const H: [u32; STATE_LEN] = [H0, H1, H2, H3, H4];
 
-impl Sha1 {
-    /// Construct a `sha` object
-    pub const fn new() -> Sha1 {
-        Sha1 {
+impl Context {
+    /// Construct a new default SHA1 context
+    pub const fn new() -> Self {
+        Self {
             h: H,
             processed_bytes: 0u64,
             buffer: FixedBuffer::new(),
             computed: false,
         }
     }
-}
 
-impl Digest for Sha1 {
-    fn reset(&mut self) {
+    pub fn update(mut self, input: &[u8]) -> Self {
+        self.update_mut(input);
+        self
+    }
+
+    pub fn update_mut(&mut self, input: &[u8]) {
+        add_input(self, input)
+    }
+
+    pub fn finalize(mut self) -> [u8; 20] {
+        let mut out = [0; 20];
+        mk_result(&mut self, &mut out);
+        out
+    }
+
+    pub fn reset(&mut self) {
         self.processed_bytes = 0;
         self.h = H;
         self.buffer.reset();
         self.computed = false;
     }
-    fn input(&mut self, msg: &[u8]) {
-        add_input(self, msg);
-    }
-    fn result(&mut self, out: &mut [u8]) {
-        use core::convert::TryFrom;
-        mk_result(self, <&mut [u8; 20]>::try_from(out).unwrap())
-    }
-    fn output_bits(&self) -> usize {
-        160
-    }
-    fn block_size(&self) -> usize {
-        64
+
+    pub fn finalize_reset(&mut self) -> [u8; 20] {
+        let mut out = [0; 20];
+        mk_result(self, &mut out);
+        self.reset();
+        out
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::tests::{test_hashing, Test};
     use super::*;
-
-    #[derive(Clone)]
-    struct Test {
-        input: &'static str,
-        output: &'static [u8],
-        output_str: &'static str,
-    }
 
     #[test]
     fn test() {
         let tests = [
             // Test messages from FIPS 180-1
             Test {
-                input: "abc",
-                output: &[
-                    0xA9u8, 0x99u8, 0x3Eu8, 0x36u8, 0x47u8, 0x06u8, 0x81u8, 0x6Au8, 0xBAu8, 0x3Eu8,
-                    0x25u8, 0x71u8, 0x78u8, 0x50u8, 0xC2u8, 0x6Cu8, 0x9Cu8, 0xD0u8, 0xD8u8, 0x9Du8,
+                input: b"abc",
+                output: [
+                    0xA9, 0x99, 0x3E, 0x36, 0x47, 0x06, 0x81, 0x6A, 0xBA, 0x3E, 0x25, 0x71, 0x78,
+                    0x50, 0xC2, 0x6C, 0x9C, 0xD0, 0xD8, 0x9D,
                 ],
-                output_str: "a9993e364706816aba3e25717850c26c9cd0d89d",
             },
             Test {
-                input: "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
-                output: &[
-                    0x84u8, 0x98u8, 0x3Eu8, 0x44u8, 0x1Cu8, 0x3Bu8, 0xD2u8, 0x6Eu8, 0xBAu8, 0xAEu8,
-                    0x4Au8, 0xA1u8, 0xF9u8, 0x51u8, 0x29u8, 0xE5u8, 0xE5u8, 0x46u8, 0x70u8, 0xF1u8,
+                input: b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
+                output: [
+                    0x84, 0x98, 0x3E, 0x44, 0x1C, 0x3B, 0xD2, 0x6E, 0xBA, 0xAE, 0x4A, 0xA1, 0xF9,
+                    0x51, 0x29, 0xE5, 0xE5, 0x46, 0x70, 0xF1,
                 ],
-                output_str: "84983e441c3bd26ebaae4aa1f95129e5e54670f1",
             },
             // Examples from wikipedia
             Test {
-                input: "The quick brown fox jumps over the lazy dog",
-                output: &[
-                    0x2fu8, 0xd4u8, 0xe1u8, 0xc6u8, 0x7au8, 0x2du8, 0x28u8, 0xfcu8, 0xedu8, 0x84u8,
-                    0x9eu8, 0xe1u8, 0xbbu8, 0x76u8, 0xe7u8, 0x39u8, 0x1bu8, 0x93u8, 0xebu8, 0x12u8,
+                input: b"The quick brown fox jumps over the lazy dog",
+                output: [
+                    0x2f, 0xd4, 0xe1, 0xc6, 0x7a, 0x2d, 0x28, 0xfc, 0xed, 0x84, 0x9e, 0xe1, 0xbb,
+                    0x76, 0xe7, 0x39, 0x1b, 0x93, 0xeb, 0x12,
                 ],
-                output_str: "2fd4e1c67a2d28fced849ee1bb76e7391b93eb12",
             },
             Test {
-                input: "The quick brown fox jumps over the lazy cog",
-                output: &[
-                    0xdeu8, 0x9fu8, 0x2cu8, 0x7fu8, 0xd2u8, 0x5eu8, 0x1bu8, 0x3au8, 0xfau8, 0xd3u8,
-                    0xe8u8, 0x5au8, 0x0bu8, 0xd1u8, 0x7du8, 0x9bu8, 0x10u8, 0x0du8, 0xb4u8, 0xb3u8,
+                input: b"The quick brown fox jumps over the lazy cog",
+                output: [
+                    0xde, 0x9f, 0x2c, 0x7f, 0xd2, 0x5e, 0x1b, 0x3a, 0xfa, 0xd3, 0xe8, 0x5a, 0x0b,
+                    0xd1, 0x7d, 0x9b, 0x10, 0x0d, 0xb4, 0xb3,
                 ],
-                output_str: "de9f2c7fd25e1b3afad3e85a0bd17d9b100db4b3",
             },
         ];
 
-        // Test that it works when accepting the message all at once
-
-        let mut out = [0u8; 20];
-
-        let mut sh = Sha1::new();
-        for t in tests.iter() {
-            sh.input_str(t.input);
-            sh.result(&mut out);
-            assert!(t.output[..] == out[..]);
-
-            let out_str = sh.result_str();
-            assert_eq!(out_str.len(), 40);
-            assert!(&out_str[..] == t.output_str);
-
-            sh.reset();
-        }
-
-        // Test that it works when accepting the message in pieces
-        for t in tests.iter() {
-            let len = t.input.len();
-            let mut left = len;
-            while left > 0 {
-                let take = (left + 1) / 2;
-                sh.input_str(&t.input[len - left..take + len - left]);
-                left = left - take;
-            }
-            sh.result(&mut out);
-            assert!(t.output[..] == out[..]);
-
-            let out_str = sh.result_str();
-            assert_eq!(out_str.len(), 40);
-            assert!(&out_str[..] == t.output_str);
-
-            sh.reset();
-        }
+        test_hashing(
+            &tests,
+            Sha1,
+            |_| Context::new(),
+            |ctx, input| ctx.update(input),
+            |ctx, input| ctx.update_mut(input),
+            |ctx| ctx.finalize(),
+            |ctx| ctx.finalize_reset(),
+            |ctx| ctx.reset(),
+        )
     }
 }
 

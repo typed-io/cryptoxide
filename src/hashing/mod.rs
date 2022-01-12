@@ -16,5 +16,11 @@ pub mod sha2;
 #[cfg(feature = "sha3")]
 pub mod sha3;
 
+#[cfg(feature = "sha3")]
+pub mod keccak;
+
 #[cfg(feature = "ripemd160")]
 pub mod ripemd160;
+
+#[cfg(test)]
+pub(super) mod tests;

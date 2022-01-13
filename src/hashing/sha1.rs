@@ -374,11 +374,11 @@ pub struct Context {
     buffer: FixedBuffer<64>,
 }
 
-const H0: u32 = 0x67452301u32;
-const H1: u32 = 0xEFCDAB89u32;
-const H2: u32 = 0x98BADCFEu32;
-const H3: u32 = 0x10325476u32;
-const H4: u32 = 0xC3D2E1F0u32;
+const H0: u32 = 0x67452301;
+const H1: u32 = 0xEFCDAB89;
+const H2: u32 = 0x98BADCFE;
+const H3: u32 = 0x10325476;
+const H4: u32 = 0xC3D2E1F0;
 const H: [u32; STATE_LEN] = [H0, H1, H2, H3, H4];
 
 impl Context {

@@ -57,7 +57,7 @@ const RC: [u64; 24] = [
     0x0000000080000001,
     0x8000000080008008,
 ];
-const ROTC: [usize; 24] = [
+const ROTC: [u32; 24] = [
     1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14, 27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44,
 ];
 const PIL: [usize; 24] = [
@@ -65,16 +65,9 @@ const PIL: [usize; 24] = [
 ];
 const M5: [usize; 10] = [0, 1, 2, 3, 4, 0, 1, 2, 3, 4];
 
-#[inline]
-fn rotl64(v: u64, n: usize) -> u64 {
-    ((v << (n % 64)) & 0xffffffffffffffff) ^ (v >> (64 - (n % 64)))
-}
-
 // Code based on Keccak-compact64.c from ref implementation.
 #[allow(clippy::needless_range_loop)]
-fn keccak_f(state: &mut [u8]) {
-    assert!(state.len() == B);
-
+fn keccak_f(state: &mut [u8; B]) {
     let mut s: [u64; 25] = [0; 25];
     let mut t: [u64; 1] = [0; 1];
     let mut c: [u64; 5] = [0; 5];
@@ -87,7 +80,7 @@ fn keccak_f(state: &mut [u8]) {
             c[x] = s[x] ^ s[5 + x] ^ s[10 + x] ^ s[15 + x] ^ s[20 + x];
         }
         for x in 0..5 {
-            t[0] = c[M5[x + 4]] ^ rotl64(c[M5[x + 1]], 1);
+            t[0] = c[M5[x + 4]] ^ c[M5[x + 1]].rotate_left(1);
             for y in 0..5 {
                 s[y * 5 + x] ^= t[0];
             }
@@ -97,7 +90,7 @@ fn keccak_f(state: &mut [u8]) {
         t[0] = s[1];
         for x in 0..24 {
             c[0] = s[PIL[x]];
-            s[PIL[x]] = rotl64(t[0], ROTC[x]);
+            s[PIL[x]] = t[0].rotate_left(ROTC[x]);
             t[0] = c[0];
         }
 

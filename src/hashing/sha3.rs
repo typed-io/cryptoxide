@@ -239,7 +239,7 @@ impl<E: constants::Const> Engine<E> {
             let m: i64 = (offset + ds_len) as i64;
             let zeros = (((-m - 2) + 2 * r) % r) as usize;
             assert!((m as usize + zeros + 2) % 8 == 0);
-            (ds_len as usize + zeros + 2) / 8
+            (ds_len + zeros + 2) / 8
         }
 
         fn set_pad(offset: usize, buf: &mut [u8]) {

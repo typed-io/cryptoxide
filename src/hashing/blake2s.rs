@@ -54,7 +54,6 @@ pub struct Context<const BITS: usize> {
     eng: Engine,
     buf: [u8; Engine::BLOCK_BYTES],
     buflen: usize,
-    computed: bool, // whether the final digest has been computed
 }
 
 impl<const BITS: usize> Context<BITS> {
@@ -82,12 +81,7 @@ impl<const BITS: usize> Context<BITS> {
             0
         };
 
-        Self {
-            eng,
-            buf,
-            buflen,
-            computed: false,
-        }
+        Self { eng, buf, buflen }
     }
 
     pub fn update(mut self, input: &[u8]) -> Self {
@@ -122,15 +116,12 @@ impl<const BITS: usize> Context<BITS> {
     }
 
     fn internal_final(&mut self) {
-        if !self.computed {
-            self.eng.increment_counter(self.buflen as u32);
-            zero(&mut self.buf[self.buflen..]);
-            self.eng
-                .compress(&self.buf[0..Engine::BLOCK_BYTES], LastBlock::Yes);
+        self.eng.increment_counter(self.buflen as u32);
+        zero(&mut self.buf[self.buflen..]);
+        self.eng
+            .compress(&self.buf[0..Engine::BLOCK_BYTES], LastBlock::Yes);
 
-            write_u32v_le(&mut self.buf[0..32], &self.eng.h);
-            self.computed = true;
-        }
+        write_u32v_le(&mut self.buf[0..32], &self.eng.h);
     }
 
     pub fn finalize_at(mut self, out: &mut [u8]) {
@@ -156,7 +147,6 @@ impl<const BITS: usize> Context<BITS> {
     /// Reset the context to the state after calling `new`
     pub fn reset(&mut self) {
         self.eng.reset((BITS + 7) / 8, 0);
-        self.computed = false;
         self.buflen = 0;
         zero(&mut self.buf[..]);
     }
@@ -165,7 +155,6 @@ impl<const BITS: usize> Context<BITS> {
         assert!(key.len() <= Engine::MAX_KEYLEN);
 
         self.eng.reset((BITS + 7) / 8, key.len());
-        self.computed = false;
         zero(&mut self.buf[..]);
 
         if !key.is_empty() {

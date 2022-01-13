@@ -332,26 +332,12 @@ fn sha1_digest_block(state: &mut [u32; 5], block: &[u8]) {
     sha1_digest_block_u32(state, &block2);
 }
 
-fn add_input(st: &mut Context, msg: &[u8]) {
-    assert!((!st.computed));
-    // Assumes that msg.len() can be converted to u64 without overflow
-    st.processed_bytes += msg.len() as u64;
-    let st_h = &mut st.h;
-    st.buffer.input(msg, |d| {
-        sha1_digest_block(st_h, d);
-    });
-}
-
 fn mk_result(st: &mut Context, rs: &mut [u8; 20]) {
-    if !st.computed {
-        let st_h = &mut st.h;
-        st.buffer
-            .standard_padding(8, |d| sha1_digest_block(&mut *st_h, d));
-        *st.buffer.next::<8>() = (st.processed_bytes << 3).to_be_bytes();
-        sha1_digest_block(st_h, st.buffer.full_buffer());
-
-        st.computed = true;
-    }
+    let st_h = &mut st.h;
+    st.buffer
+        .standard_padding(8, |d| sha1_digest_block(&mut *st_h, d));
+    *st.buffer.next::<8>() = (st.processed_bytes << 3).to_be_bytes();
+    sha1_digest_block(st_h, st.buffer.full_buffer());
 
     write_u32_be(&mut rs[0..4], st.h[0]);
     write_u32_be(&mut rs[4..8], st.h[1]);
@@ -380,7 +366,6 @@ pub struct Context {
     h: [u32; STATE_LEN],
     processed_bytes: u64,
     buffer: FixedBuffer<64>,
-    computed: bool,
 }
 
 const H0: u32 = 0x67452301u32;
@@ -397,7 +382,6 @@ impl Context {
             h: H,
             processed_bytes: 0u64,
             buffer: FixedBuffer::new(),
-            computed: false,
         }
     }
 
@@ -407,7 +391,11 @@ impl Context {
     }
 
     pub fn update_mut(&mut self, input: &[u8]) {
-        add_input(self, input)
+        self.processed_bytes += input.len() as u64;
+        let h = &mut self.h;
+        self.buffer.input(input, |d| {
+            sha1_digest_block(h, d);
+        });
     }
 
     pub fn finalize(mut self) -> [u8; 20] {
@@ -420,7 +408,6 @@ impl Context {
         self.processed_bytes = 0;
         self.h = H;
         self.buffer.reset();
-        self.computed = false;
     }
 
     pub fn finalize_reset(&mut self) -> [u8; 20] {

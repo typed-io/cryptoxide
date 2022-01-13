@@ -146,7 +146,6 @@ struct Engine512 {
     processed_bytes: u128,
     buffer: FixedBuffer<128>,
     state: eng512::Engine,
-    finished: bool,
 }
 
 impl Engine512 {
@@ -155,7 +154,6 @@ impl Engine512 {
             processed_bytes: 0,
             buffer: FixedBuffer::new(),
             state: eng512::Engine::new(h),
-            finished: false,
         }
     }
 
@@ -163,28 +161,20 @@ impl Engine512 {
         self.processed_bytes = 0;
         self.buffer.reset();
         self.state.reset(h);
-        self.finished = false;
     }
 
     fn input(&mut self, input: &[u8]) {
-        assert!(!self.finished);
         self.processed_bytes += input.len() as u128;
         let self_state = &mut self.state;
         self.buffer.input(input, |input| self_state.blocks(input));
     }
 
     fn finish(&mut self) {
-        if self.finished {
-            return;
-        }
-
         let self_state = &mut self.state;
         self.buffer
             .standard_padding(16, |input| self_state.blocks(input));
         *self.buffer.next::<16>() = (self.processed_bytes << 3).to_be_bytes();
         self.state.blocks(self.buffer.full_buffer());
-
-        self.finished = true;
     }
 }
 

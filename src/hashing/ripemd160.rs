@@ -37,7 +37,6 @@ pub struct Context {
     h: [u32; DIGEST_BUF_LEN],
     processed_bytes: u64,
     buffer: FixedBuffer<64>,
-    computed: bool,
 }
 
 fn circular_shift(bits: u32, word: u32) -> u32 {
@@ -340,12 +339,10 @@ impl Context {
             h: H,
             processed_bytes: 0u64,
             buffer: FixedBuffer::new(),
-            computed: false,
         }
     }
 
     pub fn update_mut(&mut self, msg: &[u8]) {
-        assert!(!self.computed);
         // Assumes that msg.len() can be converted to u64 without overflow
         self.processed_bytes += msg.len() as u64;
         let st_h = &mut self.h;
@@ -363,22 +360,17 @@ impl Context {
         self.processed_bytes = 0;
         self.h = H;
         self.buffer.reset();
-        self.computed = false;
     }
 
     pub fn finalize_reset(&mut self) -> [u8; 20] {
-        if !self.computed {
-            let st_h = &mut self.h;
+        let st_h = &mut self.h;
 
-            self.buffer
-                .standard_padding(8, |d| process_msg_block(d, &mut *st_h));
+        self.buffer
+            .standard_padding(8, |d| process_msg_block(d, &mut *st_h));
 
-            write_u32_le(self.buffer.next::<4>(), (self.processed_bytes << 3) as u32);
-            write_u32_le(self.buffer.next::<4>(), (self.processed_bytes >> 29) as u32);
-            process_msg_block(self.buffer.full_buffer(), st_h);
-
-            self.computed = true;
-        }
+        write_u32_le(self.buffer.next::<4>(), (self.processed_bytes << 3) as u32);
+        write_u32_le(self.buffer.next::<4>(), (self.processed_bytes >> 29) as u32);
+        process_msg_block(self.buffer.full_buffer(), st_h);
 
         let mut out = [0; 20];
         write_u32_le(&mut out[0..4], self.h[0]);

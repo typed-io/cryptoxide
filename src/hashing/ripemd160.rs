@@ -23,7 +23,7 @@ pub struct Ripemd160;
 
 impl Ripemd160 {
     pub const DIGEST_BITS: usize = 160;
-    pub const BLOCK_BITS: usize = 512;
+    pub const BLOCK_BYTES: usize = 64;
 
     /// Create a new context for this algorithm
     pub fn new() -> Context {

@@ -101,6 +101,43 @@ pub(super) fn test_hashing<
             );
         }
     }
+
+    // Test bigger input
+    {
+        // 1024 bytes ought to be enough
+        let buf = [1; 1024];
+
+        let mut context = new(alg);
+        let mut context3 = new(alg);
+        let mut context16 = new(alg);
+
+        // on one context get the whole buf at once
+        update_mut(&mut context, &buf);
+
+        // on the other context get 16-bytes chunks updates
+        for c in buf.chunks(3) {
+            update_mut(&mut context3, &c);
+        }
+
+        // on the other context get 16-bytes chunks updates
+        for c in buf.chunks(16) {
+            update_mut(&mut context16, &c);
+        }
+
+        let output = finalize(context);
+        let output3 = finalize(context3);
+        let output16 = finalize(context16);
+
+        assert_eq!(
+            output, output3,
+            "full updating different than small 3-bytes chunks",
+        );
+        assert_eq!(
+            output, output16,
+            "full updating different than small 16-bytes chunks : 3-bytes chunk output {:?}",
+            output3,
+        );
+    }
 }
 
 // a simple hashing test framework based on passing closures

@@ -205,7 +205,7 @@ fn sha1rnds4m(abcd: u32x4, msg: u32x4) -> u32x4 {
 }
 
 /// Process a block with the SHA-1 algorithm.
-pub fn sha1_digest_block_u32(state: &mut [u32; 5], block: &[u32; 16]) {
+fn digest_block_u32(state: &mut [u32; 5], block: &[u32; 16]) {
     macro_rules! schedule {
         ($v0:expr, $v1:expr, $v2:expr, $v3:expr) => {
             sha1msg2(sha1msg1($v0, $v1) ^ $v2, $v3)
@@ -325,26 +325,25 @@ pub fn sha1_digest_block_u32(state: &mut [u32; 5], block: &[u32; 16]) {
 /// and also shown above is how the digest-related functions can be used to
 /// perform 4 rounds of the message block digest calculation.
 ///
-fn sha1_digest_block(state: &mut [u32; 5], block: &[u8]) {
+fn digest_block(state: &mut [u32; 5], block: &[u8]) {
     assert_eq!(block.len(), BLOCK_LEN * 4);
     let mut block2 = [0u32; BLOCK_LEN];
     read_u32v_be(&mut block2[..], block);
-    sha1_digest_block_u32(state, &block2);
+    digest_block_u32(state, &block2);
 }
 
-fn sha1_digest_blocks(state: &mut [u32; 5], mut block: &[u8]) {
-    while block.is_empty() {
-        sha1_digest_block(state, &block[0..BLOCK_LEN * 4]);
-        block = &block[BLOCK_LEN * 4..];
+fn digest_blocks(state: &mut [u32; 5], block: &[u8]) {
+    for b in block.chunks(BLOCK_LEN * 4) {
+        digest_block(state, b);
     }
 }
 
 fn mk_result(st: &mut Context, rs: &mut [u8; 20]) {
     let st_h = &mut st.h;
     st.buffer
-        .standard_padding(8, |d| sha1_digest_block(&mut *st_h, d));
+        .standard_padding(8, |d| digest_block(&mut *st_h, d));
     *st.buffer.next::<8>() = (st.processed_bytes << 3).to_be_bytes();
-    sha1_digest_block(st_h, st.buffer.full_buffer());
+    digest_block(st_h, st.buffer.full_buffer());
 
     write_u32_be(&mut rs[0..4], st.h[0]);
     write_u32_be(&mut rs[4..8], st.h[1]);
@@ -401,7 +400,7 @@ impl Context {
         self.processed_bytes += input.len() as u64;
         let h = &mut self.h;
         self.buffer.input(input, |d| {
-            sha1_digest_blocks(h, d);
+            digest_blocks(h, d);
         });
     }
 

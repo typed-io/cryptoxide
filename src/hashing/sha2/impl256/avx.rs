@@ -14,7 +14,6 @@ const K32: [u32; 64] = reference::K32;
 //   | block 3 | block 2 | block 1 | block 0 |
 //
 // x86 architecture can (currently) do unaligned load (at a cost if unaligned)
-#[cfg(target_feature = "sse4.1")]
 unsafe fn gather(block: *const u8) -> __m256i {
     use core::ptr::read;
     let mut temp: __m256i;

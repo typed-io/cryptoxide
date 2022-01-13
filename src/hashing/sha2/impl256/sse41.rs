@@ -13,7 +13,6 @@ const K32: [u32; 64] = reference::K32;
 //   | block 3 | block 2 | block 1 | block 0 |
 //
 // x86 architecture can (currently) do unaligned load (at a cost if unaligned)
-#[cfg(target_feature = "sse4.1")]
 unsafe fn gather(block: *const u8) -> __m128i {
     use core::ptr::read;
     let mut temp: __m128i;
@@ -155,7 +154,6 @@ pub unsafe fn message_schedule_4ways(schedule: &mut [__m128i; 64], message: &[u8
     schedule[63] = _mm_add_epi32(w15, _mm_set1_epi32(K32[63] as i32));
 }
 
-#[cfg(target_feature = "sse4.1")]
 unsafe fn compress_4ways(state: &mut [u32; 8], schedule: &[__m128i; 64]) {
     use super::reference::{e0, e1};
     macro_rules! round {

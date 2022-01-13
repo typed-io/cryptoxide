@@ -39,16 +39,12 @@ pub struct Context {
     buffer: FixedBuffer<64>,
 }
 
-fn circular_shift(bits: u32, word: u32) -> u32 {
-    word << bits as usize | word >> (32u32 - bits) as usize
-}
-
 macro_rules! round(
     ($a:expr, $b:expr, $c:expr, $d:expr, $e:expr,
      $x:expr, $bits:expr, $add:expr, $round:expr) => ({
         $a = $a.wrapping_add($round).wrapping_add($x).wrapping_add($add);
-        $a = circular_shift($bits, $a).wrapping_add($e);
-        $c = circular_shift(10, $c);
+        $a = $a.rotate_left($a).wrapping_add($e);
+        $c = $c.rotate_left(10);
     });
 );
 

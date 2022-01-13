@@ -441,8 +441,7 @@ mod tests {
 
 #[cfg(all(test, feature = "with-bench"))]
 mod bench {
-    use digest::Digest;
-    use ripemd160::Ripemd160;
+    use super::Ripemd160;
     use test::Bencher;
 
     #[bench]
@@ -450,7 +449,7 @@ mod bench {
         let mut sh = Ripemd160::new();
         let bytes = [1u8; 10];
         bh.iter(|| {
-            sh.input(&bytes);
+            sh.update_mut(&bytes);
         });
         bh.bytes = bytes.len() as u64;
     }
@@ -460,7 +459,7 @@ mod bench {
         let mut sh = Ripemd160::new();
         let bytes = [1u8; 1024];
         bh.iter(|| {
-            sh.input(&bytes);
+            sh.update_mut(&bytes);
         });
         bh.bytes = bytes.len() as u64;
     }
@@ -470,7 +469,7 @@ mod bench {
         let mut sh = Ripemd160::new();
         let bytes = [1u8; 65536];
         bh.iter(|| {
-            sh.input(&bytes);
+            sh.update_mut(&bytes);
         });
         bh.bytes = bytes.len() as u64;
     }

@@ -273,34 +273,33 @@ mod bench {
     use test::Bencher;
 
     use super::Blake2s;
-    use crate::digest::Digest;
 
     #[bench]
     pub fn blake2s_10(bh: &mut Bencher) {
-        let mut sh = Blake2s::new(32);
+        let mut sh = Blake2s::<256>::new();
         let bytes = [1u8; 10];
         bh.iter(|| {
-            sh.input(&bytes);
+            sh.update_mut(&bytes);
         });
         bh.bytes = bytes.len() as u64;
     }
 
     #[bench]
     pub fn blake2s_1k(bh: &mut Bencher) {
-        let mut sh = Blake2s::new(32);
+        let mut sh = Blake2s::<256>::new();
         let bytes = [1u8; 1024];
         bh.iter(|| {
-            sh.input(&bytes);
+            sh.update_mut(&bytes);
         });
         bh.bytes = bytes.len() as u64;
     }
 
     #[bench]
     pub fn blake2s_64k(bh: &mut Bencher) {
-        let mut sh = Blake2s::new(32);
+        let mut sh = Blake2s::<256>::new();
         let bytes = [1u8; 65536];
         bh.iter(|| {
-            sh.input(&bytes);
+            sh.update_mut(&bytes);
         });
         bh.bytes = bytes.len() as u64;
     }

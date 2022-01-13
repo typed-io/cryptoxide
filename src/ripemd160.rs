@@ -347,7 +347,6 @@ impl Digest for Ripemd160 {
 
     fn input(&mut self, msg: &[u8]) {
         assert!(!self.computed);
-        // Assumes that msg.len() can be converted to u64 without overflow
         self.processed_bytes += msg.len() as u64;
         let st_h = &mut self.h;
         self.buffer.input(msg, |d: &[u8]| {
@@ -387,7 +386,6 @@ impl Digest for Ripemd160 {
 
 #[cfg(test)]
 mod tests {
-    //use cryptoutil::test::test_digest_1million_random;
     use crate::digest::Digest;
     use crate::ripemd160::Ripemd160;
 
@@ -473,20 +471,12 @@ mod tests {
             sh.reset();
         }
     }
-
-    /*
-    #[test]
-    fn test_1million_random_ripemd160() {
-        let mut sh = Ripemd160::new();
-        test_digest_1million_random(&mut sh, 64, "52783243c1697bdbe16d37f97f68f08325dc1528");
-    }
-    */
 }
 
 #[cfg(all(test, feature = "with-bench"))]
 mod bench {
-    use digest::Digest;
-    use ripemd160::Ripemd160;
+    use super::Ripemd160;
+    use crate::digest::Digest;
     use test::Bencher;
 
     #[bench]

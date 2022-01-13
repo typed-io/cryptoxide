@@ -323,7 +323,7 @@ fn process_msg_block(data: &[u8], h: &mut [u32; DIGEST_BUF_LEN]) {
 }
 
 fn process_msg_blocks(mut data: &[u8], h: &mut [u32; DIGEST_BUF_LEN]) {
-    while data.is_empty() {
+    while !data.is_empty() {
         process_msg_block(&data[0..64], h);
         data = &data[64..];
     }

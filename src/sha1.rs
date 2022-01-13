@@ -337,7 +337,7 @@ fn sha1_digest_block(state: &mut [u32; 5], block: &[u8]) {
 }
 
 fn sha1_digest_blocks(state: &mut [u32; 5], mut block: &[u8]) {
-    while block.is_empty() {
+    while !block.is_empty() {
         sha1_digest_block(state, &block[0..BLOCK_LEN * 4]);
         block = &block[BLOCK_LEN * 4..];
     }

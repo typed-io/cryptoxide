@@ -8,17 +8,18 @@
 //! * `Keccak256`
 //! * `Keccak384`
 //! * `Keccak512`
-use super::sha3::{constants, constants::Const, Engine, B};
+use super::sha3::{Engine, B};
 
 macro_rules! keccak_impl {
-    ($C: ident, $context:ident, $doc:expr) => {
-        /// Hash Algorithm
+    ($C: ident, $context:ident, $digestlength:literal, $doc:expr) => {
+        #[doc=$doc]
+        #[doc = " Algorithm"]
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
         pub struct $C;
 
         impl $C {
-            pub const DIGEST_BITS: usize = constants::$C::DIGEST_LENGTH * 8;
-            pub const BLOCK_BYTES: usize = B - constants::$C::CAPACITY;
+            pub const DIGEST_BITS: usize = $digestlength * 8;
+            pub const BLOCK_BYTES: usize = B - ($digestlength * 2);
 
             /// Create a new context for this algorithm
             pub fn new() -> $context {
@@ -27,8 +28,9 @@ macro_rules! keccak_impl {
         }
 
         #[doc=$doc]
+        #[doc = " Context"]
         #[derive(Clone)]
-        pub struct $context(Engine<constants::$C>);
+        pub struct $context(Engine<$digestlength, 0>);
 
         impl $context {
             pub fn new() -> Self {
@@ -44,15 +46,15 @@ macro_rules! keccak_impl {
                 self
             }
 
-            pub fn finalize_reset(&mut self) -> [u8; constants::$C::DIGEST_LENGTH] {
-                let mut out = [0; constants::$C::DIGEST_LENGTH];
+            pub fn finalize_reset(&mut self) -> [u8; $digestlength] {
+                let mut out = [0; $digestlength];
                 self.0.output(&mut out);
                 self.0.reset();
                 out
             }
 
-            pub fn finalize(mut self) -> [u8; constants::$C::DIGEST_LENGTH] {
-                let mut out = [0; constants::$C::DIGEST_LENGTH];
+            pub fn finalize(mut self) -> [u8; $digestlength] {
+                let mut out = [0; $digestlength];
                 self.0.output(&mut out);
                 out
             }
@@ -64,10 +66,10 @@ macro_rules! keccak_impl {
     };
 }
 
-keccak_impl!(Keccak224, Context224, "A Keccak224 context");
-keccak_impl!(Keccak256, Context256, "A Keccak256 context");
-keccak_impl!(Keccak384, Context384, "A Keccak384 context");
-keccak_impl!(Keccak512, Context512, "A Keccak512 context");
+keccak_impl!(Keccak224, Context224, 28, "Keccak224");
+keccak_impl!(Keccak256, Context256, 32, "Keccak256");
+keccak_impl!(Keccak384, Context384, 48, "Keccak384");
+keccak_impl!(Keccak512, Context512, 64, "Keccak512");
 
 #[cfg(test)]
 mod tests {

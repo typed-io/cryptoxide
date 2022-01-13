@@ -14,7 +14,7 @@
 //! An example of using `SHA3-256` is:
 //!
 //! ```rust
-//! use cryptoxide::{hashing::sha3};
+//! use cryptoxide::hashing::sha3;
 //!
 //! // create a SHA3-256 context
 //! let mut context = sha3::Sha3_256::new();
@@ -111,88 +111,29 @@ fn keccak_f(state: &mut [u8; B]) {
     write_u64v_le(state, &s);
 }
 
-pub(super) mod constants {
-    pub trait Const {
-        const DIGEST_LENGTH: usize;
-        const IS_KECCAK: bool;
-        const CAPACITY: usize;
-        const BLOCK_SIZE: usize;
-    }
-
-    macro_rules! sha3_const {
-        ($C: ident, $DIGEST_LENGTH: expr, $IS_KECCAK: expr) => {
-            #[allow(non_camel_case_types)]
-            pub struct $C;
-            impl Const for $C {
-                const DIGEST_LENGTH: usize = $DIGEST_LENGTH;
-                const IS_KECCAK: bool = $IS_KECCAK;
-                const CAPACITY: usize = $DIGEST_LENGTH * 2;
-                const BLOCK_SIZE: usize = super::B - ($DIGEST_LENGTH * 2);
-            }
-        };
-    }
-
-    /*
-    macro_rules! shake_const {
-        ($C: ident, $CAPACITY: expr) => {
-            #[allow(non_camel_case_types)]
-            pub(super) struct $C;
-            impl Const for $C {
-                const DIGEST_LENGTH: usize = 0;
-                const IS_KECCAK: bool = false;
-                const CAPACITY: usize = $CAPACITY;
-                const BLOCK_SIZE: usize = 0xfffff; // hum
-            }
-        };
-    }
-    */
-
-    sha3_const!(Sha3_224, 28, false);
-    sha3_const!(Sha3_256, 32, false);
-    sha3_const!(Sha3_384, 48, false);
-    sha3_const!(Sha3_512, 64, false);
-    sha3_const!(Keccak224, 28, true);
-    sha3_const!(Keccak256, 32, true);
-    sha3_const!(Keccak384, 48, true);
-    sha3_const!(Keccak512, 64, true);
-
-    //shake_const!(Shake128, 32);
-    //shake_const!(Shake256, 64);
-}
-
-use core::marker::PhantomData;
-
-pub(super) struct Engine<E> {
-    state: [u8; B], // B bytes
-    mode: PhantomData<E>,
+/// Engine for Keccak implementation where
+/// DSLEN = 0 (Keccak), 2 (SHA-3), 4 (Shake)
+/// DIGESTLEN = size in bytes of the digest (28, 32, 48, 64)
+#[derive(Clone)]
+pub(super) struct Engine<const DIGESTLEN: usize, const DSLEN: usize> {
+    state: [u8; B],    // B bytes
     can_absorb: bool,  // Can absorb
     can_squeeze: bool, // Can squeeze
     offset: usize,     // Enqueued bytes in state for absorb phase
                        // Squeeze offset for squeeze phase
 }
 
-impl<E> Clone for Engine<E> {
-    fn clone(&self) -> Self {
-        Self {
-            state: self.state,
-            mode: self.mode,
-            can_absorb: self.can_absorb,
-            can_squeeze: self.can_squeeze,
-            offset: self.offset,
-        }
-    }
-}
+impl<const DIGESTLEN: usize, const DSLEN: usize> Engine<DIGESTLEN, DSLEN> {
+    //pub const CAPACITY: usize = DIGESTLEN * 2;
 
-impl<E: constants::Const> Engine<E> {
     fn rate(&self) -> usize {
-        B - E::CAPACITY
+        B - (DIGESTLEN * 2)
     }
 
     /// New SHA-3 instanciated from specified SHA-3 `mode`.
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             state: [0; B],
-            mode: PhantomData,
             can_absorb: true,
             can_squeeze: true,
             offset: 0,
@@ -201,17 +142,6 @@ impl<E: constants::Const> Engine<E> {
 
     pub(super) fn finalize(&mut self) {
         assert!(self.can_absorb);
-
-        let output_bits = E::DIGEST_LENGTH * 8;
-
-        let ds_len = if E::IS_KECCAK {
-            0
-        } else if output_bits != 0 {
-            2
-        } else {
-            // TODO: for SHAKE
-            4
-        };
 
         fn set_domain_sep(out_len: usize, buf: &mut [u8]) {
             assert!(!buf.is_empty());
@@ -226,17 +156,18 @@ impl<E: constants::Const> Engine<E> {
         }
 
         // All parameters are expected to be in bits.
-        fn pad_len(ds_len: usize, offset: usize, rate: usize) -> usize {
+        fn pad_len<const DSLEN: usize>(offset: usize, rate: usize) -> usize {
             assert!(rate % 8 == 0 && offset % 8 == 0);
             let r: i64 = rate as i64;
-            let m: i64 = (offset + ds_len) as i64;
+            let m: i64 = (offset + DSLEN) as i64;
             let zeros = (((-m - 2) + 2 * r) % r) as usize;
             assert!((m as usize + zeros + 2) % 8 == 0);
-            (ds_len + zeros + 2) / 8
+            (DSLEN + zeros + 2) / 8
         }
 
-        fn set_pad(offset: usize, buf: &mut [u8]) {
+        fn set_pad<const DSLEN: usize>(buf: &mut [u8]) {
             //assert!(buf.len() as f32 >= ((offset + 2) as f32 / 8.0).ceil());
+            let offset = DSLEN;
             let s = offset / 8;
             let buflen = buf.len();
             buf[s] |= 1 << (offset % 8);
@@ -249,15 +180,15 @@ impl<E: constants::Const> Engine<E> {
             buf[buflen - 1] |= 0x80;
         }
 
-        let p_len = pad_len(ds_len, self.offset * 8, self.rate() * 8);
+        let p_len = pad_len::<DSLEN>(self.offset * 8, self.rate() * 8);
 
         let mut p = vec::from_elem(0, p_len);
 
-        if ds_len != 0 {
-            set_domain_sep(E::DIGEST_LENGTH * 8, &mut p);
+        if DSLEN != 0 {
+            set_domain_sep(DIGESTLEN * 8, &mut p);
         }
 
-        set_pad(ds_len, &mut p);
+        set_pad::<DSLEN>(&mut p);
 
         self.process(&p);
         self.can_absorb = false;
@@ -310,9 +241,8 @@ impl<E: constants::Const> Engine<E> {
         }
 
         let r = self.rate();
-        let out_len = E::DIGEST_LENGTH;
-        if out_len != 0 {
-            assert!(self.offset < out_len);
+        if DIGESTLEN != 0 {
+            assert!(self.offset < DIGESTLEN);
         } else {
             // FIXME: only for SHAKE
             assert!(self.offset < r);
@@ -325,8 +255,8 @@ impl<E: constants::Const> Engine<E> {
         while in_pos < in_len {
             let offset = self.offset % r;
             let mut nread = cmp::min(r - offset, in_len - in_pos);
-            if out_len != 0 {
-                nread = cmp::min(nread, out_len - self.offset);
+            if DIGESTLEN != 0 {
+                nread = cmp::min(nread, DIGESTLEN - self.offset);
             }
 
             out[in_pos..(nread + in_pos)].copy_from_slice(&self.state[offset..(nread + offset)]);
@@ -337,7 +267,7 @@ impl<E: constants::Const> Engine<E> {
                 break;
             }
 
-            if out_len == 0 {
+            if DIGESTLEN == 0 {
                 self.offset = 0;
             } else {
                 self.offset += nread;
@@ -346,7 +276,7 @@ impl<E: constants::Const> Engine<E> {
             keccak_f(&mut self.state);
         }
 
-        if out_len != 0 && out_len == self.offset {
+        if DIGESTLEN != 0 && DIGESTLEN == self.offset {
             self.can_squeeze = false;
         }
     }
@@ -363,17 +293,16 @@ pub fn shake_256() -> Sha3 {
     Sha3::new(Sha3Mode::Shake256)
 }
 */
-use self::constants::Const;
-
 macro_rules! sha3_impl {
-    ($C: ident, $context:ident, $doc:expr) => {
-        /// Hash Algorithm
+    ($C: ident, $context:ident, $digestlength:literal, $doc:expr) => {
+        #[doc=$doc]
+        #[doc = " Algorithm"]
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
         pub struct $C;
 
         impl $C {
-            pub const DIGEST_BITS: usize = constants::$C::DIGEST_LENGTH * 8;
-            pub const BLOCK_BYTES: usize = B - constants::$C::CAPACITY;
+            pub const DIGEST_BITS: usize = $digestlength * 8;
+            pub const BLOCK_BYTES: usize = B - ($digestlength * 2);
 
             /// Create a new context for this algorithm
             pub fn new() -> $context {
@@ -382,8 +311,9 @@ macro_rules! sha3_impl {
         }
 
         #[doc=$doc]
+        #[doc = " Context"]
         #[derive(Clone)]
-        pub struct $context(Engine<constants::$C>);
+        pub struct $context(Engine<$digestlength, 2>);
 
         impl $context {
             pub fn new() -> Self {
@@ -399,15 +329,15 @@ macro_rules! sha3_impl {
                 self
             }
 
-            pub fn finalize_reset(&mut self) -> [u8; constants::$C::DIGEST_LENGTH] {
-                let mut out = [0; constants::$C::DIGEST_LENGTH];
+            pub fn finalize_reset(&mut self) -> [u8; $digestlength] {
+                let mut out = [0; $digestlength];
                 self.0.output(&mut out);
                 self.0.reset();
                 out
             }
 
-            pub fn finalize(mut self) -> [u8; constants::$C::DIGEST_LENGTH] {
-                let mut out = [0; constants::$C::DIGEST_LENGTH];
+            pub fn finalize(mut self) -> [u8; $digestlength] {
+                let mut out = [0; $digestlength];
                 self.0.output(&mut out);
                 out
             }
@@ -419,15 +349,10 @@ macro_rules! sha3_impl {
     };
 }
 
-sha3_impl!(Sha3_224, Context224, "A SHA3 224 context");
-sha3_impl!(Sha3_256, Context256, "A SHA3 256 context");
-sha3_impl!(Sha3_384, Context384, "A SHA3 384 context");
-sha3_impl!(Sha3_512, Context512, "A SHA3 512 context");
-
-sha3_impl!(Keccak224, ContextKeccak224, "A Keccak224 context");
-sha3_impl!(Keccak256, ContextKeccak256, "A Keccak256 context");
-sha3_impl!(Keccak384, ContextKeccak384, "A Keccak384 context");
-sha3_impl!(Keccak512, ContextKeccak512, "A Keccak512 context");
+sha3_impl!(Sha3_224, Context224, 28, "SHA3 224");
+sha3_impl!(Sha3_256, Context256, 32, "SHA3 256");
+sha3_impl!(Sha3_384, Context384, 48, "SHA3 384");
+sha3_impl!(Sha3_512, Context512, 64, "SHA3 512");
 
 #[cfg(test)]
 mod tests {

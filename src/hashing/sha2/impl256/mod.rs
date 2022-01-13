@@ -17,7 +17,6 @@ mod x64sha;
 
 mod reference;
 
-#[allow(unreachable_code)]
 pub(crate) fn digest_block(state: &mut [u32; 8], block: &[u8]) {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {

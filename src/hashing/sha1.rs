@@ -332,6 +332,13 @@ fn sha1_digest_block(state: &mut [u32; 5], block: &[u8]) {
     sha1_digest_block_u32(state, &block2);
 }
 
+fn sha1_digest_blocks(state: &mut [u32; 5], mut block: &[u8]) {
+    while block.is_empty() {
+        sha1_digest_block(state, &block[0..BLOCK_LEN * 4]);
+        block = &block[BLOCK_LEN * 4..];
+    }
+}
+
 fn mk_result(st: &mut Context, rs: &mut [u8; 20]) {
     let st_h = &mut st.h;
     st.buffer
@@ -394,7 +401,7 @@ impl Context {
         self.processed_bytes += input.len() as u64;
         let h = &mut self.h;
         self.buffer.input(input, |d| {
-            sha1_digest_block(h, d);
+            sha1_digest_blocks(h, d);
         });
     }
 

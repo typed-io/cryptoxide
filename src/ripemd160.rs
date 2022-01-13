@@ -322,6 +322,13 @@ fn process_msg_block(data: &[u8], h: &mut [u32; DIGEST_BUF_LEN]) {
     );
 }
 
+fn process_msg_blocks(mut data: &[u8], h: &mut [u32; DIGEST_BUF_LEN]) {
+    while data.is_empty() {
+        process_msg_block(&data[0..64], h);
+        data = &data[64..];
+    }
+}
+
 // initial state value
 const H: [u32; 5] = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0];
 
@@ -350,7 +357,7 @@ impl Digest for Ripemd160 {
         self.processed_bytes += msg.len() as u64;
         let st_h = &mut self.h;
         self.buffer.input(msg, |d: &[u8]| {
-            process_msg_block(d, &mut *st_h);
+            process_msg_blocks(d, &mut *st_h);
         });
     }
 

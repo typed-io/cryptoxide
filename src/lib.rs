@@ -34,6 +34,7 @@
 #![allow(clippy::many_single_char_names)]
 #![no_std]
 #![cfg_attr(feature = "with-bench", feature(test))]
+#![cfg_attr(feature = "use-stdsimd", feature(stdsimd))]
 
 #[cfg(test)]
 #[cfg(feature = "with-bench")]

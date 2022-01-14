@@ -8,6 +8,8 @@
 //! at a time, then using the standard ALU to do the compression.
 //!
 
+#[cfg(all(target_arch = "aarch64", feature = "use-stdsimd"))]
+mod aarch64;
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 mod avx;
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
@@ -15,6 +17,7 @@ mod sse41;
 #[cfg(all(target_arch = "x86_64", target_feature = "sha"))]
 mod x64sha;
 
+// software implementation valid for all architectures
 mod reference;
 
 pub(crate) fn digest_block(state: &mut [u32; 8], block: &[u8]) {
@@ -38,7 +41,12 @@ pub(crate) fn digest_block(state: &mut [u32; 8], block: &[u8]) {
             return sse41::digest_block(state, block);
         }
     }
-    #[cfg(any(target_arch = "aarch64"))]
-    {}
+    #[cfg(target_arch = "aarch64")]
+    {
+        #[cfg(feature = "use-stdsimd")]
+        if true {
+            return aarch64::digest_block(state, block);
+        }
+    }
     reference::digest_block(state, block)
 }

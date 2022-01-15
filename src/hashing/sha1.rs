@@ -357,11 +357,11 @@ fn mk_result(st: &mut Context, rs: &mut [u8; 20]) {
 pub struct Sha1;
 
 impl Sha1 {
-    pub const DIGEST_BITS: usize = 160;
+    pub const OUTPUT_BITS: usize = 160;
     pub const BLOCK_BYTES: usize = 64;
 
     /// Create a new context for this algorithm
-    pub fn new() -> Context {
+    pub const fn new() -> Context {
         Context::new()
     }
 }

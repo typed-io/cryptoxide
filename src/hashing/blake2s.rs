@@ -35,7 +35,7 @@ use crate::cryptoutil::{write_u32v_le, zero};
 pub struct Blake2s<const BITS: usize>;
 
 impl<const BITS: usize> Blake2s<BITS> {
-    pub const DIGEST_BITS: usize = BITS;
+    pub const OUTPUT_BITS: usize = BITS;
     pub const BLOCK_BYTES: usize = Engine::BLOCK_BYTES;
 
     /// Create a new context for this algorithm

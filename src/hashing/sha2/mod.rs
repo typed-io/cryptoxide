@@ -85,7 +85,7 @@ macro_rules! digest {
         pub struct $name;
 
         impl $name {
-            pub const DIGEST_BITS: usize = $output_bits;
+            pub const OUTPUT_BITS: usize = $output_bits;
             pub const BLOCK_BYTES: usize = $block_size;
 
             /// Create a new context for this algorithm

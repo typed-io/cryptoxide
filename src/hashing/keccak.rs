@@ -18,7 +18,7 @@ macro_rules! keccak_impl {
         pub struct $C;
 
         impl $C {
-            pub const DIGEST_BITS: usize = $digestlength * 8;
+            pub const OUTPUT_BITS: usize = $digestlength * 8;
             pub const BLOCK_BYTES: usize = B - ($digestlength * 2);
 
             /// Create a new context for this algorithm
@@ -33,7 +33,7 @@ macro_rules! keccak_impl {
         pub struct $context(Engine<$digestlength, 0>);
 
         impl $context {
-            pub fn new() -> Self {
+            pub const fn new() -> Self {
                 Self(Engine::new())
             }
 

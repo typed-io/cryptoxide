@@ -58,7 +58,7 @@ const fn _MM_SHUFFLE(z: u32, y: u32, x: u32, w: u32) -> i32 {
 }
 
 #[inline(always)]
-unsafe fn compress_b(
+unsafe fn compress_b_avx(
     h: *mut __m128i,
     block: *const __m128i,
     iv: *const __m128i,
@@ -336,7 +336,7 @@ unsafe fn compress_b(
 }
 
 #[inline(always)]
-unsafe fn compress_s(h: *mut __m128i, block: *const __m128i, iv: *const __m128i, t: __m128i) {
+unsafe fn compress_s_avx(h: *mut __m128i, block: *const __m128i, iv: *const __m128i, t: __m128i) {
     let m0 = _mm_loadu_si128(block);
     let m1 = _mm_loadu_si128(block.add(1));
     let m2 = _mm_loadu_si128(block.add(2));
@@ -703,110 +703,38 @@ unsafe fn compress_s(h: *mut __m128i, block: *const __m128i, iv: *const __m128i,
     _mm_store_si128(h.add(1), _mm_xor_si128(orig_b, _mm_xor_si128(row2, row4)));
 }
 
-/// Blake2b Context
-#[derive(Clone)]
-#[repr(align(32))]
-pub struct EngineB {
-    pub h: [u64; 8],
-    t: [u64; 2],
-}
+pub fn compress_b(h: &mut [u64; 8], t: &mut [u64; 2], buf: &[u8], last: LastBlock) {
+    let block = buf.as_ptr() as *const __m128i;
+    let h = h.as_mut_ptr() as *mut __m128i;
+    let iv = b::IV.as_ptr() as *const __m128i;
+    let t = t.as_ptr() as *const __m128i;
 
-impl EngineB {
-    pub const BLOCK_BYTES: usize = b::BLOCK_BYTES;
-    pub const BLOCK_BYTES_NATIVE: u64 = b::BLOCK_BYTES as u64;
-    pub const MAX_OUTLEN: usize = b::MAX_OUTLEN;
-    pub const MAX_KEYLEN: usize = b::MAX_KEYLEN;
-
-    pub fn new(outlen: usize, keylen: usize) -> Self {
-        assert!(outlen > 0 && outlen <= b::MAX_OUTLEN);
-        assert!(keylen <= b::MAX_KEYLEN);
-        let mut h = b::IV;
-        h[0] ^= 0x01010000 ^ ((keylen as u64) << 8) ^ outlen as u64;
-        Self { h, t: [0, 0] }
-    }
-
-    pub fn reset(&mut self, outlen: usize, keylen: usize) {
-        self.h = b::IV;
-        self.h[0] ^= 0x01010000 ^ ((keylen as u64) << 8) ^ outlen as u64;
-        self.t[0] = 0;
-        self.t[1] = 0;
-    }
-
-    pub fn compress(&mut self, buf: &[u8], last: LastBlock) {
-        let block = buf.as_ptr() as *const __m128i;
-        let h = self.h.as_mut_ptr() as *mut __m128i;
-        let iv = b::IV.as_ptr() as *const __m128i;
-        let t = self.t.as_ptr() as *const __m128i;
-
-        let f = unsafe {
-            if last == LastBlock::Yes {
-                _mm_set_epi64x(0, -1i64)
-            } else {
-                _mm_set1_epi64x(0)
-            }
-        };
-
-        unsafe {
-            compress_b(h, block, iv, t, f);
+    let f = unsafe {
+        if last == LastBlock::Yes {
+            _mm_set_epi64x(0, -1i64)
+        } else {
+            _mm_set1_epi64x(0)
         }
-    }
+    };
 
-    #[inline]
-    pub fn increment_counter(&mut self, inc: u64) {
-        self.t[0] += inc;
-        self.t[1] += if self.t[0] < inc { 1 } else { 0 };
+    unsafe {
+        compress_b_avx(h, block, iv, t, f);
     }
 }
 
-/// Blake2s Context
-#[derive(Clone)]
-#[repr(align(32))]
-pub struct EngineS {
-    pub h: [u32; 8],
-    t: [u32; 2],
-}
-
-impl EngineS {
-    pub const BLOCK_BYTES: usize = s::BLOCK_BYTES;
-    pub const BLOCK_BYTES_NATIVE: u32 = s::BLOCK_BYTES as u32;
-    pub const MAX_OUTLEN: usize = s::MAX_OUTLEN;
-    pub const MAX_KEYLEN: usize = s::MAX_KEYLEN;
-
-    pub fn new(outlen: usize, keylen: usize) -> Self {
-        assert!(outlen > 0 && outlen <= s::MAX_OUTLEN);
-        assert!(keylen <= s::MAX_KEYLEN);
-        let mut h = s::IV;
-        h[0] ^= 0x01010000 ^ ((keylen as u32) << 8) ^ outlen as u32;
-        Self { h, t: [0, 0] }
-    }
-
-    pub fn reset(&mut self, outlen: usize, keylen: usize) {
-        self.h = s::IV;
-        self.h[0] ^= 0x01010000 ^ ((keylen as u32) << 8) ^ outlen as u32;
-        self.t[0] = 0;
-        self.t[1] = 0;
-    }
-
-    pub fn compress(&mut self, buf: &[u8], last: LastBlock) {
-        let block = buf.as_ptr() as *const __m128i;
-        let h = self.h.as_mut_ptr() as *mut __m128i;
-        let iv = s::IV.as_ptr() as *const __m128i;
-        let t = unsafe {
-            if last == LastBlock::Yes {
-                _mm_set_epi32(0, -1i32, self.t[1] as i32, self.t[0] as i32)
-            } else {
-                _mm_set_epi32(0, 0, self.t[1] as i32, self.t[0] as i32)
-            }
-        };
-
-        unsafe {
-            compress_s(h, block, iv, t);
+pub fn compress_s(h: &mut [u32; 8], t: &[u32; 2], buf: &[u8], last: LastBlock) {
+    let block = buf.as_ptr() as *const __m128i;
+    let h = h.as_mut_ptr() as *mut __m128i;
+    let iv = s::IV.as_ptr() as *const __m128i;
+    let t = unsafe {
+        if last == LastBlock::Yes {
+            _mm_set_epi32(0, -1i32, t[1] as i32, t[0] as i32)
+        } else {
+            _mm_set_epi32(0, 0, t[1] as i32, t[0] as i32)
         }
-    }
+    };
 
-    #[inline]
-    pub fn increment_counter(&mut self, inc: u32) {
-        self.t[0] += inc;
-        self.t[1] += if self.t[0] < inc { 1 } else { 0 };
+    unsafe {
+        compress_s_avx(h, block, iv, t);
     }
 }

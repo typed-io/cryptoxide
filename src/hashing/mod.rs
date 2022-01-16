@@ -18,7 +18,7 @@
 //! `update_mut`. Once all the data has been hashed the `Context`
 //! can be finalized using `finalize` or `finalize_reset`.
 //!
-//! The api can be used either in a pass-the-context api:
+//! The APIs can be used either in a pass-the-context api:
 //!
 //! ```
 //! use cryptoxide::hashing::sha256;
@@ -29,7 +29,7 @@
 //!         .finalize();
 //! ```
 //!
-//! Or using the inplace mutable api:
+//! Or using the inplace mutable APIs:
 //!
 //! ```
 //! use cryptoxide::hashing::sha256;

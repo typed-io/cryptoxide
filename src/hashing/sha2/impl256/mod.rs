@@ -14,8 +14,9 @@ mod aarch64;
 mod avx;
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 mod sse41;
-#[cfg(all(target_arch = "x86_64", target_feature = "sha"))]
-mod x64sha;
+//TODO not finished yet
+//#[cfg(all(target_arch = "x86_64", target_feature = "sha"))]
+//mod x64sha;
 
 // software implementation valid for all architectures
 mod reference;

@@ -396,7 +396,7 @@ mod tests {
 
     #[test]
     fn test() {
-        let tests = vec![
+        let tests = [
             // Test messages from FIPS 180-1
             Test {
                 input: b"abc",

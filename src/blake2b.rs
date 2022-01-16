@@ -231,25 +231,6 @@ impl Mac for Blake2b {
 }
 
 #[cfg(test)]
-mod hash_tests {
-    use super::Blake2b;
-
-    #[test]
-    fn test_vector() {
-        let mut out = [0u8; 64];
-        Blake2b::blake2b(&mut out, b"abc", &[]);
-        let expected = [
-            0xBA, 0x80, 0xA5, 0x3F, 0x98, 0x1C, 0x4D, 0x0D, 0x6A, 0x27, 0x97, 0xB6, 0x9F, 0x12,
-            0xF6, 0xE9, 0x4C, 0x21, 0x2F, 0x14, 0x68, 0x5A, 0xC4, 0xB7, 0x4B, 0x12, 0xBB, 0x6F,
-            0xDB, 0xFF, 0xA2, 0xD1, 0x7D, 0x87, 0xC5, 0x39, 0x2A, 0xAB, 0x79, 0x2D, 0xC2, 0x52,
-            0xD5, 0xDE, 0x45, 0x33, 0xCC, 0x95, 0x18, 0xD3, 0x8A, 0xA8, 0xDB, 0xF1, 0x92, 0x5A,
-            0xB9, 0x23, 0x86, 0xED, 0xD4, 0x00, 0x99, 0x23,
-        ];
-        assert_eq!(&out[..], &expected[..])
-    }
-}
-
-#[cfg(test)]
 mod mac_tests {
     use super::Blake2b;
     use crate::mac::Mac;
@@ -288,43 +269,5 @@ mod mac_tests {
             0x62, 0xac, 0xd5, 0x39, 0x4e, 0xee, 0x73, 0xae,
         ];
         assert_eq!(m.result().code().to_vec(), expected.to_vec());
-    }
-}
-
-#[cfg(all(test, feature = "with-bench"))]
-mod bench {
-    use test::Bencher;
-
-    use super::Blake2b;
-    use crate::digest::Digest;
-
-    #[bench]
-    pub fn blake2b_10(bh: &mut Bencher) {
-        let mut sh = Blake2b::new(64);
-        let bytes = [1u8; 10];
-        bh.iter(|| {
-            sh.input(&bytes);
-        });
-        bh.bytes = bytes.len() as u64;
-    }
-
-    #[bench]
-    pub fn blake2b_1k(bh: &mut Bencher) {
-        let mut sh = Blake2b::new(64);
-        let bytes = [1u8; 1024];
-        bh.iter(|| {
-            sh.input(&bytes);
-        });
-        bh.bytes = bytes.len() as u64;
-    }
-
-    #[bench]
-    pub fn blake2b_64k(bh: &mut Bencher) {
-        let mut sh = Blake2b::new(64);
-        let bytes = [1u8; 65536];
-        bh.iter(|| {
-            sh.input(&bytes);
-        });
-        bh.bytes = bytes.len() as u64;
     }
 }

@@ -128,6 +128,15 @@ pub(crate) struct FixedBuffer<const N: usize> {
     buffer_idx: usize,
 }
 
+impl<const N: usize> PartialEq for FixedBuffer<N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.buffer_idx == other.buffer_idx
+            && self.buffer[0..self.buffer_idx] == other.buffer[0..self.buffer_idx]
+    }
+}
+
+impl<const N: usize> Eq for FixedBuffer<N> {}
+
 impl<const N: usize> FixedBuffer<N> {
     /// Create a new buffer
     pub const fn new() -> Self {
@@ -208,42 +217,5 @@ impl<const N: usize> FixedBuffer<N> {
         }
 
         self.zero_until(N - rem);
-    }
-}
-
-#[cfg(test)]
-pub mod test {
-    use alloc::vec::Vec;
-    use core::iter::repeat;
-
-    use crate::digest::Digest;
-
-    /// Feed 1,000,000 'a's into the digest with varying input sizes and check that the result is
-    /// correct.
-    pub fn test_digest_1million_random<D: Digest>(
-        digest: &mut D,
-        blocksize: usize,
-        expected: &str,
-    ) {
-        let total_size = 1000000;
-        let buffer: Vec<u8> = repeat(b'a').take(blocksize * 2).collect();
-        //let mut rng = IsaacRng::new_unseeded();
-        //let range = Range::new(0, 2 * blocksize + 1);
-        let mut count = 0;
-
-        digest.reset();
-
-        while count < total_size {
-            //let next = range.ind_sample(&mut rng);
-            let next = 10;
-            let remaining = total_size - count;
-            let size = if next > remaining { remaining } else { next };
-            digest.input(&buffer[..size]);
-            count += size;
-        }
-
-        let result_str = digest.result_str();
-
-        assert!(expected == &result_str[..]);
     }
 }

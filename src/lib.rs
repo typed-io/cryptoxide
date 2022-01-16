@@ -34,6 +34,7 @@
 #![allow(clippy::many_single_char_names)]
 #![no_std]
 #![cfg_attr(feature = "with-bench", feature(test))]
+#![cfg_attr(feature = "use-stdsimd", feature(stdsimd))]
 
 #[cfg(test)]
 #[cfg(feature = "with-bench")]
@@ -70,7 +71,10 @@ pub mod curve25519;
 #[cfg(feature = "x25519")]
 pub mod x25519;
 
+#[cfg(feature = "digest")]
 pub mod digest;
+
+pub mod hashing;
 
 #[cfg(feature = "ed25519")]
 pub mod ed25519;

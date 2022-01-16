@@ -5,7 +5,6 @@ use core::arch::x86::*;
 use core::arch::x86_64::*;
 
 use super::reference;
-use super::sse41;
 
 const K32: [u32; 64] = reference::K32;
 
@@ -14,40 +13,35 @@ const K32: [u32; 64] = reference::K32;
 //   | block 3 | block 2 | block 1 | block 0 |
 //
 // x86 architecture can (currently) do unaligned load (at a cost if unaligned)
-#[cfg(target_feature = "sse4.1")]
-unsafe fn gather(block: *const u8) -> __m256i {
+unsafe fn gather(block: *const u8) -> __m128i {
     use core::ptr::read;
-    let mut temp: __m256i;
+    let mut temp: __m128i;
     let block = block as *const i32;
 
-    temp = _mm256_castsi128_si256(_mm_cvtsi32_si128(read(block)));
-    temp = _mm256_insert_epi32(temp, read(block.add(16)), 1);
-    temp = _mm256_insert_epi32(temp, read(block.add(32)), 2);
-    temp = _mm256_insert_epi32(temp, read(block.add(48)), 3);
-    temp = _mm256_insert_epi32(temp, read(block.add(64)), 4);
-    temp = _mm256_insert_epi32(temp, read(block.add(80)), 5);
-    temp = _mm256_insert_epi32(temp, read(block.add(96)), 6);
-    temp = _mm256_insert_epi32(temp, read(block.add(112)), 7);
+    temp = _mm_cvtsi32_si128(read(block));
+    temp = _mm_insert_epi32(temp, read(block.add(16)), 1);
+    temp = _mm_insert_epi32(temp, read(block.add(32)), 2);
+    temp = _mm_insert_epi32(temp, read(block.add(48)), 3);
     temp
 }
 
-unsafe fn sigma0(w: __m256i) -> __m256i {
-    _mm256_xor_si256(
-        _mm256_xor_si256(
-            _mm256_xor_si256(_mm256_srli_epi32(w, 7), _mm256_srli_epi32(w, 18)),
-            _mm256_xor_si256(_mm256_srli_epi32(w, 3), _mm256_slli_epi32(w, 25)),
+unsafe fn sigma0(w: __m128i) -> __m128i {
+    _mm_xor_si128(
+        _mm_xor_si128(
+            _mm_xor_si128(_mm_srli_epi32(w, 7), _mm_srli_epi32(w, 18)),
+            _mm_xor_si128(_mm_srli_epi32(w, 3), _mm_slli_epi32(w, 25)),
         ),
-        _mm256_slli_epi32(w, 14),
+        _mm_slli_epi32(w, 14),
     )
 }
 
-unsafe fn sigma1(w: __m256i) -> __m256i {
-    _mm256_xor_si256(
-        _mm256_xor_si256(
-            _mm256_xor_si256(_mm256_srli_epi32(w, 17), _mm256_srli_epi32(w, 10)),
-            _mm256_xor_si256(_mm256_srli_epi32(w, 19), _mm256_slli_epi32(w, 15)),
+unsafe fn sigma1(w: __m128i) -> __m128i {
+    _mm_xor_si128(
+        _mm_xor_si128(
+            _mm_xor_si128(_mm_srli_epi32(w, 17), _mm_srli_epi32(w, 10)),
+            _mm_xor_si128(_mm_srli_epi32(w, 19), _mm_slli_epi32(w, 15)),
         ),
-        _mm256_slli_epi32(w, 13),
+        _mm_slli_epi32(w, 13),
     )
 }
 
@@ -55,8 +49,8 @@ macro_rules! SCHEDULE_ROUND {
     ($schedule: ident, $i:expr, $w1:expr, $w2:expr, $w3:expr, $w4:expr) => {
         let s0 = sigma0($w1);
         let s1 = sigma1($w2);
-        $schedule[$i] = _mm256_add_epi32($w3, _mm256_set1_epi32(K32[$i] as i32));
-        $w3 = _mm256_add_epi32(_mm256_add_epi32($w3, $w4), _mm256_add_epi32(s0, s1));
+        $schedule[$i] = _mm_add_epi32($w3, _mm_set1_epi32(K32[$i] as i32));
+        $w3 = _mm_add_epi32(_mm_add_epi32($w3, $w4), _mm_add_epi32(s0, s1));
     };
 }
 
@@ -67,14 +61,10 @@ macro_rules! SCHEDULE_ROUND_INC {
     };
 }
 
-/// compute the message schedule of 8 blocks (512 bytes)
+/// compute the message schedule of 4 blocks (256 bytes)
 #[inline]
-pub unsafe fn message_schedule_8ways(schedule: &mut [__m256i; 64], message: &[u8]) {
-    //let bswap_mask: __m128i = _mm_set_epi8(12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3);
-    let bswap_mask: __m256i = _mm256_set_epi8(
-        28, 29, 30, 31, 24, 25, 26, 27, 20, 21, 22, 23, 16, 17, 18, 19, 12, 13, 14, 15, 8, 9, 10,
-        11, 4, 5, 6, 7, 0, 1, 2, 3,
-    );
+pub unsafe fn message_schedule_4ways(schedule: &mut [__m128i; 64], message: &[u8]) {
+    let bswap_mask: __m128i = _mm_set_epi8(12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3);
     let (mut w0, mut w1, mut w2, mut w3, mut w4, mut w5, mut w6, mut w7);
     let (mut w8, mut w9, mut w10, mut w11, mut w12, mut w13, mut w14, mut w15);
 
@@ -95,22 +85,22 @@ pub unsafe fn message_schedule_8ways(schedule: &mut [__m256i; 64], message: &[u8
     w13 = gather(message.add(52));
     w14 = gather(message.add(56));
     w15 = gather(message.add(60));
-    w0 = _mm256_shuffle_epi8(w0, bswap_mask);
-    w1 = _mm256_shuffle_epi8(w1, bswap_mask);
-    w2 = _mm256_shuffle_epi8(w2, bswap_mask);
-    w3 = _mm256_shuffle_epi8(w3, bswap_mask);
-    w4 = _mm256_shuffle_epi8(w4, bswap_mask);
-    w5 = _mm256_shuffle_epi8(w5, bswap_mask);
-    w6 = _mm256_shuffle_epi8(w6, bswap_mask);
-    w7 = _mm256_shuffle_epi8(w7, bswap_mask);
-    w8 = _mm256_shuffle_epi8(w8, bswap_mask);
-    w9 = _mm256_shuffle_epi8(w9, bswap_mask);
-    w10 = _mm256_shuffle_epi8(w10, bswap_mask);
-    w11 = _mm256_shuffle_epi8(w11, bswap_mask);
-    w12 = _mm256_shuffle_epi8(w12, bswap_mask);
-    w13 = _mm256_shuffle_epi8(w13, bswap_mask);
-    w14 = _mm256_shuffle_epi8(w14, bswap_mask);
-    w15 = _mm256_shuffle_epi8(w15, bswap_mask);
+    w0 = _mm_shuffle_epi8(w0, bswap_mask);
+    w1 = _mm_shuffle_epi8(w1, bswap_mask);
+    w2 = _mm_shuffle_epi8(w2, bswap_mask);
+    w3 = _mm_shuffle_epi8(w3, bswap_mask);
+    w4 = _mm_shuffle_epi8(w4, bswap_mask);
+    w5 = _mm_shuffle_epi8(w5, bswap_mask);
+    w6 = _mm_shuffle_epi8(w6, bswap_mask);
+    w7 = _mm_shuffle_epi8(w7, bswap_mask);
+    w8 = _mm_shuffle_epi8(w8, bswap_mask);
+    w9 = _mm_shuffle_epi8(w9, bswap_mask);
+    w10 = _mm_shuffle_epi8(w10, bswap_mask);
+    w11 = _mm_shuffle_epi8(w11, bswap_mask);
+    w12 = _mm_shuffle_epi8(w12, bswap_mask);
+    w13 = _mm_shuffle_epi8(w13, bswap_mask);
+    w14 = _mm_shuffle_epi8(w14, bswap_mask);
+    w15 = _mm_shuffle_epi8(w15, bswap_mask);
     let mut i = 0;
     while i < 32 {
         SCHEDULE_ROUND_INC!(schedule, i, w1, w14, w0, w9);
@@ -131,44 +121,44 @@ pub unsafe fn message_schedule_8ways(schedule: &mut [__m256i; 64], message: &[u8
         SCHEDULE_ROUND_INC!(schedule, i, w0, w13, w15, w8);
     }
     SCHEDULE_ROUND_INC!(schedule, i, w1, w14, w0, w9);
-    schedule[48] = _mm256_add_epi32(w0, _mm256_set1_epi32(K32[48] as i32));
+    schedule[48] = _mm_add_epi32(w0, _mm_set1_epi32(K32[48] as i32));
     SCHEDULE_ROUND_INC!(schedule, i, w2, w15, w1, w10);
-    schedule[49] = _mm256_add_epi32(w1, _mm256_set1_epi32(K32[49] as i32));
+    schedule[49] = _mm_add_epi32(w1, _mm_set1_epi32(K32[49] as i32));
     SCHEDULE_ROUND_INC!(schedule, i, w3, w0, w2, w11);
-    schedule[50] = _mm256_add_epi32(w2, _mm256_set1_epi32(K32[50] as i32));
+    schedule[50] = _mm_add_epi32(w2, _mm_set1_epi32(K32[50] as i32));
     SCHEDULE_ROUND_INC!(schedule, i, w4, w1, w3, w12);
-    schedule[51] = _mm256_add_epi32(w3, _mm256_set1_epi32(K32[51] as i32));
+    schedule[51] = _mm_add_epi32(w3, _mm_set1_epi32(K32[51] as i32));
     SCHEDULE_ROUND_INC!(schedule, i, w5, w2, w4, w13);
-    schedule[52] = _mm256_add_epi32(w4, _mm256_set1_epi32(K32[52] as i32));
+    schedule[52] = _mm_add_epi32(w4, _mm_set1_epi32(K32[52] as i32));
     SCHEDULE_ROUND_INC!(schedule, i, w6, w3, w5, w14);
-    schedule[53] = _mm256_add_epi32(w5, _mm256_set1_epi32(K32[53] as i32));
+    schedule[53] = _mm_add_epi32(w5, _mm_set1_epi32(K32[53] as i32));
     SCHEDULE_ROUND_INC!(schedule, i, w7, w4, w6, w15);
-    schedule[54] = _mm256_add_epi32(w6, _mm256_set1_epi32(K32[54] as i32));
+    schedule[54] = _mm_add_epi32(w6, _mm_set1_epi32(K32[54] as i32));
     SCHEDULE_ROUND_INC!(schedule, i, w8, w5, w7, w0);
-    schedule[55] = _mm256_add_epi32(w7, _mm256_set1_epi32(K32[55] as i32));
+    schedule[55] = _mm_add_epi32(w7, _mm_set1_epi32(K32[55] as i32));
     SCHEDULE_ROUND_INC!(schedule, i, w9, w6, w8, w1);
-    schedule[56] = _mm256_add_epi32(w8, _mm256_set1_epi32(K32[56] as i32));
+    schedule[56] = _mm_add_epi32(w8, _mm_set1_epi32(K32[56] as i32));
     SCHEDULE_ROUND_INC!(schedule, i, w10, w7, w9, w2);
-    schedule[57] = _mm256_add_epi32(w9, _mm256_set1_epi32(K32[57] as i32));
+    schedule[57] = _mm_add_epi32(w9, _mm_set1_epi32(K32[57] as i32));
     SCHEDULE_ROUND_INC!(schedule, i, w11, w8, w10, w3);
-    schedule[58] = _mm256_add_epi32(w10, _mm256_set1_epi32(K32[58] as i32));
+    schedule[58] = _mm_add_epi32(w10, _mm_set1_epi32(K32[58] as i32));
     SCHEDULE_ROUND_INC!(schedule, i, w12, w9, w11, w4);
-    schedule[59] = _mm256_add_epi32(w11, _mm256_set1_epi32(K32[59] as i32));
+    schedule[59] = _mm_add_epi32(w11, _mm_set1_epi32(K32[59] as i32));
     SCHEDULE_ROUND_INC!(schedule, i, w13, w10, w12, w5);
-    schedule[60] = _mm256_add_epi32(w12, _mm256_set1_epi32(K32[60] as i32));
+    schedule[60] = _mm_add_epi32(w12, _mm_set1_epi32(K32[60] as i32));
     SCHEDULE_ROUND_INC!(schedule, i, w14, w11, w13, w6);
-    schedule[61] = _mm256_add_epi32(w13, _mm256_set1_epi32(K32[61] as i32));
+    schedule[61] = _mm_add_epi32(w13, _mm_set1_epi32(K32[61] as i32));
     SCHEDULE_ROUND_INC!(schedule, i, w15, w12, w14, w7);
-    schedule[62] = _mm256_add_epi32(w14, _mm256_set1_epi32(K32[62] as i32));
+    schedule[62] = _mm_add_epi32(w14, _mm_set1_epi32(K32[62] as i32));
     SCHEDULE_ROUND!(schedule, i, w0, w13, w15, w8);
-    schedule[63] = _mm256_add_epi32(w15, _mm256_set1_epi32(K32[63] as i32));
+    schedule[63] = _mm_add_epi32(w15, _mm_set1_epi32(K32[63] as i32));
 }
 
-unsafe fn compress_8ways(state: &mut [u32; 8], schedule: &[__m256i; 64]) {
+unsafe fn compress_4ways(state: &mut [u32; 8], schedule: &[__m128i; 64]) {
     use super::reference::{e0, e1};
     macro_rules! round {
         ($a: ident, $b: ident, $c: ident, $d: ident, $e: ident, $f: ident, $g: ident, $h: ident, $i: expr, $j: expr) => {
-            let kwi = _mm256_extract_epi32(*schedule.get_unchecked($i), $j) as u32;
+            let kwi = _mm_extract_epi32(*schedule.get_unchecked($i), $j) as u32;
             let t1 = $h
                 .wrapping_add(e1($e))
                 .wrapping_add($g ^ ($e & ($f ^ $g)))
@@ -220,20 +210,18 @@ unsafe fn compress_8ways(state: &mut [u32; 8], schedule: &[__m256i; 64]) {
     compress_once!(1);
     compress_once!(2);
     compress_once!(3);
-    compress_once!(4);
-    compress_once!(5);
-    compress_once!(6);
-    compress_once!(7);
 }
 
 pub(crate) fn digest_block(state: &mut [u32; 8], mut block: &[u8]) {
     unsafe {
-        let mut schedule = [_mm256_set1_epi32(0); 64];
-        while block.len() >= 512 {
-            message_schedule_8ways(&mut schedule, &block);
-            compress_8ways(state, &schedule);
-            block = &block[512..]
+        let mut schedule = [_mm_set1_epi32(0); 64];
+        while block.len() >= 256 {
+            message_schedule_4ways(&mut schedule, &block);
+            compress_4ways(state, &schedule);
+            block = &block[256..]
         }
     }
-    sse41::digest_block(state, block)
+    if block.len() > 0 {
+        reference::digest_block(state, block)
+    }
 }

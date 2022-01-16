@@ -44,3 +44,4 @@ x25519 = ["curve25519"]
 
 with-bench = []
 force-32bits = []
+use-stdsimd = []

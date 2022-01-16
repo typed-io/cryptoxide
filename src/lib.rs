@@ -48,9 +48,6 @@ extern crate alloc;
 extern crate std;
 
 #[cfg(feature = "blake2")]
-pub mod blake2;
-
-#[cfg(feature = "blake2")]
 pub mod blake2b;
 
 #[cfg(feature = "blake2")]

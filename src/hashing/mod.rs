@@ -1,4 +1,45 @@
 //! Cryptographic Hash Functions root module
+//!
+//! The simplest way to use this module is to use the function, named
+//! after each algorithm, that calculate the digest in one single call:
+//!
+//! ```
+//! use cryptoxide::hashing::sha256;
+//!
+//! let digest = sha256(b"The quick brown fox jumps over the lazy dog");
+//! ```
+//!
+//! Each individual algorithm is also available as a module that should
+//! be imported qualified and export algorithm singleton for each variant
+//! of this algorithm along with a `Context` object.
+//!
+//! The `Context` object keeps the ongoing state of the algorithm, so
+//! that the input can be hashed incrementally with either `update` or
+//! `update_mut`. Once all the data has been hashed the `Context`
+//! can be finalized using `finalize` or `finalize_reset`.
+//!
+//! The api can be used either in a pass-the-context api:
+//!
+//! ```
+//! use cryptoxide::hashing::sha256;
+//!
+//! let digest = sha256::Context::new()
+//!         .update(b"The quick brown fox jumps over the lazy dog")
+//!         .update(b"other data")
+//!         .finalize();
+//! ```
+//!
+//! Or using the inplace mutable api:
+//!
+//! ```
+//! use cryptoxide::hashing::sha256;
+//!
+//! let mut context = sha256::Context::new();
+//! context.update_mut(b"The quick brown fox jumps over the lazy dog");
+//! context.update_mut(b"other data");
+//! let digest = context.finalize_reset();
+//! ```
+//!
 
 #[cfg(feature = "blake2")]
 mod blake2;
@@ -115,6 +156,30 @@ pub fn sha3_384(input: &[u8]) -> [u8; 48] {
 /// Compute SHA3-512 on the input and return the digest
 pub fn sha3_512(input: &[u8]) -> [u8; 64] {
     sha3::Sha3_512::new().update(input).finalize()
+}
+
+#[cfg(feature = "sha3")]
+/// Compute KECCAK224 on the input and return the digest
+pub fn keccak224(input: &[u8]) -> [u8; 28] {
+    keccak::Keccak224::new().update(input).finalize()
+}
+
+#[cfg(feature = "sha3")]
+/// Compute KECCAK256 on the input and return the digest
+pub fn keccak256(input: &[u8]) -> [u8; 32] {
+    keccak::Keccak256::new().update(input).finalize()
+}
+
+#[cfg(feature = "sha3")]
+/// Compute KECCAK384 on the input and return the digest
+pub fn keccak384(input: &[u8]) -> [u8; 48] {
+    keccak::Keccak384::new().update(input).finalize()
+}
+
+#[cfg(feature = "sha3")]
+/// Compute KECCAK512 on the input and return the digest
+pub fn keccak512(input: &[u8]) -> [u8; 64] {
+    keccak::Keccak512::new().update(input).finalize()
 }
 
 #[cfg(feature = "ripemd160")]

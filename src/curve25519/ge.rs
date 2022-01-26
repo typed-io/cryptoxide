@@ -104,7 +104,7 @@ impl GeAffine {
 }
 
 impl GeP1P1 {
-    pub(crate) fn to_partial(&self) -> GePartial {
+    pub fn to_partial(&self) -> GePartial {
         GePartial {
             x: &self.x * &self.t,
             y: &self.y * &self.z,
@@ -112,7 +112,7 @@ impl GeP1P1 {
         }
     }
 
-    pub(crate) fn to_full(&self) -> Ge {
+    pub fn to_full(&self) -> Ge {
         Ge {
             x: &self.x * &self.t,
             y: &self.y * &self.z,

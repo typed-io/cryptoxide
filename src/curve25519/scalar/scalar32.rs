@@ -59,6 +59,20 @@ impl Scalar {
         r
     }
 
+    /// Get the scalar in a form of 64 nibbles
+    ///
+    /// nibble is a group of 4-bits
+    pub(crate) fn nibbles(&self) -> [i8; 64] {
+        let mut es: [i8; 64] = [0; 64];
+        let a = self.0;
+
+        for i in 0..32 {
+            es[2 * i + 0] = ((a[i] >> 0) & 0b1111) as i8;
+            es[2 * i + 1] = ((a[i] >> 4) & 0b1111) as i8;
+        }
+        es
+    }
+
     /// Create a new scalar from 64 bytes (512 bits) reducing
     /// the scalar to an element of the field
     ///

@@ -275,6 +275,7 @@ impl Ge {
         GeAffine::from_bytes(s).map(Self::from_affine)
     }
 
+    /// Drop the t coordinate to become a `GePartial`
     pub fn to_partial(self) -> GePartial {
         GePartial {
             x: self.x,
@@ -311,6 +312,7 @@ impl Ge {
         }
     }
 
+    /// Double the point
     pub fn double(&self) -> Ge {
         self.double_p1p1().to_full()
     }

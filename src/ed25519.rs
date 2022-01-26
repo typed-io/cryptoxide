@@ -23,8 +23,7 @@
 
 use crate::constant_time::CtEqual;
 use crate::curve25519::{curve25519, ge_scalarmult_base, scalar, Fe, Ge, GePartial, Scalar};
-use crate::digest::Digest;
-use crate::sha2::Sha512;
+use crate::hashing::sha2::Sha512;
 use core::convert::TryFrom;
 
 #[deprecated(since = "0.4.0", note = "use `PRIVATE_KEY_LENGTH`")]
@@ -50,10 +49,7 @@ fn clamp_scalar(scalar: &mut [u8]) {
 ///
 /// SCALAR(32bytes) | RANDOM(32bytes) = CLAMP(SHA512(private_key))
 fn extended_secret(private_key: &[u8; PRIVATE_KEY_LENGTH]) -> [u8; EXTENDED_KEY_LENGTH] {
-    let mut hash_output = [0; 64];
-    let mut hasher = Sha512::new();
-    hasher.input(private_key);
-    hasher.result(&mut hash_output);
+    let mut hash_output = Sha512::new().update(private_key).finalize();
     clamp_scalar(&mut hash_output);
     hash_output
 }
@@ -100,11 +96,10 @@ pub fn keypair(
 /// Generate the nonce which is a scalar out of the extended_secret random part and the message itself
 /// using SHA512 and scalar_reduction
 fn signature_nonce(extended_secret: &[u8; EXTENDED_KEY_LENGTH], message: &[u8]) -> Scalar {
-    let mut hash_output: [u8; 64] = [0; 64];
-    let mut hasher = Sha512::new();
-    hasher.input(&extended_secret[32..64]);
-    hasher.input(message);
-    hasher.result(&mut hash_output);
+    let hash_output = Sha512::new()
+        .update(&extended_secret[32..64])
+        .update(message)
+        .finalize();
     Scalar::reduce_from_wide_bytes(&hash_output)
 }
 
@@ -123,11 +118,7 @@ pub fn signature(message: &[u8], keypair: &[u8; KEYPAIR_LENGTH]) -> [u8; SIGNATU
     signature[32..64].copy_from_slice(public_key);
 
     {
-        let mut hasher = Sha512::new();
-        hasher.input(&signature);
-        hasher.input(message);
-        let mut hram: [u8; 64] = [0; 64];
-        hasher.result(&mut hram);
+        let hram = Sha512::new().update(&signature).update(message).finalize();
         let hram = Scalar::reduce_from_wide_bytes(&hram);
         scalar::muladd(
             <&mut [u8; 32]>::try_from(&mut signature[32..64]).unwrap(),
@@ -155,12 +146,8 @@ pub fn signature_extended(
     signature[32..64].copy_from_slice(&public_key);
 
     {
-        let mut hasher = Sha512::new();
-        hasher.input(&signature);
-        hasher.input(message);
-        let mut hram: [u8; 64] = [0; 64];
-        hasher.result(&mut hram);
-        let hram = Scalar::reduce_from_wide_bytes(&mut hram);
+        let hram = Sha512::new().update(&signature).update(message).finalize();
+        let hram = Scalar::reduce_from_wide_bytes(&hram);
         scalar::muladd(
             <&mut [u8; 32]>::try_from(&mut signature[32..64]).unwrap(),
             &hram,
@@ -201,13 +188,12 @@ pub fn verify(
         return false;
     }
 
-    let mut hasher = Sha512::new();
-    hasher.input(signature_left);
-    hasher.input(public_key);
-    hasher.input(message);
-    let mut hash: [u8; 64] = [0; 64];
-    hasher.result(&mut hash);
-    let a_scalar = Scalar::reduce_from_wide_bytes(&mut hash);
+    let hash = Sha512::new()
+        .update(signature_left)
+        .update(public_key)
+        .update(message)
+        .finalize();
+    let a_scalar = Scalar::reduce_from_wide_bytes(&hash);
 
     let r = GePartial::double_scalarmult_vartime(&a_scalar, a, &signature_scalar);
     let rcheck = r.to_bytes();

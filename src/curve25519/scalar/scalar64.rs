@@ -168,12 +168,14 @@ impl Scalar {
     pub(crate) fn nibbles(&self) -> [i8; 64] {
         let mut es: [i8; 64] = [0; 64];
 
+        // contract limbs
         let mut c = [0; 4];
         c[0] = self.0[1] << 56 | self.0[0];
         c[1] = self.0[2] << 48 | self.0[1] >> 8;
         c[2] = self.0[3] << 40 | self.0[2] >> 16;
         c[3] = self.0[4] << 32 | self.0[3] >> 24;
 
+        // write 16 nibbles for each saturated limbs, for 64 nibbles
         for b in 0..4 {
             es[16 * b + 0] = ((c[b] >> 0) & 0b1111) as i8;
             es[16 * b + 1] = ((c[b] >> 4) & 0b1111) as i8;

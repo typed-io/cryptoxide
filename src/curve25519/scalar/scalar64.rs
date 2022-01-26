@@ -335,13 +335,10 @@ Output:
     where l = 2^252 + 27742317777372353535851937790883648493.
 */
 #[rustfmt::skip]
-pub(crate) fn muladd(s: &mut [u8; 32], a: &Scalar, b: &[u8; 32], c: &Scalar) {
-    let b = Scalar::from_bytes(b);
-
+pub(crate) fn muladd(a: &Scalar, b: &Scalar, c: &Scalar) -> Scalar {
     let m = mul(&a, &b);
     let r = add(&m, &c);
-
-    *s = r.to_bytes();
+    r
 }
 
 #[cfg(test)]

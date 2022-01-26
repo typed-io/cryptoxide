@@ -328,6 +328,49 @@ impl Ge {
     pub fn to_bytes(&self) -> [u8; 32] {
         self.to_affine().to_bytes()
     }
+
+    /// Compute r = a * B
+    ///
+    /// where
+    ///     a = a[0]+2^8*a[1]+...+2^248 a[31] a scalar number represented by 32-bytes in little endian format
+    ///         and a[31] is <= 0x80
+    ///     B the ED25519 base point (not a parameter to the function)
+    pub fn scalarmult_base(a: &Scalar) -> Ge {
+        let mut r: GeP1P1;
+        let mut t: GePrecomp;
+
+        /* each es[i] is between 0 and 0xf */
+        /* es[63] is between 0 and 7 */
+        let mut es = a.nibbles();
+
+        let mut carry: i8 = 0;
+        for esi in es[0..63].iter_mut() {
+            *esi += carry;
+            carry = *esi + 8;
+            carry >>= 4;
+            *esi -= carry << 4;
+        }
+        es[63] += carry;
+        /* each es[i] is between -8 and 8 */
+
+        let mut h = Ge::ZERO;
+        for j in 0..32 {
+            let i = j * 2 + 1;
+            t = GePrecomp::select(j, es[i]);
+            r = &h + &t;
+            h = r.to_full();
+        }
+
+        h = h.double_partial().double().double().double_full();
+
+        for j in 0..32 {
+            let i = j * 2;
+            t = GePrecomp::select(j, es[i]);
+            r = &h + &t;
+            h = r.to_full();
+        }
+
+        h
     }
 }
 

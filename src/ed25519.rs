@@ -22,7 +22,7 @@
 //!
 
 use crate::constant_time::CtEqual;
-use crate::curve25519::{curve25519, ge_scalarmult_base, scalar, Fe, Ge, GePartial, Scalar};
+use crate::curve25519::{curve25519, scalar, Fe, Ge, GePartial, Scalar};
 use crate::hashing::sha2::Sha512;
 use core::convert::TryFrom;
 
@@ -65,13 +65,18 @@ pub fn keypair_public(keypair: &[u8; KEYPAIR_LENGTH]) -> &[u8; PUBLIC_KEY_LENGTH
 }
 
 /// Extract the scalar part (first 32 bytes) from the extended key
-fn extended_scalar(extended_secret: &[u8; EXTENDED_KEY_LENGTH]) -> &[u8; 32] {
+fn extended_scalar(extended_secret: &[u8; EXTENDED_KEY_LENGTH]) -> Scalar {
+    Scalar::from_bytes(<&[u8; 32]>::try_from(&extended_secret[0..32]).unwrap())
+}
+
+/// Extract the scalar part (first 32 bytes) from the extended key
+fn extended_scalar_bytes(extended_secret: &[u8; EXTENDED_KEY_LENGTH]) -> &[u8; 32] {
     <&[u8; 32]>::try_from(&extended_secret[0..32]).unwrap()
 }
 
 /// generate the public key associated with an extended secret key
 pub fn extended_to_public(extended_secret: &[u8; EXTENDED_KEY_LENGTH]) -> [u8; PUBLIC_KEY_LENGTH] {
-    let a = ge_scalarmult_base(extended_scalar(extended_secret));
+    let a = Ge::scalarmult_base(&extended_scalar(extended_secret));
     a.to_bytes()
 }
 
@@ -111,7 +116,7 @@ pub fn signature(message: &[u8], keypair: &[u8; KEYPAIR_LENGTH]) -> [u8; SIGNATU
 
     let nonce = signature_nonce(&az, message);
 
-    let r: Ge = ge_scalarmult_base(&nonce.to_bytes());
+    let r = Ge::scalarmult_base(&nonce);
 
     let mut signature = [0; SIGNATURE_LENGTH];
     signature[0..32].copy_from_slice(&r.to_bytes());
@@ -120,12 +125,8 @@ pub fn signature(message: &[u8], keypair: &[u8; KEYPAIR_LENGTH]) -> [u8; SIGNATU
     {
         let hram = Sha512::new().update(&signature).update(message).finalize();
         let hram = Scalar::reduce_from_wide_bytes(&hram);
-        scalar::muladd(
-            <&mut [u8; 32]>::try_from(&mut signature[32..64]).unwrap(),
-            &hram,
-            extended_scalar(&az),
-            &nonce,
-        );
+        let r = scalar::muladd(&hram, &extended_scalar(&az), &nonce);
+        signature[32..64].copy_from_slice(&r.to_bytes())
     }
 
     signature
@@ -139,7 +140,7 @@ pub fn signature_extended(
     let public_key = extended_to_public(extended_secret);
     let nonce = signature_nonce(extended_secret, message);
 
-    let r: Ge = ge_scalarmult_base(&nonce.to_bytes());
+    let r = Ge::scalarmult_base(&nonce);
 
     let mut signature = [0; SIGNATURE_LENGTH];
     signature[0..32].copy_from_slice(&r.to_bytes());
@@ -148,12 +149,8 @@ pub fn signature_extended(
     {
         let hram = Sha512::new().update(&signature).update(message).finalize();
         let hram = Scalar::reduce_from_wide_bytes(&hram);
-        scalar::muladd(
-            <&mut [u8; 32]>::try_from(&mut signature[32..64]).unwrap(),
-            &hram,
-            extended_scalar(extended_secret),
-            &nonce,
-        );
+        let r = scalar::muladd(&hram, &extended_scalar(extended_secret), &nonce);
+        signature[32..64].copy_from_slice(&r.to_bytes())
     }
 
     signature
@@ -180,6 +177,7 @@ pub fn verify(
         Some(s) => s,
     };
 
+    // reject all-0 public keys
     let mut d = 0;
     for pk_byte in public_key.iter() {
         d |= *pk_byte;
@@ -210,7 +208,7 @@ pub fn exchange(public_key: &[u8; 32], private_key: &[u8; PRIVATE_KEY_LENGTH]) -
     // Produce private key from seed component (bytes 0 to 32)
     // of the Ed25519 extended private key (64 bytes).
     let extended_secret = extended_secret(private_key);
-    let shared_mont_x = curve25519(extended_scalar(&extended_secret), &mont_x.to_bytes());
+    let shared_mont_x = curve25519(extended_scalar_bytes(&extended_secret), &mont_x.to_bytes());
 
     shared_mont_x
 }

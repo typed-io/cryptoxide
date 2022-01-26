@@ -31,7 +31,7 @@ mod ge;
 pub mod scalar;
 
 pub use fe::Fe;
-pub use ge::{GeCached, GeP1P1, GeP2, GeP3, GePrecomp};
+pub use ge::{Ge, GeCached, GeP1P1, GePartial, GePrecomp};
 pub use scalar::Scalar;
 
 use crate::constant_time::CtZero;
@@ -45,10 +45,9 @@ Preconditions:
   a[31] <= 127
 */
 #[doc(hidden)]
-pub fn ge_scalarmult_base(a: &[u8; 32]) -> GeP3 {
+pub fn ge_scalarmult_base(a: &[u8; 32]) -> Ge {
     let mut es: [i8; 64] = [0; 64];
     let mut r: GeP1P1;
-    let mut s: GeP2;
     let mut t: GePrecomp;
 
     for i in 0..32 {
@@ -68,28 +67,21 @@ pub fn ge_scalarmult_base(a: &[u8; 32]) -> GeP3 {
     es[63] += carry;
     /* each es[i] is between -8 and 8 */
 
-    let mut h = GeP3::ZERO;
+    let mut h = Ge::ZERO;
     for j in 0..32 {
         let i = j * 2 + 1;
         t = GePrecomp::select(j, es[i]);
-        r = h + t;
-        h = r.to_p3();
+        r = &h + &t;
+        h = r.to_full();
     }
 
-    r = h.dbl();
-    s = r.to_p2();
-    r = s.dbl();
-    s = r.to_p2();
-    r = s.dbl();
-    s = r.to_p2();
-    r = s.dbl();
-    h = r.to_p3();
+    h = h.double_partial().double().double().double_full();
 
     for j in 0..32 {
         let i = j * 2;
         t = GePrecomp::select(j, es[i]);
-        r = h + t;
-        h = r.to_p3();
+        r = &h + &t;
+        h = r.to_full();
     }
 
     h

@@ -5,19 +5,28 @@ use super::fe::{precomp, Fe};
 use super::scalar::Scalar;
 use crate::constant_time::{Choice, CtEqual, CtZero};
 
+/// Curve Group Element (Point)
+///
+/// The group element is using the extended homogeneous coordinates
+/// using (x,y,z,t) which maps to coordinates using the following
+/// equations:
+///    X     = x/z
+///    Y     = y/z
+///    X * Y = t/z
 #[derive(Clone)]
-pub struct GeP2 {
-    x: Fe,
-    y: Fe,
-    z: Fe,
-}
-
-#[derive(Clone)]
-pub struct GeP3 {
+pub struct Ge {
     x: Fe,
     y: Fe,
     z: Fe,
     t: Fe,
+}
+
+/// Curve Group element without t=X*Y
+#[derive(Clone)]
+pub struct GePartial {
+    x: Fe,
+    y: Fe,
+    z: Fe,
 }
 
 #[derive(Clone)]
@@ -44,16 +53,16 @@ pub struct GeCached {
 }
 
 impl GeP1P1 {
-    pub(crate) fn to_p2(&self) -> GeP2 {
-        GeP2 {
+    pub(crate) fn to_partial(&self) -> GePartial {
+        GePartial {
             x: &self.x * &self.t,
             y: &self.y * &self.z,
             z: &self.z * &self.t,
         }
     }
 
-    pub(crate) fn to_p3(&self) -> GeP3 {
-        GeP3 {
+    pub(crate) fn to_full(&self) -> Ge {
+        Ge {
             x: &self.x * &self.t,
             y: &self.y * &self.z,
             z: &self.z * &self.t,
@@ -62,8 +71,8 @@ impl GeP1P1 {
     }
 }
 
-impl GeP2 {
-    pub const ZERO: GeP2 = GeP2 {
+impl GePartial {
+    pub const ZERO: Self = Self {
         x: Fe::ZERO,
         y: Fe::ONE,
         z: Fe::ONE,
@@ -78,7 +87,7 @@ impl GeP2 {
         bs
     }
 
-    pub fn dbl(&self) -> GeP1P1 {
+    pub fn double_p1p1(&self) -> GeP1P1 {
         let xx = self.x.square();
         let yy = self.y.square();
         let b = self.z.square_and_double();
@@ -97,29 +106,49 @@ impl GeP2 {
         }
     }
 
-    /*
-    r = a * A + b * B
-    where a = a[0]+256*a[1]+...+256^31 a[31].
-    and b = b[0]+256*b[1]+...+256^31 b[31].
-    B is the Ed25519 base point (x,4/5) with x positive.
-    */
-    pub fn double_scalarmult_vartime(a_scalar: &Scalar, a_point: GeP3, b_scalar: &Scalar) -> GeP2 {
+    pub fn double(&self) -> Self {
+        self.double_p1p1().to_partial()
+    }
+
+    pub fn double_full(&self) -> Ge {
+        self.double_p1p1().to_full()
+    }
+
+    /// Calculate r = a * A + b * B
+    ///
+    /// ```ignore
+    /// double_scalarmult_vartime(a, A, b) = a * A + b * B
+    /// ```
+    ///
+    /// where
+    ///     a is a scalar
+    ///     A is an arbitrary point
+    ///     b is a scalar
+    ///     B the ED25519 base point (not a parameter to the function)
+    ///
+    /// Note that the
+    ///
+    pub fn double_scalarmult_vartime(
+        a_scalar: &Scalar,
+        a_point: Ge,
+        b_scalar: &Scalar,
+    ) -> GePartial {
         let aslide = a_scalar.slide();
         let bslide = b_scalar.slide();
 
         let a1 = a_point.to_cached();
-        let a2 = a_point.dbl().to_p3();
-        let a3 = (&a2 + &a1).to_p3().to_cached();
-        let a5 = (&a2 + &a3).to_p3().to_cached();
-        let a7 = (&a2 + &a5).to_p3().to_cached();
-        let a9 = (&a2 + &a7).to_p3().to_cached();
-        let a11 = (&a2 + &a9).to_p3().to_cached();
-        let a13 = (&a2 + &a11).to_p3().to_cached();
-        let a15 = (&a2 + &a13).to_p3().to_cached();
+        let a2 = a_point.double_p1p1().to_full();
+        let a3 = (&a2 + &a1).to_full().to_cached();
+        let a5 = (&a2 + &a3).to_full().to_cached();
+        let a7 = (&a2 + &a5).to_full().to_cached();
+        let a9 = (&a2 + &a7).to_full().to_cached();
+        let a11 = (&a2 + &a9).to_full().to_cached();
+        let a13 = (&a2 + &a11).to_full().to_cached();
+        let a15 = (&a2 + &a13).to_full().to_cached();
 
         let ai: [GeCached; 8] = [a1, a3, a5, a7, a9, a11, a13, a15];
 
-        let mut r = GeP2::ZERO;
+        let mut r = GePartial::ZERO;
 
         let mut i: usize = 255;
         loop {
@@ -133,20 +162,20 @@ impl GeP2 {
         }
 
         loop {
-            let mut t = r.dbl();
+            let mut t = r.double_p1p1();
             match aslide[i].cmp(&0) {
-                Ordering::Greater => t = &t.to_p3() + &ai[(aslide[i] / 2) as usize],
-                Ordering::Less => t = &t.to_p3() - &ai[(-aslide[i] / 2) as usize],
+                Ordering::Greater => t = &t.to_full() + &ai[(aslide[i] / 2) as usize],
+                Ordering::Less => t = &t.to_full() - &ai[(-aslide[i] / 2) as usize],
                 Ordering::Equal => {}
             }
 
             match bslide[i].cmp(&0) {
-                Ordering::Greater => t = &t.to_p3() + &precomp::BI[(bslide[i] / 2) as usize],
-                Ordering::Less => t = &t.to_p3() - &precomp::BI[(-bslide[i] / 2) as usize],
+                Ordering::Greater => t = &t.to_full() + &precomp::BI[(bslide[i] / 2) as usize],
+                Ordering::Less => t = &t.to_full() - &precomp::BI[(-bslide[i] / 2) as usize],
                 Ordering::Equal => {}
             }
 
-            r = t.to_p2();
+            r = t.to_partial();
 
             if i == 0 {
                 return r;
@@ -156,15 +185,41 @@ impl GeP2 {
     }
 }
 
-impl GeP3 {
-    pub fn from_bytes_negate_vartime(s: &[u8; 32]) -> Option<GeP3> {
+impl Ge {
+    /// The Identity Element for the group, which represent (X=0, Y=1) and is (x=0, y=1, z=1, t=0*1)
+    pub const ZERO: Ge = Ge {
+        x: Fe::ZERO,
+        y: Fe::ONE,
+        z: Fe::ONE,
+        t: Fe::ZERO,
+    };
+
+    /// Create a group element from X,Y
+    ///
+    /// this interface is not public, and no check is performed here
+    #[inline]
+    fn from_xy(x: Fe, y: Fe) -> Ge {
+        let t = &x * &y;
+        Ge {
+            x: x,
+            y: y,
+            z: Fe::ONE,
+            t: t,
+        }
+    }
+
+    pub fn from_bytes(s: &[u8; 32]) -> Option<Ge> {
         // See RFC8032 5.3.1 decoding process
         //
         // y (255 bits) | sign(x) (1 bit) = s
         // let u = y^2 - 1
         //     v = d * y^2 + 1
         //     x = u * v^3 * (u * v^7)^((p-5)/8)
+
+        // recover y by clearing the highest bit (side effect of from_bytes)
         let y = Fe::from_bytes(s);
+
+        // recover x
         let y2 = y.square();
         let u = &y2 - &Fe::ONE;
         let v = &(&y2 * &Fe::D) + &Fe::ONE;
@@ -185,24 +240,16 @@ impl GeP3 {
         }
 
         if x.is_negative() == ((s[31] >> 7) != 0) {
-            x = x.neg();
+            x.negate_mut();
         }
-
-        let t = &x * &y;
-
-        Some(GeP3 {
-            x: x,
-            y: y,
-            z: Fe::ONE,
-            t: t,
-        })
+        Some(Self::from_xy(x, y))
     }
 
-    pub fn to_p2(&self) -> GeP2 {
-        GeP2 {
-            x: self.x.clone(),
-            y: self.y.clone(),
-            z: self.z.clone(),
+    pub fn to_partial(self) -> GePartial {
+        GePartial {
+            x: self.x,
+            y: self.y,
+            z: self.z,
         }
     }
 
@@ -215,15 +262,31 @@ impl GeP3 {
         }
     }
 
-    pub const ZERO: GeP3 = GeP3 {
-        x: Fe::ZERO,
-        y: Fe::ONE,
-        z: Fe::ONE,
-        t: Fe::ZERO,
-    };
+    pub fn double_p1p1(&self) -> GeP1P1 {
+        let xx = self.x.square();
+        let yy = self.y.square();
+        let b = self.z.square_and_double();
+        let a = &self.x + &self.y;
+        let aa = a.square();
+        let y3 = &yy + &xx;
+        let z3 = &yy - &xx;
+        let x3 = &aa - &y3;
+        let t3 = &b - &z3;
 
-    pub fn dbl(&self) -> GeP1P1 {
-        self.to_p2().dbl()
+        GeP1P1 {
+            x: x3,
+            y: y3,
+            z: z3,
+            t: t3,
+        }
+    }
+
+    pub fn double(&self) -> Ge {
+        self.double_p1p1().to_full()
+    }
+
+    pub fn double_partial(&self) -> GePartial {
+        self.double_p1p1().to_partial()
     }
 
     pub fn to_bytes(&self) -> [u8; 32] {
@@ -236,14 +299,7 @@ impl GeP3 {
     }
 }
 
-impl Add<GeCached> for GeP3 {
-    type Output = GeP1P1;
-    fn add(self, rhs: GeCached) -> GeP1P1 {
-        &self + &rhs
-    }
-}
-
-impl Add<&GeCached> for &GeP3 {
+impl Add<&GeCached> for &Ge {
     type Output = GeP1P1;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
@@ -269,15 +325,7 @@ impl Add<&GeCached> for &GeP3 {
     }
 }
 
-impl Add<GePrecomp> for GeP3 {
-    type Output = GeP1P1;
-
-    fn add(self, rhs: GePrecomp) -> GeP1P1 {
-        &self + &rhs
-    }
-}
-
-impl Add<&GePrecomp> for &GeP3 {
+impl Add<&GePrecomp> for &Ge {
     type Output = GeP1P1;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
@@ -302,7 +350,7 @@ impl Add<&GePrecomp> for &GeP3 {
     }
 }
 
-impl Sub<GeCached> for GeP3 {
+impl Sub<GeCached> for Ge {
     type Output = GeP1P1;
 
     fn sub(self, rhs: GeCached) -> GeP1P1 {
@@ -310,7 +358,7 @@ impl Sub<GeCached> for GeP3 {
     }
 }
 
-impl Sub<&GeCached> for &GeP3 {
+impl Sub<&GeCached> for &Ge {
     type Output = GeP1P1;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
@@ -336,7 +384,7 @@ impl Sub<&GeCached> for &GeP3 {
     }
 }
 
-impl Sub<GePrecomp> for GeP3 {
+impl Sub<GePrecomp> for Ge {
     type Output = GeP1P1;
 
     fn sub(self, rhs: GePrecomp) -> GeP1P1 {
@@ -344,7 +392,7 @@ impl Sub<GePrecomp> for GeP3 {
     }
 }
 
-impl Sub<&GePrecomp> for &GeP3 {
+impl Sub<&GePrecomp> for &Ge {
     type Output = GeP1P1;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
@@ -370,13 +418,11 @@ impl Sub<&GePrecomp> for &GeP3 {
 }
 
 impl GePrecomp {
-    fn zero() -> GePrecomp {
-        GePrecomp {
-            y_plus_x: Fe::ONE,
-            y_minus_x: Fe::ONE,
-            xy2d: Fe::ZERO,
-        }
-    }
+    pub const ZERO: Self = Self {
+        y_plus_x: Fe::ONE,
+        y_minus_x: Fe::ONE,
+        xy2d: Fe::ZERO,
+    };
 
     pub(crate) fn maybe_set(&mut self, other: &GePrecomp, do_swap: Choice) {
         self.y_plus_x.maybe_set(&other.y_plus_x, do_swap);
@@ -389,7 +435,7 @@ impl GePrecomp {
 
         let bnegative = (b as u8) >> 7;
         let babs: u8 = (b - (((-(bnegative as i8)) & b) << 1)) as u8;
-        let mut t = GePrecomp::zero();
+        let mut t = GePrecomp::ZERO;
         t.maybe_set(&precomp::GE_BASE[pos][0], babs.ct_eq(1));
         t.maybe_set(&precomp::GE_BASE[pos][1], babs.ct_eq(2));
         t.maybe_set(&precomp::GE_BASE[pos][2], babs.ct_eq(3));

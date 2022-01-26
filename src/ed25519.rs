@@ -22,7 +22,7 @@
 //!
 
 use crate::constant_time::CtEqual;
-use crate::curve25519::{curve25519, ge_scalarmult_base, scalar, Fe, GeP2, GeP3, Scalar};
+use crate::curve25519::{curve25519, ge_scalarmult_base, scalar, Fe, Ge, GePartial, Scalar};
 use crate::digest::Digest;
 use crate::sha2::Sha512;
 use core::convert::TryFrom;
@@ -116,7 +116,7 @@ pub fn signature(message: &[u8], keypair: &[u8; KEYPAIR_LENGTH]) -> [u8; SIGNATU
 
     let nonce = signature_nonce(&az, message);
 
-    let r: GeP3 = ge_scalarmult_base(&nonce.to_bytes());
+    let r: Ge = ge_scalarmult_base(&nonce.to_bytes());
 
     let mut signature = [0; SIGNATURE_LENGTH];
     signature[0..32].copy_from_slice(&r.to_bytes());
@@ -148,7 +148,7 @@ pub fn signature_extended(
     let public_key = extended_to_public(extended_secret);
     let nonce = signature_nonce(extended_secret, message);
 
-    let r: GeP3 = ge_scalarmult_base(&nonce.to_bytes());
+    let r: Ge = ge_scalarmult_base(&nonce.to_bytes());
 
     let mut signature = [0; SIGNATURE_LENGTH];
     signature[0..32].copy_from_slice(&r.to_bytes());
@@ -181,7 +181,7 @@ pub fn verify(
     let signature_left = <&[u8; 32]>::try_from(&signature[0..32]).unwrap();
     let signature_right = <&[u8; 32]>::try_from(&signature[32..64]).unwrap();
 
-    let a = match GeP3::from_bytes_negate_vartime(public_key) {
+    let a = match Ge::from_bytes(public_key) {
         Some(g) => g,
         None => {
             return false;
@@ -209,7 +209,7 @@ pub fn verify(
     hasher.result(&mut hash);
     let a_scalar = Scalar::reduce_from_wide_bytes(&mut hash);
 
-    let r = GeP2::double_scalarmult_vartime(&a_scalar, a, &signature_scalar);
+    let r = GePartial::double_scalarmult_vartime(&a_scalar, a, &signature_scalar);
     let rcheck = r.to_bytes();
 
     CtEqual::ct_eq(&rcheck, signature_left).into()

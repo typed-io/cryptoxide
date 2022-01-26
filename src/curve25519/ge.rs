@@ -45,11 +45,62 @@ pub struct GePrecomp {
 }
 
 #[derive(Clone)]
+struct GeAffine {
+    x: Fe,
+    y: Fe,
+}
+
+#[derive(Clone)]
 pub struct GeCached {
     y_plus_x: Fe,
     y_minus_x: Fe,
     z: Fe,
     t2d: Fe,
+}
+
+impl GeAffine {
+    pub fn to_bytes(&self) -> [u8; 32] {
+        let mut bs = self.y.to_bytes();
+        bs[31] ^= (if self.x.is_negative() { 1 } else { 0 }) << 7;
+        bs
+    }
+
+    pub fn from_bytes(s: &[u8; 32]) -> Option<Self> {
+        // See RFC8032 5.3.1 decoding process
+        //
+        // y (255 bits) | sign(x) (1 bit) = s
+        // let u = y^2 - 1
+        //     v = d * y^2 + 1
+        //     x = u * v^3 * (u * v^7)^((p-5)/8)
+
+        // recover y by clearing the highest bit (side effect of from_bytes)
+        let y = Fe::from_bytes(s);
+
+        // recover x
+        let y2 = y.square();
+        let u = &y2 - &Fe::ONE;
+        let v = &(&y2 * &Fe::D) + &Fe::ONE;
+        let v3 = &v.square() * &v;
+        let v7 = &v3.square() * &v;
+        let uv7 = &v7 * &u;
+
+        let mut x = &(&uv7.pow25523() * &v3) * &u;
+
+        let vxx = &x.square() * &v;
+        let check = &vxx - &u;
+        if check.is_nonzero() {
+            let check2 = &vxx + &u;
+            if check2.is_nonzero() {
+                return None;
+            }
+            x = &x * &Fe::SQRTM1;
+        }
+
+        if x.is_negative() == ((s[31] >> 7) != 0) {
+            x.negate_mut();
+        }
+        Some(Self { x, y })
+    }
 }
 
 impl GeP1P1 {
@@ -194,55 +245,34 @@ impl Ge {
         t: Fe::ZERO,
     };
 
-    /// Create a group element from X,Y
-    ///
-    /// this interface is not public, and no check is performed here
+    /// Create a group element from affine coordinate
     #[inline]
-    fn from_xy(x: Fe, y: Fe) -> Ge {
-        let t = &x * &y;
+    fn from_affine(affine: GeAffine) -> Ge {
+        let t = &affine.x * &affine.y;
         Ge {
-            x: x,
-            y: y,
+            x: affine.x,
+            y: affine.y,
             z: Fe::ONE,
             t: t,
         }
     }
 
+    /// Flatten a group element on the affine plane (x,y)
+    #[inline]
+    fn to_affine(&self) -> GeAffine {
+        let recip = self.z.invert();
+        let x = &self.x * &recip;
+        let y = &self.y * &recip;
+        GeAffine { x, y }
+    }
+
+    /// Try to construct a group element (Point on the curve)
+    /// from its compressed byte representation (32 bytes little endian).
+    ///
+    /// The compressed bytes representation is the y coordinate (255 bits)
+    /// and the sign of the x coordinate (1 bit) as the highest bit.
     pub fn from_bytes(s: &[u8; 32]) -> Option<Ge> {
-        // See RFC8032 5.3.1 decoding process
-        //
-        // y (255 bits) | sign(x) (1 bit) = s
-        // let u = y^2 - 1
-        //     v = d * y^2 + 1
-        //     x = u * v^3 * (u * v^7)^((p-5)/8)
-
-        // recover y by clearing the highest bit (side effect of from_bytes)
-        let y = Fe::from_bytes(s);
-
-        // recover x
-        let y2 = y.square();
-        let u = &y2 - &Fe::ONE;
-        let v = &(&y2 * &Fe::D) + &Fe::ONE;
-        let v3 = &v.square() * &v;
-        let v7 = &v3.square() * &v;
-        let uv7 = &v7 * &u;
-
-        let mut x = &(&uv7.pow25523() * &v3) * &u;
-
-        let vxx = &x.square() * &v;
-        let check = &vxx - &u;
-        if check.is_nonzero() {
-            let check2 = &vxx + &u;
-            if check2.is_nonzero() {
-                return None;
-            }
-            x = &x * &Fe::SQRTM1;
-        }
-
-        if x.is_negative() == ((s[31] >> 7) != 0) {
-            x.negate_mut();
-        }
-        Some(Self::from_xy(x, y))
+        GeAffine::from_bytes(s).map(Self::from_affine)
     }
 
     pub fn to_partial(self) -> GePartial {
@@ -289,13 +319,13 @@ impl Ge {
         self.double_p1p1().to_partial()
     }
 
+    /// Transform a point into the compressed byte representation
+    ///
+    /// the compressed bytes representation is the Y coordinate
+    /// followed by the 1 bit sign of X coordinate
     pub fn to_bytes(&self) -> [u8; 32] {
-        let recip = self.z.invert();
-        let x = &self.x * &recip;
-        let y = &self.y * &recip;
-        let mut bs = y.to_bytes();
-        bs[31] ^= (if x.is_negative() { 1 } else { 0 }) << 7;
-        bs
+        self.to_affine().to_bytes()
+    }
     }
 }
 

@@ -167,11 +167,30 @@ impl Scalar {
     /// nibble is a group of 4-bits
     pub(crate) fn nibbles(&self) -> [i8; 64] {
         let mut es: [i8; 64] = [0; 64];
-        let a = self.to_bytes();
 
-        for i in 0..32 {
-            es[2 * i + 0] = ((a[i] >> 0) & 0b1111) as i8;
-            es[2 * i + 1] = ((a[i] >> 4) & 0b1111) as i8;
+        let mut c = [0; 4];
+        c[0] = self.0[1] << 56 | self.0[0];
+        c[1] = self.0[2] << 48 | self.0[1] >> 8;
+        c[2] = self.0[3] << 40 | self.0[2] >> 16;
+        c[3] = self.0[4] << 32 | self.0[3] >> 24;
+
+        for b in 0..4 {
+            es[16 * b + 0] = ((c[b] >> 0) & 0b1111) as i8;
+            es[16 * b + 1] = ((c[b] >> 4) & 0b1111) as i8;
+            es[16 * b + 2] = ((c[b] >> 8) & 0b1111) as i8;
+            es[16 * b + 3] = ((c[b] >> 12) & 0b1111) as i8;
+            es[16 * b + 4] = ((c[b] >> 16) & 0b1111) as i8;
+            es[16 * b + 5] = ((c[b] >> 20) & 0b1111) as i8;
+            es[16 * b + 6] = ((c[b] >> 24) & 0b1111) as i8;
+            es[16 * b + 7] = ((c[b] >> 28) & 0b1111) as i8;
+            es[16 * b + 8] = ((c[b] >> 32) & 0b1111) as i8;
+            es[16 * b + 9] = ((c[b] >> 36) & 0b1111) as i8;
+            es[16 * b + 10] = ((c[b] >> 40) & 0b1111) as i8;
+            es[16 * b + 11] = ((c[b] >> 44) & 0b1111) as i8;
+            es[16 * b + 12] = ((c[b] >> 48) & 0b1111) as i8;
+            es[16 * b + 13] = ((c[b] >> 52) & 0b1111) as i8;
+            es[16 * b + 14] = ((c[b] >> 56) & 0b1111) as i8;
+            es[16 * b + 15] = ((c[b] >> 60) & 0b1111) as i8;
         }
         es
     }

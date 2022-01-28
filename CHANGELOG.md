@@ -1,3 +1,7 @@
+# 0.4.1
+
+* add some extra legacy blake2b contextes between 256 and 384 bits
+
 # 0.4.0
 
 * add a new simpler and more individual APIs for hashing in hashing

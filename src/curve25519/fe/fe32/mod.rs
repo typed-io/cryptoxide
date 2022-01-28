@@ -552,6 +552,19 @@ impl Fe {
             h5 as i32, h6 as i32, h7 as i32, h8 as i32, h9 as i32])
     }
 
+    pub(crate) fn negate_mut(&mut self) {
+        self.0[0] = -self.0[0];
+        self.0[1] = -self.0[1];
+        self.0[2] = -self.0[2];
+        self.0[3] = -self.0[3];
+        self.0[4] = -self.0[4];
+        self.0[5] = -self.0[5];
+        self.0[6] = -self.0[6];
+        self.0[7] = -self.0[7];
+        self.0[8] = -self.0[8];
+        self.0[9] = -self.0[9];
+    }
+
     /*
     h = f * f
     Can overlap h with f.

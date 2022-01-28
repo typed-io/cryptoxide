@@ -10,6 +10,10 @@ use core::ops::{Add, Mul, Neg, Sub};
 
 pub mod precomp;
 
+// multiple of P
+const FOUR_P0: u64 = 0x1fffffffffffb4;
+const FOUR_P1234: u64 = 0x1ffffffffffffc;
+
 /// Field Element in \Z/(2^255-19)
 #[derive(Clone)]
 pub struct Fe(pub(crate) [u64; 5]);
@@ -90,10 +94,6 @@ impl Sub for &Fe {
 
     #[rustfmt::skip]
     fn sub(self, rhs: &Fe) -> Fe {
-        // multiple of P
-        const FOUR_P0: u64 = 0x1fffffffffffb4;
-        const FOUR_P1234: u64 = 0x1ffffffffffffc;
-
         let Fe([f0, f1, f2, f3, f4]) = *self;
         let Fe([g0, g1, g2, g3, g4]) = *rhs;
 
@@ -110,8 +110,17 @@ impl Sub for &Fe {
 impl Neg for &Fe {
     type Output = Fe;
 
+    #[rustfmt::skip]
     fn neg(self) -> Fe {
-        &Fe::ZERO - &self
+        let Fe([g0, g1, g2, g3, g4]) = *self;
+
+        let mut h0 = FOUR_P0    - g0    ; let c = h0 >> 51; h0 &= MASK;
+        let mut h1 = FOUR_P1234 - g1 + c; let c = h1 >> 51; h1 &= MASK;
+        let mut h2 = FOUR_P1234 - g2 + c; let c = h2 >> 51; h2 &= MASK;
+        let mut h3 = FOUR_P1234 - g3 + c; let c = h3 >> 51; h3 &= MASK;
+        let mut h4 = FOUR_P1234 - g4 + c; let c = h4 >> 51; h4 &= MASK;
+        h0 += c * 19;
+        Fe([h0, h1, h2, h3, h4])
     }
 }
 
@@ -277,6 +286,16 @@ impl Fe {
         r1 += c;
 
         Fe([r0, r1, r2, r3, r4])
+    }
+
+    #[rustfmt::skip]
+    pub(crate) fn negate_mut(&mut self) {
+        self.0[0] = FOUR_P0    - self.0[0]    ; let c = self.0[0] >> 51; self.0[0] &= MASK;
+        self.0[1] = FOUR_P1234 - self.0[1] + c; let c = self.0[1] >> 51; self.0[1] &= MASK;
+        self.0[2] = FOUR_P1234 - self.0[2] + c; let c = self.0[2] >> 51; self.0[2] &= MASK;
+        self.0[3] = FOUR_P1234 - self.0[3] + c; let c = self.0[3] >> 51; self.0[3] &= MASK;
+        self.0[4] = FOUR_P1234 - self.0[4] + c; let c = self.0[4] >> 51; self.0[4] &= MASK;
+        self.0[0] += c * 19;
     }
 
     /// Compute the square of the field element

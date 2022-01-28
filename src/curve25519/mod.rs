@@ -31,69 +31,10 @@ mod ge;
 pub mod scalar;
 
 pub use fe::Fe;
-pub use ge::{GeCached, GeP1P1, GeP2, GeP3, GePrecomp};
+pub use ge::{Ge, GeCached, GeP1P1, GePartial, GePrecomp};
 pub use scalar::Scalar;
 
 use crate::constant_time::CtZero;
-
-/*
-h = a * B
-where a = a[0]+256*a[1]+...+256^31 a[31]
-B is the Ed25519 base point (x,4/5) with x positive.
-
-Preconditions:
-  a[31] <= 127
-*/
-#[doc(hidden)]
-pub fn ge_scalarmult_base(a: &[u8; 32]) -> GeP3 {
-    let mut es: [i8; 64] = [0; 64];
-    let mut r: GeP1P1;
-    let mut s: GeP2;
-    let mut t: GePrecomp;
-
-    for i in 0..32 {
-        es[2 * i + 0] = ((a[i] >> 0) & 0b1111) as i8;
-        es[2 * i + 1] = ((a[i] >> 4) & 0b1111) as i8;
-    }
-    /* each es[i] is between 0 and 0xf */
-    /* es[63] is between 0 and 7 */
-
-    let mut carry: i8 = 0;
-    for esi in es[0..63].iter_mut() {
-        *esi += carry;
-        carry = *esi + 8;
-        carry >>= 4;
-        *esi -= carry << 4;
-    }
-    es[63] += carry;
-    /* each es[i] is between -8 and 8 */
-
-    let mut h = GeP3::ZERO;
-    for j in 0..32 {
-        let i = j * 2 + 1;
-        t = GePrecomp::select(j, es[i]);
-        r = h + t;
-        h = r.to_p3();
-    }
-
-    r = h.dbl();
-    s = r.to_p2();
-    r = s.dbl();
-    s = r.to_p2();
-    r = s.dbl();
-    s = r.to_p2();
-    r = s.dbl();
-    h = r.to_p3();
-
-    for j in 0..32 {
-        let i = j * 2;
-        t = GePrecomp::select(j, es[i]);
-        r = h + t;
-        h = r.to_p3();
-    }
-
-    h
-}
 
 /// Computes a shared secret from the curve25519 private key (n) and public
 /// key (p)

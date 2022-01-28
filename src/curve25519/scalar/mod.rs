@@ -136,14 +136,12 @@ mod tests {
         ];
 
         for (i, iv) in ivs.iter().enumerate() {
-            let mut out = [0u8; 32];
-            muladd(
-                &mut out,
+            let out = muladd(
                 &Scalar::from_bytes(&iv.a),
-                &iv.b,
+                &Scalar::from_bytes(&iv.b),
                 &Scalar::from_bytes(&iv.c),
             );
-            assert_eq!(iv.r, out, "IV test {} failed", i);
+            assert_eq!(iv.r, out.to_bytes(), "IV test {} failed", i);
         }
     }
 }

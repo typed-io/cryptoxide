@@ -59,6 +59,20 @@ impl Scalar {
         r
     }
 
+    /// Get the scalar in a form of 64 nibbles
+    ///
+    /// nibble is a group of 4-bits
+    pub(crate) fn nibbles(&self) -> [i8; 64] {
+        let mut es: [i8; 64] = [0; 64];
+        let a = self.0;
+
+        for i in 0..32 {
+            es[2 * i + 0] = ((a[i] >> 0) & 0b1111) as i8;
+            es[2 * i + 1] = ((a[i] >> 4) & 0b1111) as i8;
+        }
+        es
+    }
+
     /// Create a new scalar from 64 bytes (512 bits) reducing
     /// the scalar to an element of the field
     ///
@@ -323,7 +337,7 @@ Output:
     where l = 2^252 + 27742317777372353535851937790883648493.
 */
 #[rustfmt::skip]
-pub(crate) fn muladd(s: &mut [u8; 32], Scalar(a): &Scalar, b: &[u8; 32], Scalar(c): &Scalar) {
+pub(crate) fn muladd(Scalar(a): &Scalar, Scalar(b): &Scalar, Scalar(c): &Scalar) -> Scalar {
     let a0 = 2097151 & load_3i(&a[0..3]);
     let a1 = 2097151 & (load_4i(&a[2..6]) >> 5);
     let a2 = 2097151 & (load_3i(&a[5..8]) >> 2);
@@ -622,6 +636,7 @@ pub(crate) fn muladd(s: &mut [u8; 32], Scalar(a): &Scalar, b: &[u8; 32], Scalar(
     carry9 = s9 >> 21; s10 += carry9; s9 -= carry9 << 21;
     carry10 = s10 >> 21; s11 += carry10; s10 -= carry10 << 21;
 
+    let mut s = [0u8; 32];
     s[0] = (s0 >> 0) as u8;
     s[1] = (s0 >> 8) as u8;
     s[2] = ((s0 >> 16) | (s1 << 5)) as u8;
@@ -654,4 +669,5 @@ pub(crate) fn muladd(s: &mut [u8; 32], Scalar(a): &Scalar, b: &[u8; 32], Scalar(
     s[29] = (s11 >> 1) as u8;
     s[30] = (s11 >> 9) as u8;
     s[31] = (s11 >> 17) as u8;
+    Scalar(s)
 }

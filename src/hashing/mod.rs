@@ -21,9 +21,9 @@
 //! The APIs can be used either in a pass-the-context api:
 //!
 //! ```
-//! use cryptoxide::hashing::sha256;
+//! use cryptoxide::hashing::sha2;
 //!
-//! let digest = sha256::Context::new()
+//! let digest = sha2::Context256::new()
 //!         .update(b"The quick brown fox jumps over the lazy dog")
 //!         .update(b"other data")
 //!         .finalize();
@@ -32,9 +32,9 @@
 //! Or using the inplace mutable APIs:
 //!
 //! ```
-//! use cryptoxide::hashing::sha256;
+//! use cryptoxide::hashing::sha2;
 //!
-//! let mut context = sha256::Context::new();
+//! let mut context = sha2::Context256::new();
 //! context.update_mut(b"The quick brown fox jumps over the lazy dog");
 //! context.update_mut(b"other data");
 //! let digest = context.finalize_reset();

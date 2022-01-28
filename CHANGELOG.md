@@ -1,3 +1,9 @@
+# 0.4.0
+
+* add a new simpler and more individual APIs for hashing in hashing
+* optimise and reorganise curve25519 and ed25519
+* optimise various hashing algorithms: sha1, sha3, ripemd160
+
 # 0.3.5
 
 * Add some const qualifier in Sha1 and Sha2

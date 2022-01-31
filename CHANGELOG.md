@@ -1,3 +1,7 @@
+# 0.4.2
+
+* add some extra odd size legacy blake2b contextes (and some missing one)
+
 # 0.4.1
 
 * add some extra legacy blake2b contextes between 256 and 384 bits

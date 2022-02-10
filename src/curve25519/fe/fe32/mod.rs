@@ -6,10 +6,10 @@ pub mod precomp;
 
 use super::load::{load_3i, load_4i};
 
-/// Field Element in \Z/(2^255-19)
+/// Field Element in ℤ/(2^255-19)
 ///
-/// An element t, entries t[0]...t[9], represents the integer
-/// t[0]+2^26 t[1]+2^51 t[2]+2^77 t[3]+2^102 t[4]+...+2^230 t[9].
+/// An element t, entries `t[0]...t[9]`, represents the integer
+/// `t[0]+2^26*t[1]+2^51*t[2]+2^77*t[3]+2^102*t[4]+...+2^230*t[9]`.
 /// Bounds on each t[i] vary depending on context.
 #[derive(Clone)]
 pub struct Fe(pub(crate) [i32; 10]);

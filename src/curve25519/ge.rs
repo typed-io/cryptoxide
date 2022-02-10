@@ -329,12 +329,12 @@ impl Ge {
         self.to_affine().to_bytes()
     }
 
-    /// Compute r = a * B
+    /// Compute `r = a * B`
     ///
     /// where
-    ///     a = a[0]+2^8*a[1]+...+2^248 a[31] a scalar number represented by 32-bytes in little endian format
-    ///         and a[31] is <= 0x80
-    ///     B the ED25519 base point (not a parameter to the function)
+    ///     `a = a[0]+2^8*a[1]+...+2^248*a[31]` a scalar number represented by 32-bytes in little endian format
+    ///         and `a[31] <= 0x80`
+    ///     `B` the ED25519 base point (not a parameter to the function)
     pub fn scalarmult_base(a: &Scalar) -> Ge {
         let mut r: GeP1P1;
         let mut t: GePrecomp;

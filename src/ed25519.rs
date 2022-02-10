@@ -18,7 +18,7 @@
 //! The signature is 64 bytes composed of `R || S` where R is 32 bytes
 //! and S is 32 bytes also.
 //!
-//! * [RFC8032]<https://www.rfc-editor.org/rfc/rfc8032.txt>
+//! * [RFC8032](https://www.rfc-editor.org/rfc/rfc8032.txt)
 //!
 
 use crate::constant_time::CtEqual;

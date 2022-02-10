@@ -1,4 +1,4 @@
-//! Field Element in \Z/(2^255-19)
+//! Field Element in ℤ/(2^255-19)
 //!
 //! The implementation has 2 different limbs representation:
 //! * a 32bits architecture 25-26 bits unsaturated limbs using u32 / u64 for multiplication

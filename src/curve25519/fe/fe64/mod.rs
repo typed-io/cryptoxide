@@ -2,7 +2,7 @@
 //!
 //! arithmetic calculation helpers:
 //!
-//! * ed25519-donna: https://github.com/floodyberry/ed25519-donna
+//! * [ed25519-donna](https://github.com/floodyberry/ed25519-donna)
 //! * Sandy2x: New Curve25519 Speed Records
 
 use crate::constant_time::{ct_array64_maybe_set, ct_array64_maybe_swap_with, Choice, CtEqual};
@@ -14,7 +14,7 @@ pub mod precomp;
 const FOUR_P0: u64 = 0x1fffffffffffb4;
 const FOUR_P1234: u64 = 0x1ffffffffffffc;
 
-/// Field Element in \Z/(2^255-19)
+/// Field Element in ℤ/(2^255-19)
 #[derive(Clone)]
 pub struct Fe(pub(crate) [u64; 5]);
 

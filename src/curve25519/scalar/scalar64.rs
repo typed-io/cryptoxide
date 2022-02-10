@@ -1,13 +1,16 @@
-//! Scalar \Z/(2^252 + 27742317777372353535851937790883648493) implementations
+//! Scalar ℤ/(2^252 + 27742317777372353535851937790883648493) implementations
 //!
 //! port of <https://github.com/floodyberry/ed25519-donna/blob/master/modm-donna-64bit.h>
 //!
 //! scalar is back by 5 Limbs in 56 bits unsaturated (except last)
 
+/// Scalar in the field ℤ/2^252 + 27742317777372353535851937790883648493)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Scalar([u64; 5]);
 
-/// Order of Scalar : M = 2^252 + 27742317777372353535851937790883648493
+/// Order of Scalar :
+///
+/// $M = 2^252 + 27742317777372353535851937790883648493$
 const M: [u64; 5] = [
     0x0012_631a_5cf5_d3ed,
     0x00f9_dea2_f79c_d658,
@@ -252,7 +255,7 @@ impl Scalar {
     /// the scalar to an element of the field
     ///
     /// Input is a little endian 512 bits scalar value:
-    /// s[0]+256*s[1]+...+256^63*s[63] = s
+    /// `s=s[0]+256*s[1]+...+256^63*s[63]`
     ///
     /// And the output scalar is a `s % order of field`
     #[must_use]
@@ -345,17 +348,12 @@ const fn mul(Scalar(x): &Scalar, Scalar(y): &Scalar) -> Scalar {
 	Scalar(barrett_reduce256(&q1, &r1))
 }
 
-/*
-Input:
-    a[0]+256*a[1]+...+256^31*a[31] = a
-    b[0]+256*b[1]+...+256^31*b[31] = b
-    c[0]+256*c[1]+...+256^31*c[31] = c
-
-Output:
-    s[0]+256*s[1]+...+256^31*s[31] = (ab+c) mod l
-    where l = 2^252 + 27742317777372353535851937790883648493.
-*/
-#[rustfmt::skip]
+/// Compute `s = (a * b + c) mod L`
+///
+/// where
+///   `a = a[0]+256*a[1]+...+256^31*a[31]`
+///   `b = b[0]+256*b[1]+...+256^31*b[31]`
+///   `c = c[0]+256*c[1]+...+256^31*c[31]`
 pub(crate) fn muladd(a: &Scalar, b: &Scalar, c: &Scalar) -> Scalar {
     let m = mul(&a, &b);
     let r = add(&m, &c);

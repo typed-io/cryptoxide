@@ -11,7 +11,7 @@
 /// // Typically should be coming from an entropy generator (see getrandom package),
 /// // or some other high quality random value
 /// let seed = [1u8; 32];
-/// let mut drg = Drg::new::<8>(seed);
+/// let mut drg = Drg::<8>::new(&seed);
 ///
 /// // produce 25 bytes of random value
 /// let random = drg.bytes::<25>();

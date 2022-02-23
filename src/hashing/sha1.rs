@@ -487,7 +487,7 @@ mod bench {
         let mut state = [0u32; STATE_LEN];
         let words = [1u32; BLOCK_LEN];
         bh.iter(|| {
-            sha1_digest_block_u32(&mut state, &words);
+            digest_block_u32(&mut state, &words);
         });
         bh.bytes = 64u64;
     }

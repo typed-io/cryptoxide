@@ -79,6 +79,9 @@ pub mod drg;
 pub mod ed25519;
 #[cfg(feature = "hkdf")]
 pub mod hkdf;
+
+pub mod kdf;
+
 #[cfg(feature = "hmac")]
 pub mod hmac;
 #[cfg(feature = "mac")]

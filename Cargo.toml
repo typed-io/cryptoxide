@@ -20,7 +20,7 @@ doctest = false
 [dependencies]
 
 [features]
-default = ["blake2", "sha1", "sha2", "sha3", "ripemd160", "chacha", "salsa", "hkdf", "hmac", "pbkdf2", "poly1305", "scrypt", "curve25519", "ed25519", "x25519"]
+default = ["argon2", "blake2", "sha1", "sha2", "sha3", "ripemd160", "chacha", "salsa", "hkdf", "hmac", "pbkdf2", "poly1305", "scrypt", "curve25519", "ed25519", "x25519"]
 blake2 = ["digest", "mac"]
 sha1 = ["digest"]
 sha2 = ["digest"]
@@ -36,6 +36,7 @@ hkdf = ["digest", "hmac"]
 hmac = ["digest", "mac"]
 pbkdf2 = ["mac"]
 scrypt = ["pbkdf2", "mac", "hmac"]
+argon2 = ["blake2"]
 poly1305 = ["mac"]
 
 curve25519 = []

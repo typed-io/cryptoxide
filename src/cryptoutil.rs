@@ -113,6 +113,15 @@ pub fn xor_keystream_mut(buf: &mut [u8], keystream: &[u8]) {
     }
 }
 
+/// XOR the content an array of u64 of size N with the right hand side in place:
+///
+/// Figuratively this does: `lhs ^= rhs`
+pub fn xor_array64_mut<const N: usize>(lhs: &mut [u64; N], rhs: &[u64; N]) {
+    for (left, right) in lhs.iter_mut().zip(rhs.iter()) {
+        *left ^= *right
+    }
+}
+
 /// Zero all bytes in dst
 #[inline]
 pub fn zero(dst: &mut [u8]) {

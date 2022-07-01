@@ -139,7 +139,7 @@ impl<const ROUNDS: usize> State<ROUNDS> {
     }
 
     #[inline]
-    pub(crate) fn round(&mut self) {
+    pub(crate) fn rounds(&mut self) {
         for _ in 0..(ROUNDS / 2) {
             round!(self);
             swizzle!(self.b, self.c, self.d);

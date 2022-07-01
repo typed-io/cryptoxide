@@ -101,7 +101,7 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
 
         // Apply r/2 iterations of the same "double-round" function,
         // obtaining (z0, z1, ... z15) = doubleround r/2 (x0, x1, ... x15).
-        state.round();
+        state.rounds();
 
         // HChaCha20 then outputs the 256-bit block (z0, z1, z2, z3, z12, z13,
         // z14, z15).  These correspond to the constant and input positions in
@@ -112,7 +112,7 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
     // put the the next 64 keystream bytes into self.output
     fn update(&mut self) {
         let mut state = self.state.clone();
-        state.round();
+        state.rounds();
         state.add_back(&self.state);
 
         state.output_bytes(&mut self.output);

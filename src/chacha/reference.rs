@@ -21,19 +21,6 @@ macro_rules! swizzle {
     }};
 }
 
-macro_rules! state_to_buffer {
-    ($state: expr, $output: expr) => {{
-        let u32x4(a1, a2, a3, a4) = $state.a;
-        let u32x4(b1, b2, b3, b4) = $state.b;
-        let u32x4(c1, c2, c3, c4) = $state.c;
-        let u32x4(d1, d2, d3, d4) = $state.d;
-        let lens = [
-            a1, a2, a3, a4, b1, b2, b3, b4, c1, c2, c3, c4, d1, d2, d3, d4,
-        ];
-        write_u32v_le($output, &lens)
-    }};
-}
-
 macro_rules! round {
     ($state: expr) => {{
         $state.a = $state.a + $state.b;
@@ -164,14 +151,22 @@ impl<const ROUNDS: usize> State<ROUNDS> {
 
     #[inline]
     pub(crate) fn output_bytes(&self, output: &mut [u8]) {
-        state_to_buffer!(self, output);
+        let u32x4(a1, a2, a3, a4) = self.a;
+        let u32x4(b1, b2, b3, b4) = self.b;
+        let u32x4(c1, c2, c3, c4) = self.c;
+        let u32x4(d1, d2, d3, d4) = self.d;
+        write_u32v_le(
+            output,
+            &[
+                a1, a2, a3, a4, b1, b2, b3, b4, c1, c2, c3, c4, d1, d2, d3, d4,
+            ],
+        );
     }
 
     #[inline]
     pub(crate) fn output_ad_bytes(&self, output: &mut [u8; 32]) {
         let u32x4(a1, a2, a3, a4) = self.a;
         let u32x4(d1, d2, d3, d4) = self.d;
-        let lens = [a1, a2, a3, a4, d1, d2, d3, d4];
-        write_u32v_le(&mut output[..], &lens[..]);
+        write_u32v_le(&mut output[..], &[a1, a2, a3, a4, d1, d2, d3, d4]);
     }
 }

@@ -32,7 +32,7 @@
 use core::cmp;
 
 use crate::chacha::ChaChaEngine as ChaChaState;
-use crate::cryptoutil::{xor_keystream, xor_keystream_mut};
+use crate::cryptoutil::xor_keystream_mut;
 
 /// ChaCha Context
 #[derive(Clone)]
@@ -120,10 +120,11 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         self.state.increment();
         self.offset = 0;
     }
-}
 
-impl<const ROUNDS: usize> ChaCha<ROUNDS> {
     /// Process the input in place through the cipher xoring
+    ///
+    /// To get only the stream of this cipher, one can just pass the zero
+    /// buffer (X xor 0 = X)
     pub fn process_mut(&mut self, data: &mut [u8]) {
         let len = data.len();
         let mut i = 0;
@@ -147,26 +148,13 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
     /// the output need to be the same size as the input otherwise
     /// this function will panic.
     pub fn process(&mut self, input: &[u8], output: &mut [u8]) {
-        assert!(input.len() == output.len());
-        let len = input.len();
-        let mut i = 0;
-        while i < len {
-            // If there is no keystream available in the output buffer,
-            // generate the next block.
-            if self.offset == 64 {
-                self.update();
-            }
-
-            // Process the min(available keystream, remaining input length).
-            let count = cmp::min(64 - self.offset, len - i);
-            xor_keystream(
-                &mut output[i..i + count],
-                &input[i..i + count],
-                &self.output[self.offset..],
-            );
-            i += count;
-            self.offset += count;
-        }
+        assert_eq!(
+            input.len(),
+            output.len(),
+            "chacha::process need to have input and output of the same size"
+        );
+        output.copy_from_slice(input);
+        self.process_mut(output);
     }
 }
 

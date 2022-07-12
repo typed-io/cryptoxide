@@ -42,7 +42,7 @@ pub enum Context {
     Context32(blake2s::Context<32>),
     Context64(blake2s::Context<64>),
     Context128(blake2s::Context<128>),
-    Context192(blake2s::Context<128>),
+    Context192(blake2s::Context<192>),
     Context224(blake2s::Context<224>),
     Context256(blake2s::Context<256>),
 }

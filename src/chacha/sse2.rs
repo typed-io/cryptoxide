@@ -44,7 +44,7 @@ macro_rules! swizzle {
 }
 
 macro_rules! add_rotate_xor {
-    ($a: expr, $b: expr, $c: expr, $d: expr) => {
+    ($a: expr, $b: expr, $c: expr, $d: literal) => {
         // a += b; c ^= a; c <<<= d;
         $a = _mm_add_epi32($a, $b);
         $c = _mm_xor_si128($c, $a);
@@ -135,7 +135,7 @@ impl<const ROUNDS: usize> State<ROUNDS> {
     }
 
     #[inline]
-    pub(crate) fn round(&mut self) {
+    pub(crate) fn rounds(&mut self) {
         unsafe {
             for _ in 0..(ROUNDS / 2) {
                 round!(self.a, self.b, self.c, self.d);

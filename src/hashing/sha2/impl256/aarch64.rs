@@ -11,7 +11,7 @@ pub(crate) fn digest_block(state: &mut [u32; 8], block: &[u8]) {
         let mut tmp;
         let mut tmp_state;
 
-        /* Load state from native representation */
+        // Load state from native representation
         let mut state0 = vld1q_u32(state.as_ptr().offset(0));
         let mut state1 = vld1q_u32(state.as_ptr().offset(4));
 
@@ -19,11 +19,11 @@ pub(crate) fn digest_block(state: &mut [u32; 8], block: &[u8]) {
 
         let mut block = block.as_ptr();
         while length != 0 {
-            /* Save state for end mixing */
+            // Save state for end mixing
             let previous_state0 = state0;
             let previous_state1 = state1;
 
-            /* Load 64-bytes block and swap endianess */
+            // Load 64-bytes block and swap endianess
             let mut block0 = vld1q_u32(block.offset(0) as *const u32);
             let mut block1 = vld1q_u32(block.offset(16) as *const u32);
             let mut block2 = vld1q_u32(block.offset(32) as *const u32);
@@ -69,7 +69,7 @@ pub(crate) fn digest_block(state: &mut [u32; 8], block: &[u8]) {
             rounds4!(end, 56, block2);
             rounds4!(end, 60, block3);
 
-            /* mix previous and new state */
+            // mix previous and new state
             state0 = vaddq_u32(state0, previous_state0);
             state1 = vaddq_u32(state1, previous_state1);
 
@@ -77,7 +77,7 @@ pub(crate) fn digest_block(state: &mut [u32; 8], block: &[u8]) {
             length -= 64;
         }
 
-        /* Store simd state back into state */
+        // Store simd state back into state
         vst1q_u32(state.as_mut_ptr().offset(0), state0);
         vst1q_u32(state.as_mut_ptr().offset(4), state1);
     }

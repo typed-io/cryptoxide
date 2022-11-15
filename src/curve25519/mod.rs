@@ -105,7 +105,7 @@ pub fn curve25519_base(n: &[u8; 32]) -> [u8; 32] {
     // clear the lowest 3 bits, clear the highest bit and set the 2nd highest bit
     e[0] &= 0b1111_1000;
     e[31] &= 0b0111_1111;
-    e[31] |= 0b1000000;
+    e[31] |= 0b0100_0000;
 
     let x1 = Fe::from_bytes(&BASE);
     let mut x2 = Fe::ONE;

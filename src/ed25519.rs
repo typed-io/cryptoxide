@@ -108,6 +108,18 @@ fn signature_nonce(extended_secret: &[u8; EXTENDED_KEY_LENGTH], message: &[u8]) 
     Scalar::reduce_from_wide_bytes(&hash_output)
 }
 
+/// helper function to compute the hash function SHA512 on the inputs
+///
+/// type ED25519Hasher = fn(&[u8;32], &[u8;32], &[u8]) -> [u8; 64];
+///
+fn ed25519_sha512(signature_left: &[u8; 32], public_key: &[u8; 32], message: &[u8]) -> [u8; 64] {
+    Sha512::new()
+        .update(signature_left)
+        .update(public_key)
+        .update(message)
+        .finalize()
+}
+
 /// Generate a signature for the given message using a normal ED25519 secret key
 pub fn signature(message: &[u8], keypair: &[u8; KEYPAIR_LENGTH]) -> [u8; SIGNATURE_LENGTH] {
     let private_key = keypair_private(&keypair);
@@ -118,17 +130,18 @@ pub fn signature(message: &[u8], keypair: &[u8; KEYPAIR_LENGTH]) -> [u8; SIGNATU
 
     let r = Ge::scalarmult_base(&nonce);
 
-    let mut signature = [0; SIGNATURE_LENGTH];
-    signature[0..32].copy_from_slice(&r.to_bytes());
-    signature[32..64].copy_from_slice(public_key);
+    let signature_left = r.to_bytes();
 
-    {
-        let hram = Sha512::new().update(&signature).update(message).finalize();
+    let signature_right = {
+        let hram = ed25519_sha512(&signature_left, public_key, message);
         let hram = Scalar::reduce_from_wide_bytes(&hram);
         let r = scalar::muladd(&hram, &extended_scalar(&az), &nonce);
-        signature[32..64].copy_from_slice(&r.to_bytes())
-    }
+        r.to_bytes()
+    };
 
+    let mut signature = [0; SIGNATURE_LENGTH];
+    signature[0..32].copy_from_slice(&signature_left);
+    signature[32..64].copy_from_slice(&signature_right);
     signature
 }
 
@@ -142,17 +155,18 @@ pub fn signature_extended(
 
     let r = Ge::scalarmult_base(&nonce);
 
-    let mut signature = [0; SIGNATURE_LENGTH];
-    signature[0..32].copy_from_slice(&r.to_bytes());
-    signature[32..64].copy_from_slice(&public_key);
+    let signature_left = r.to_bytes();
 
-    {
-        let hram = Sha512::new().update(&signature).update(message).finalize();
+    let signature_right = {
+        let hram = ed25519_sha512(&signature_left, &public_key, message);
         let hram = Scalar::reduce_from_wide_bytes(&hram);
         let r = scalar::muladd(&hram, &extended_scalar(extended_secret), &nonce);
-        signature[32..64].copy_from_slice(&r.to_bytes())
-    }
+        r.to_bytes()
+    };
 
+    let mut signature = [0; SIGNATURE_LENGTH];
+    signature[0..32].copy_from_slice(&signature_left);
+    signature[32..64].copy_from_slice(&signature_right);
     signature
 }
 
@@ -186,11 +200,7 @@ pub fn verify(
         return false;
     }
 
-    let hash = Sha512::new()
-        .update(signature_left)
-        .update(public_key)
-        .update(message)
-        .finalize();
+    let hash = ed25519_sha512(signature_left, public_key, message);
     let a_scalar = Scalar::reduce_from_wide_bytes(&hash);
 
     let r = GePartial::double_scalarmult_vartime(&a_scalar, a, &signature_scalar);

@@ -239,6 +239,31 @@ impl Fe {
         [out0, out1, out2, out3]
     }
 
+    /// return only the first 51 bits of the packed value.
+    /// the high bits may contains garbage
+    ///
+    /// internal function to test if a number is negative
+    const fn to_packed_51bits(&self) -> u64 {
+        let Fe(t) = *self;
+
+        #[inline]
+        const fn carry_full(t: &[u64; 5]) -> [u64; 5] {
+            let t1 = t[1] + (t[0] >> 51);
+            let t2 = t[2] + (t1 >> 51);
+            let t3 = t[3] + (t2 >> 51);
+            let t4 = t[4] + (t3 >> 51);
+            let t0 = (t[0] & MASK) + 19 * (t4 >> 51);
+            [t0, t1 & MASK, t2 & MASK, t3 & MASK, t4 & MASK]
+        }
+
+        let t = carry_full(&t);
+        let mut t = carry_full(&t);
+        t[0] += 19;
+        let mut t = carry_full(&t);
+        t[0] += (MASK + 1) - 19;
+        t[0]
+    }
+
     /// Represent the Field Element as little-endian canonical bytes (256 bits)
     ///
     /// Due to the field size, it's guarantee that the highest bit is always 0
@@ -386,7 +411,7 @@ impl Fe {
     }
 
     pub fn is_negative(&self) -> bool {
-        (self.to_packed()[0] & 1) != 0
+        (self.to_packed_51bits() & 1) != 0
     }
 
     pub(crate) fn maybe_swap_with(&mut self, rhs: &mut Fe, do_swap: Choice) {

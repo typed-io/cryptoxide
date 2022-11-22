@@ -56,10 +56,20 @@ pub struct Context<const BITS: usize> {
     buflen: usize,
 }
 
+/// Blake2b Context with dynamic output size determined by initial parameter
+#[derive(Clone)]
+pub struct ContextDyn {
+    eng: Engine,
+    buf: [u8; Engine::BLOCK_BYTES],
+    buflen: usize,
+    outlen: usize,
+}
+
 impl<const BITS: usize> Context<BITS> {
     /// Create a new Blake2b context with a specific output size in bytes
     ///
-    /// the size need to be between 0 (non included) and 64 bytes (included)
+    /// the size in bytes need to be between 0 (non included) and 64 bytes (included),
+    /// which means BITS need to be between 1 and 512.
     pub fn new() -> Self {
         assert!(BITS > 0 && ((BITS + 7) / 8) <= Engine::MAX_OUTLEN);
         Self::new_keyed(&[])
@@ -164,6 +174,125 @@ impl<const BITS: usize> Context<BITS> {
             self.buf = [0; Engine::BLOCK_BYTES];
             self.buflen = 0;
         }
+    }
+}
+
+impl ContextDyn {
+    /// Create a new Blake2b context with a specific output size in bytes defined by parameter
+    ///
+    /// the size need to be between 0 (non included) and 64 bytes (included)
+    pub fn new(output_bytes: usize) -> Self {
+        Self::new_keyed(output_bytes, &[])
+    }
+
+    /// Similar to `new` but also takes a variable size key
+    /// to tweak the context initialization
+    pub fn new_keyed(output_bytes: usize, key: &[u8]) -> Self {
+        assert!(output_bytes > 0 && output_bytes <= Engine::MAX_OUTLEN);
+        assert!(key.len() <= Engine::MAX_KEYLEN);
+
+        let mut buf = [0u8; Engine::BLOCK_BYTES];
+
+        let eng = Engine::new(output_bytes, key.len());
+        let buflen = if !key.is_empty() {
+            buf[0..key.len()].copy_from_slice(key);
+            Engine::BLOCK_BYTES
+        } else {
+            0
+        };
+
+        Self {
+            eng,
+            buf,
+            buflen,
+            outlen: output_bytes,
+        }
+    }
+
+    pub fn update(mut self, input: &[u8]) -> Self {
+        self.update_mut(input);
+        self
+    }
+
+    pub fn update_mut(&mut self, mut input: &[u8]) {
+        if input.is_empty() {
+            return;
+        }
+        let fill = Engine::BLOCK_BYTES - self.buflen;
+
+        if input.len() > fill {
+            self.buf[self.buflen..self.buflen + fill].copy_from_slice(&input[0..fill]);
+            self.buflen = 0;
+            self.eng.increment_counter(Engine::BLOCK_BYTES_NATIVE);
+            self.eng
+                .compress(&self.buf[0..Engine::BLOCK_BYTES], LastBlock::No);
+
+            input = &input[fill..];
+
+            while input.len() > Engine::BLOCK_BYTES {
+                self.eng.increment_counter(Engine::BLOCK_BYTES_NATIVE);
+                self.eng
+                    .compress(&input[0..Engine::BLOCK_BYTES], LastBlock::No);
+                input = &input[Engine::BLOCK_BYTES..];
+            }
+        }
+        self.buf[self.buflen..self.buflen + input.len()].copy_from_slice(input);
+        self.buflen += input.len();
+    }
+
+    fn internal_final(&mut self) {
+        self.eng.increment_counter(self.buflen as u64);
+        zero(&mut self.buf[self.buflen..]);
+        self.eng
+            .compress(&self.buf[0..Engine::BLOCK_BYTES], LastBlock::Yes);
+
+        write_u64v_le(&mut self.buf[0..64], &self.eng.h);
+    }
+
+    pub fn finalize_at(mut self, out: &mut [u8]) {
+        assert!(out.len() == self.outlen);
+        self.internal_final();
+        out.copy_from_slice(&self.buf[0..out.len()]);
+    }
+
+    pub fn finalize_reset_at(&mut self, out: &mut [u8]) {
+        assert!(out.len() == self.outlen);
+        self.internal_final();
+        out.copy_from_slice(&self.buf[0..out.len()]);
+        self.reset();
+    }
+
+    pub fn finalize_reset_with_key_at(&mut self, key: &[u8], out: &mut [u8]) {
+        assert!(out.len() == self.outlen);
+        self.internal_final();
+        out.copy_from_slice(&self.buf[0..out.len()]);
+        self.reset_with_key(key);
+    }
+
+    /// Reset the context to the state after calling `new`
+    pub fn reset(&mut self) {
+        self.eng.reset(self.outlen, 0);
+        self.buflen = 0;
+        zero(&mut self.buf[..]);
+    }
+
+    pub fn reset_with_key(&mut self, key: &[u8]) {
+        assert!(key.len() <= Engine::MAX_KEYLEN);
+
+        self.eng.reset(self.outlen, key.len());
+        zero(&mut self.buf[..]);
+
+        if !key.is_empty() {
+            self.buf[0..key.len()].copy_from_slice(key);
+            self.buflen = Engine::BLOCK_BYTES;
+        } else {
+            self.buf = [0; Engine::BLOCK_BYTES];
+            self.buflen = 0;
+        }
+    }
+
+    pub fn output_bits(&self) -> usize {
+        self.outlen * 8
     }
 }
 

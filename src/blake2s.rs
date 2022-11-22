@@ -35,68 +35,12 @@ use crate::mac::{Mac, MacResult};
 use alloc::vec::Vec;
 use core::iter::repeat;
 
-#[derive(Clone)]
-pub enum Context {
-    Context8(blake2s::Context<8>),
-    Context16(blake2s::Context<16>),
-    Context32(blake2s::Context<32>),
-    Context64(blake2s::Context<64>),
-    Context128(blake2s::Context<128>),
-    Context192(blake2s::Context<192>),
-    Context224(blake2s::Context<224>),
-    Context256(blake2s::Context<256>),
-}
+pub type Context = blake2s::ContextDyn;
 
-macro_rules! ctx_pass {
-    ($self:ident, $name:ident ($($input:expr)*)) => {
-        match $self {
-            Context::Context8(ctx) => ctx.$name ($($input)*),
-            Context::Context16(ctx) => ctx.$name ($($input)*),
-            Context::Context32(ctx) => ctx.$name ($($input)*),
-            Context::Context64(ctx) => ctx.$name ($($input)*),
-            Context::Context128(ctx) => ctx.$name ($($input)*),
-            Context::Context192(ctx) => ctx.$name ($($input)*),
-            Context::Context224(ctx) => ctx.$name ($($input)*),
-            Context::Context256(ctx) => ctx.$name ($($input)*),
-        }
-    };
-}
-
-impl Context {
-    fn digest_length(&self) -> usize {
-        match self {
-            Context::Context8(_) => 1,
-            Context::Context16(_) => 2,
-            Context::Context32(_) => 4,
-            Context::Context64(_) => 8,
-            Context::Context128(_) => 16,
-            Context::Context192(_) => 24,
-            Context::Context224(_) => 28,
-            Context::Context256(_) => 32,
-        }
-    }
-
-    fn update_mut(&mut self, input: &[u8]) {
-        ctx_pass!(self, update_mut(input))
-    }
-
-    fn reset(&mut self) {
-        ctx_pass!(self, reset())
-    }
-
-    fn reset_with_key(&mut self, key: &[u8]) {
-        ctx_pass!(self, reset_with_key(key))
-    }
-
-    fn finalize_reset_at(&mut self, out: &mut [u8]) {
-        ctx_pass!(self, finalize_reset_at(out))
-    }
-}
-
-/// Blake2b Context
+/// Blake2s Context
 #[derive(Clone)]
 pub struct Blake2s {
-    ctx: Context,
+    ctx: blake2s::ContextDyn,
     computed: bool, // whether the final digest has been computed
 }
 
@@ -105,17 +49,7 @@ impl Blake2s {
     ///
     /// the size need to be between 0 (non included) and 32 bytes (included)
     pub fn new(outlen: usize) -> Self {
-        let ctx = match outlen {
-            1 => Context::Context8(blake2s::Context::new()),
-            2 => Context::Context16(blake2s::Context::new()),
-            4 => Context::Context32(blake2s::Context::new()),
-            8 => Context::Context64(blake2s::Context::new()),
-            16 => Context::Context128(blake2s::Context::new()),
-            24 => Context::Context192(blake2s::Context::new()),
-            28 => Context::Context224(blake2s::Context::new()),
-            32 => Context::Context256(blake2s::Context::new()),
-            _ => panic!("outlen > 0 && outlen <= 64"),
-        };
+        let ctx = blake2s::ContextDyn::new(outlen);
         Self {
             ctx,
             computed: false,
@@ -125,17 +59,8 @@ impl Blake2s {
     /// Similar to `new` but also takes a variable size key
     /// to tweak the context initialization
     pub fn new_keyed(outlen: usize, key: &[u8]) -> Self {
-        let ctx = match outlen {
-            1 => Context::Context8(blake2s::Context::new_keyed(key)),
-            2 => Context::Context16(blake2s::Context::new_keyed(key)),
-            4 => Context::Context32(blake2s::Context::new_keyed(key)),
-            8 => Context::Context64(blake2s::Context::new_keyed(key)),
-            16 => Context::Context128(blake2s::Context::new_keyed(key)),
-            24 => Context::Context192(blake2s::Context::new_keyed(key)),
-            28 => Context::Context224(blake2s::Context::new_keyed(key)),
-            32 => Context::Context256(blake2s::Context::new_keyed(key)),
-            _ => panic!("outlen > 0 && outlen <= 32"),
-        };
+        assert!(key.len() <= 64);
+        let ctx = blake2s::ContextDyn::new_keyed(outlen, key);
         Self {
             ctx,
             computed: false,
@@ -187,7 +112,7 @@ impl Digest for Blake2s {
         self.finalize(out);
     }
     fn output_bits(&self) -> usize {
-        8 * (self.ctx.digest_length())
+        8 * (self.ctx.output_bits())
     }
     fn block_size(&self) -> usize {
         // hack : this is a constant, not related to the number of bit
@@ -205,7 +130,7 @@ impl Mac for Blake2s {
     }
 
     fn result(&mut self) -> MacResult {
-        let mut mac: Vec<u8> = repeat(0).take(self.ctx.digest_length()).collect();
+        let mut mac: Vec<u8> = repeat(0).take(self.ctx.output_bits() / 8).collect();
         self.raw_result(&mut mac);
         MacResult::new_from_owned(mac)
     }
@@ -215,7 +140,7 @@ impl Mac for Blake2s {
     }
 
     fn output_bytes(&self) -> usize {
-        self.ctx.digest_length()
+        self.ctx.output_bits() / 8
     }
 }
 

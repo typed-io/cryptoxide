@@ -10,9 +10,17 @@
 
 #[cfg(all(target_arch = "aarch64", feature = "use-stdsimd"))]
 mod aarch64;
-#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "avx"))]
+
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    target_feature = "avx"
+))]
 mod avx;
-#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "sse4.1"))]
+
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    target_feature = "sse4.1"
+))]
 mod sse41;
 //TODO not finished yet
 //#[cfg(all(target_arch = "x86_64", target_feature = "sha"))]

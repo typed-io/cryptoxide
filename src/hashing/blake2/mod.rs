@@ -9,10 +9,16 @@ mod reference;
 
 pub use common::LastBlock;
 
-#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "avx"))]
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    target_feature = "avx"
+))]
 mod avx;
 
-#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "avx2"))]
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    target_feature = "avx2"
+))]
 mod avx2;
 
 use common::{b, s};

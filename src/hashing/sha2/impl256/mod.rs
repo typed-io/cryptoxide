@@ -26,37 +26,29 @@ mod sse41;
 //#[cfg(all(target_arch = "x86_64", target_feature = "sha"))]
 //mod x64sha;
 
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    any(target_feature = "avx", target_feature = "sse4.1")
+))]
+use crate::simd_check::*;
+
 // software implementation valid for all architectures
 mod reference;
 
 pub(crate) fn digest_block(state: &mut [u32; 8], block: &[u8]) {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
-        /// in waiting for https://github.com/rust-lang/rfcs/pull/2725
         #[cfg(target_feature = "avx")]
-        const HAS_AVX: bool = true;
-        #[cfg(not(target_feature = "avx"))]
-        const HAS_AVX: bool = false;
-
-        #[cfg(target_feature = "sse4.1")]
-        const HAS_SSE41: bool = true;
-        #[cfg(not(target_feature = "sse4.1"))]
-        const HAS_SSE41: bool = false;
-
-        #[cfg(target_feature = "avx")]
-        {
-            if HAS_AVX {
-                return avx::digest_block(state, block);
-            }
+        if avx_available() {
+            return avx::digest_block(state, block);
         }
 
         #[cfg(target_feature = "sse4.1")]
-        {
-            if HAS_SSE41 {
-                return sse41::digest_block(state, block);
-            }
+        if sse4_1_available() {
+            return sse41::digest_block(state, block);
         }
     }
+
     #[cfg(target_arch = "aarch64")]
     {
         #[cfg(feature = "use-stdsimd")]

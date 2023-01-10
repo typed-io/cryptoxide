@@ -32,20 +32,18 @@
 #![allow(clippy::wrong_self_convention)]
 #![allow(clippy::identity_op)]
 #![allow(clippy::many_single_char_names)]
-#![no_std]
 #![cfg_attr(feature = "with-bench", feature(test))]
 #![cfg_attr(feature = "use-stdsimd", feature(stdsimd))]
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
 
 #[cfg(test)]
 #[cfg(feature = "with-bench")]
 extern crate test;
 
-#[cfg(not(feature = "std"))]
+#[cfg(not(any(feature = "std", test)))]
 extern crate alloc;
-
-#[cfg(test)]
-#[macro_use]
-extern crate std;
+#[cfg(any(feature = "std", test))]
+extern crate std as alloc;
 
 #[cfg(feature = "blake2")]
 pub mod blake2b;
@@ -107,5 +105,6 @@ pub mod ripemd160;
 
 mod cryptoutil;
 mod simd;
+mod simd_check;
 
 pub mod constant_time;

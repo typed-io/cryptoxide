@@ -1,3 +1,8 @@
+# 0.4.3
+
+* add Argon2 support (RFC9106)
+* compilation fixes without AVX flags
+
 # 0.4.2
 
 * add some extra odd size legacy blake2b contextes (and some missing one)

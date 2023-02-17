@@ -112,7 +112,7 @@ impl Digest for Blake2b {
         self.finalize(out);
     }
     fn output_bits(&self) -> usize {
-        8 * (self.ctx.output_bits())
+        self.ctx.output_bits()
     }
     fn block_size(&self) -> usize {
         // hack : this is a constant, not related to the number of bit

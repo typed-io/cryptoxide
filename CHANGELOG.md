@@ -1,3 +1,7 @@
+# 0.4.4
+
+* fix legacy blake2b and blake2s `output_bits` interface returning a value 8 times bigger.
+
 # 0.4.3
 
 * add Argon2 support (RFC9106)

@@ -150,6 +150,14 @@ impl<const ROUNDS: usize> State<ROUNDS> {
     pub(crate) fn increment(&mut self) {
         let mut align = Align128::zero();
         align.from_m128i(self.d);
+        align.0[0] = align.0[0].wrapping_add(1);
+        self.d = align.to_m128i();
+    }
+
+    #[inline]
+    pub(crate) fn increment64(&mut self) {
+        let mut align = Align128::zero();
+        align.from_m128i(self.d);
         let (a, overflowed) = align.0[0].overflowing_add(1);
         if overflowed {
             align.0[1] = align.0[1].wrapping_add(1);

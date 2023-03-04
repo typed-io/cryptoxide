@@ -19,7 +19,7 @@
 //! use cryptoxide::chacha20poly1305::ChaCha20Poly1305;
 //!
 //! let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
-//! let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+//! let nonce : [u8; 12] = [1,2,3,4,5,6,7,8,9,10,11,12];
 //! let aad : [u8; 0] = [];
 //! let input : &[u8; 12] = b"hello world!";
 //! let mut out : [u8; 12+16] = [0u8; 12+16];
@@ -39,7 +39,7 @@
 //! use cryptoxide::chacha20poly1305::Context;
 //!
 //! let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
-//! let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+//! let nonce : [u8; 12] = [1,2,3,4,5,6,7,8,9,10,11,12];
 //! let mut context = Context::<20>::new(&key, &nonce);
 //!
 //! // Add incrementally 2 slices of data
@@ -83,7 +83,7 @@ use crate::poly1305::Poly1305;
 /// use cryptoxide::chacha20poly1305::Context;
 ///
 /// let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
-/// let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+/// let nonce : [u8; 12] = [1,2,3,4,5,6,7,8,9,10,11,12];
 /// let mut context = Context::<20>::new(&key, &nonce);
 ///
 /// // Add incrementally 2 slices of data
@@ -145,7 +145,7 @@ impl<const ROUNDS: usize> Context<ROUNDS> {
     /// use cryptoxide::chacha20poly1305::Context;
     ///
     /// let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
-    /// let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+    /// let nonce : [u8; 12] = [1,2,3,4,5,6,7,8,9,10,11,12];
     /// let context = Context::<20>::new(&key, &nonce);
     /// ```
     pub fn new(key: &[u8], nonce: &[u8; 12]) -> Self {
@@ -310,7 +310,7 @@ impl<const ROUNDS: usize> ChaChaPoly1305<ROUNDS> {
     /// use cryptoxide::chacha20poly1305::ChaCha20Poly1305;
     ///
     /// let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
-    /// let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+    /// let nonce : [u8; 12] = [1,2,3,4,5,6,7,8,9,10,11,12];
     /// let aad : [u8; 0] = [];
     /// let input : &[u8; 12] = b"hello world!";
     /// let mut out : [u8; 12+16] = [0u8; 12+16];
@@ -351,11 +351,9 @@ impl<const ROUNDS: usize> ChaChaPoly1305<ROUNDS> {
     /// use cryptoxide::chacha20poly1305::ChaCha20Poly1305;
     ///
     /// let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
-    /// let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+    /// let nonce : [u8; 12] = [1,2,3,4,5,6,7,8,9,10,11,12];
     /// let aad : [u8; 0] = [];
-    /// let ae_msg : [u8; 12+16] = [98, 155, 81, 205, 163, 244, 162, 254, 57, 96, 183,
-    ///                             101, 167, 88, 238, 184, 17, 109, 89, 185, 72, 150,
-    ///                             97, 95, 149, 82, 179, 220];
+    /// let ae_msg : [u8; 12+16] = [108, 82, 26, 254, 225, 35, 236, 248, 197, 246, 224, 48, 26, 63, 45, 5, 196, 47, 207, 128, 34, 182, 149, 185, 193, 73, 147, 29];
     /// let mut decrypt_msg : [u8; 12] = [0u8; 12];
     ///
     /// // create a new cipher

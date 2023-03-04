@@ -97,6 +97,11 @@ impl<const ROUNDS: usize> State<ROUNDS> {
     }
 
     #[inline]
+    pub(crate) fn set_counter(&mut self, counter: u32) {
+        self.state[12] = counter;
+    }
+
+    #[inline]
     pub(crate) fn increment(&mut self) {
         self.state[12] = self.state[12].wrapping_add(1);
     }

@@ -147,6 +147,14 @@ impl<const ROUNDS: usize> State<ROUNDS> {
     }
 
     #[inline]
+    pub(crate) fn set_counter(&mut self, counter: u32) {
+        let mut align = Align128::zero();
+        align.from_m128i(self.d);
+        align.0[0] = counter;
+        self.d = align.to_m128i();
+    }
+
+    #[inline]
     pub(crate) fn increment(&mut self) {
         let mut align = Align128::zero();
         align.from_m128i(self.d);

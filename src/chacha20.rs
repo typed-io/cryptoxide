@@ -80,6 +80,12 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         }
     }
 
+    /// Seek the stream to a specific (64-bytes) block number
+    pub fn seek(&mut self, position: u32) {
+        self.state.set_counter(position);
+        self.offset = 64;
+    }
+
     // put the the next 64 keystream bytes into self.output
     fn update(&mut self) {
         let mut state = self.state.clone();
@@ -158,6 +164,12 @@ impl<const ROUNDS: usize> XChaCha<ROUNDS> {
         };
 
         xchacha
+    }
+
+    /// Seek the stream to a specific (64-bytes) block number
+    pub fn seek(&mut self, position: u32) {
+        self.state.set_counter(position);
+        self.offset = 64;
     }
 
     // put the the next 64 keystream bytes into self.output

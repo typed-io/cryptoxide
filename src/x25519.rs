@@ -35,6 +35,11 @@ macro_rules! bytes_impl {
                 $t(v)
             }
         }
+        impl Into<[u8; $n]> for $t {
+            fn into(self) -> [u8; $n] {
+                self.0
+            }
+        }
         impl core::convert::TryFrom<&[u8]> for $t {
             type Error = ();
 

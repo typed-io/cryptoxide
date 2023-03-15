@@ -19,7 +19,7 @@
 //! use cryptoxide::chacha20poly1305::ChaCha20Poly1305;
 //!
 //! let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
-//! let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+//! let nonce : [u8; 12] = [1,2,3,4,5,6,7,8,9,10,11,12];
 //! let aad : [u8; 0] = [];
 //! let input : &[u8; 12] = b"hello world!";
 //! let mut out : [u8; 12+16] = [0u8; 12+16];
@@ -39,7 +39,7 @@
 //! use cryptoxide::chacha20poly1305::Context;
 //!
 //! let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
-//! let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+//! let nonce : [u8; 12] = [1,2,3,4,5,6,7,8,9,10,11,12];
 //! let mut context = Context::<20>::new(&key, &nonce);
 //!
 //! // Add incrementally 2 slices of data
@@ -72,6 +72,7 @@ use crate::constant_time::{Choice, CtEqual};
 use crate::cryptoutil::write_u64_le;
 use crate::mac::Mac;
 use crate::poly1305::Poly1305;
+use core::convert::TryFrom;
 
 /// Chacha20Poly1305 Incremental Context for Authenticated Data (AAD)
 ///
@@ -83,7 +84,7 @@ use crate::poly1305::Poly1305;
 /// use cryptoxide::chacha20poly1305::Context;
 ///
 /// let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
-/// let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+/// let nonce : [u8; 12] = [1,2,3,4,5,6,7,8,9,10,11,12];
 /// let mut context = Context::<20>::new(&key, &nonce);
 ///
 /// // Add incrementally 2 slices of data
@@ -145,18 +146,17 @@ impl<const ROUNDS: usize> Context<ROUNDS> {
     /// use cryptoxide::chacha20poly1305::Context;
     ///
     /// let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
-    /// let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+    /// let nonce : [u8; 12] = [1,2,3,4,5,6,7,8,9,10,11,12];
     /// let context = Context::<20>::new(&key, &nonce);
     /// ```
-    pub fn new(key: &[u8], nonce: &[u8]) -> Self {
+    pub fn new(key: &[u8], nonce: &[u8; 12]) -> Self {
         assert!(key.len() == 16 || key.len() == 32);
-        assert!(nonce.len() == 8 || nonce.len() == 12);
         let mut cipher = ChaCha::new(key, nonce);
         let mut mac_key = [0u8; 64];
         let zero_key = [0u8; 64];
         cipher.process(&zero_key, &mut mac_key);
 
-        let mac = Poly1305::new(&mac_key[..32]);
+        let mac = Poly1305::new(<&[u8; 32]>::try_from(&mac_key[..32]).unwrap());
         Context {
             cipher: cipher,
             mac: mac,
@@ -287,9 +287,9 @@ impl<const ROUNDS: usize> ChaChaPoly1305<ROUNDS> {
     /// Create a new ChaCha20Poly1305
     ///
     /// * key needs to be 16 or 32 bytes
-    /// * nonce needs to be 8 or 12 bytes
+    /// * nonce needs to be 12 bytes
     ///
-    pub fn new(key: &[u8], nonce: &[u8], aad: &[u8]) -> Self {
+    pub fn new(key: &[u8], nonce: &[u8; 12], aad: &[u8]) -> Self {
         let mut context = Context::new(key, nonce);
         context.add_data(aad);
         ChaChaPoly1305 {
@@ -311,7 +311,7 @@ impl<const ROUNDS: usize> ChaChaPoly1305<ROUNDS> {
     /// use cryptoxide::chacha20poly1305::ChaCha20Poly1305;
     ///
     /// let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
-    /// let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+    /// let nonce : [u8; 12] = [1,2,3,4,5,6,7,8,9,10,11,12];
     /// let aad : [u8; 0] = [];
     /// let input : &[u8; 12] = b"hello world!";
     /// let mut out : [u8; 12+16] = [0u8; 12+16];
@@ -352,11 +352,9 @@ impl<const ROUNDS: usize> ChaChaPoly1305<ROUNDS> {
     /// use cryptoxide::chacha20poly1305::ChaCha20Poly1305;
     ///
     /// let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
-    /// let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+    /// let nonce : [u8; 12] = [1,2,3,4,5,6,7,8,9,10,11,12];
     /// let aad : [u8; 0] = [];
-    /// let ae_msg : [u8; 12+16] = [98, 155, 81, 205, 163, 244, 162, 254, 57, 96, 183,
-    ///                             101, 167, 88, 238, 184, 17, 109, 89, 185, 72, 150,
-    ///                             97, 95, 149, 82, 179, 220];
+    /// let ae_msg : [u8; 12+16] = [108, 82, 26, 254, 225, 35, 236, 248, 197, 246, 224, 48, 26, 63, 45, 5, 196, 47, 207, 128, 34, 182, 149, 185, 193, 73, 147, 29];
     /// let mut decrypt_msg : [u8; 12] = [0u8; 12];
     ///
     /// // create a new cipher
@@ -392,7 +390,7 @@ mod test {
 
     struct TestVector {
         key: [u8; 32],
-        nonce: &'static [u8],
+        nonce: [u8; 12],
         tag: [u8; 16],
         plain_text: &'static [u8],
         cipher_text: &'static [u8],
@@ -429,7 +427,7 @@ mod test {
                     0x8d, 0x8e, 0x8f, 0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99,
                     0x9a, 0x9b, 0x9c, 0x9d, 0x9e, 0x9f,
                 ],
-                nonce: &[
+                nonce: [
                     0x07, 0x00, 0x00, 0x00, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47,
                 ],
                 plain_text: &[
@@ -469,7 +467,7 @@ mod test {
                     0xf6, 0xb5, 0xf0, 0x47, 0x39, 0x17, 0xc1, 0x40, 0x2b, 0x80, 0x09, 0x9d, 0xca,
                     0x5c, 0xbc, 0x20, 0x70, 0x75, 0xc0,
                 ],
-                nonce: &[
+                nonce: [
                     0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
                 ],
                 tag: [

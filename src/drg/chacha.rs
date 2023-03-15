@@ -38,7 +38,7 @@ pub struct Drg<const ROUNDS: usize>(ChaCha<ROUNDS>);
 impl<const ROUNDS: usize> Drg<ROUNDS> {
     /// Create a new DRG using the seed
     pub fn new(seed: &[u8; 32]) -> Self {
-        Self(ChaCha::new(seed, &[0; 8]))
+        Self(ChaCha::new(seed, &[0; 12]))
     }
 
     /// Return the next N bytes of random data as a byte array

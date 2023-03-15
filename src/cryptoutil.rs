@@ -87,20 +87,6 @@ pub fn read_u32_be(input: &[u8]) -> u32 {
 }
 */
 
-/// XOR plaintext and keystream, storing the result in dst.
-pub fn xor_keystream(dst: &mut [u8], plaintext: &[u8], keystream: &[u8]) {
-    assert!(dst.len() == plaintext.len());
-    assert!(plaintext.len() <= keystream.len());
-
-    // Do one byte at a time, using unsafe to skip bounds checking.
-    let p = plaintext.as_ptr();
-    let k = keystream.as_ptr();
-    let d = dst.as_mut_ptr();
-    for i in 0isize..plaintext.len() as isize {
-        unsafe { *d.offset(i) = *p.offset(i) ^ *k.offset(i) };
-    }
-}
-
 /// XOR a keystream in a buffer
 pub fn xor_keystream_mut(buf: &mut [u8], keystream: &[u8]) {
     assert!(buf.len() <= keystream.len());

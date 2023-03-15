@@ -1,13 +1,25 @@
 //! ChaCha20 Stream Cipher
 //!
-//! Implementation of [ChaCha spec](https://cr.yp.to/chacha/chacha-20080128.pdf),
+//! Implementation of [ChaCha spec](https://www.rfc-editor.org/info/rfc7539)
 //! which is a fast and lean stream cipher.
 //!
-//! Along with the standard ChaCha20, there is support for the
-//! XChaCha20 variant with extended nonce.
+//! The maximum amount of data to be processed by a single instance of a ChaCha
+//! Context, is 256Gb (due to the 32 bits counter). Note that this is not
+//! enforced by the context, and using a context to process more than 256Gb of
+//! data would be insecure.
+//!
+//! Along with the standard IETF ChaCha, there is support for the
+//! original ChaCha (with 64 bits counter) and
+//! XChaCha variant with extended 192 bits nonce and 64 bits counter.
 //!
 //! Note that with stream cipher, there's only one operation [`ChaCha20::process`]
 //! instead of the typical encrypt and decrypt.
+//!
+//! # Variants
+//!
+//! Multiple variations of Chacha exists with subtle variations in what they do.
+//! The original version of chacha supports 64 bits counter and 64 bits nonce,
+//! but the RFC7539 version only supports 32 bits counter and 96 bits nonce.
 //!
 //! # Examples
 //!
@@ -17,7 +29,7 @@
 //! use cryptoxide::chacha20::ChaCha20;
 //!
 //! let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
-//! let nonce : [u8; 8] = [1,2,3,4,5,6,7,8];
+//! let nonce : [u8; 12] = [0,1,2,3,4,5,6,7,8,9,10,11];
 //! let input : &[u8; 12] = b"hello world!";
 //! let mut out : [u8; 12] = [0u8; 12];
 //!
@@ -34,7 +46,13 @@ use core::cmp;
 use crate::chacha::ChaChaEngine as ChaChaState;
 use crate::cryptoutil::xor_keystream_mut;
 
-/// ChaCha Context
+/// ChaCha Context (IETF Variant - RFC7539)
+///
+/// Note that the number of rounds is exposed here, and only the
+/// value of 8, 12 and 20 are supported. any other values triggers
+/// a runtime assertion.
+///
+/// If you don't know what rounds values to use, use 20 or the `Chacha20` type directly.
 #[derive(Clone)]
 pub struct ChaCha<const ROUNDS: usize> {
     state: ChaChaState<ROUNDS>,
@@ -44,20 +62,15 @@ pub struct ChaCha<const ROUNDS: usize> {
 
 pub type ChaCha20 = ChaCha<20>;
 
-impl ChaCha<20> {
-    pub fn new_xchacha20(key: &[u8], nonce: &[u8]) -> Self {
-        Self::new_xchacha(key, nonce)
-    }
-}
-
 impl<const ROUNDS: usize> ChaCha<ROUNDS> {
     /// Create a new ChaCha20 context.
     ///
     /// * The key must be 16 or 32 bytes
-    /// * The nonce must be 8 or 12 bytes
-    pub fn new(key: &[u8], nonce: &[u8]) -> Self {
+    /// * The nonce must be 12 bytes
+    ///
+    /// For using 8 bytes (64bits) nonces, uses `ChaChaOriginal`
+    pub fn new(key: &[u8], nonce: &[u8; 12]) -> Self {
         assert!(key.len() == 16 || key.len() == 32);
-        assert!(nonce.len() == 8 || nonce.len() == 12);
         assert!(ROUNDS == 8 || ROUNDS == 12 || ROUNDS == 20);
 
         Self {
@@ -67,46 +80,10 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         }
     }
 
-    /// Create a new XChaCha20 context.
-    ///
-    /// Key must be 32 bytes and the nonce 24 bytes.
-    pub fn new_xchacha(key: &[u8], nonce: &[u8]) -> Self {
-        assert!(key.len() == 32);
-        assert!(nonce.len() == 24);
-        assert!(ROUNDS == 8 || ROUNDS == 12 || ROUNDS == 20);
-
-        // HChaCha20 produces a 256-bit output block starting from a 512 bit
-        // input block where (x0,x1,...,x15) where
-        //
-        //  * (x0, x1, x2, x3) is the ChaCha20 constant.
-        //  * (x4, x5, ... x11) is a 256 bit key.
-        //  * (x12, x13, x14, x15) is a 128 bit nonce.
-        let mut xchacha = ChaCha {
-            state: ChaChaState::init(key, &nonce[0..16]),
-            output: [0u8; 64],
-            offset: 64,
-        };
-
-        // Use HChaCha to derive the subkey, and initialize a ChaCha<ROUNDS> instance
-        // with the subkey and the remaining 8 bytes of the nonce.
-        let mut new_key = [0; 32];
-        xchacha.hchacha(&mut new_key);
-        xchacha.state = ChaChaState::init(&new_key, &nonce[16..24]);
-
-        xchacha
-    }
-
-    fn hchacha(&mut self, out: &mut [u8; 32]) {
-        let mut state = self.state.clone();
-
-        // Apply r/2 iterations of the same "double-round" function,
-        // obtaining (z0, z1, ... z15) = doubleround r/2 (x0, x1, ... x15).
-        state.rounds();
-
-        // HChaCha20 then outputs the 256-bit block (z0, z1, z2, z3, z12, z13,
-        // z14, z15).  These correspond to the constant and input positions in
-        // the ChaCha matrix.
-        state.output_ad_bytes(out)
+    /// Seek the stream to a specific (64-bytes) block number
+    pub fn seek(&mut self, position: u32) {
+        self.state.set_counter(position);
+        self.offset = 64;
     }
 
     // put the the next 64 keystream bytes into self.output
@@ -158,12 +135,184 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
     }
 }
 
+/// XChaCha Context
+#[derive(Clone)]
+pub struct XChaCha<const ROUNDS: usize> {
+    state: ChaChaState<ROUNDS>,
+    output: [u8; 64],
+    offset: usize,
+}
+
+impl<const ROUNDS: usize> XChaCha<ROUNDS> {
+    /// Create a new XChaCha20 context.
+    ///
+    /// Key must be 32 bytes and the nonce 24 bytes.
+    pub fn new(key: &[u8; 32], nonce: &[u8; 24]) -> Self {
+        assert!(ROUNDS == 8 || ROUNDS == 12 || ROUNDS == 20);
+
+        // Use HChaCha to derive the subkey, and initialize a ChaCha<ROUNDS> instance
+        // with the subkey and the remaining 8 bytes of the nonce.
+        let mut hchacha = ChaChaState::<ROUNDS>::init(key, &nonce[0..16]);
+        hchacha.rounds();
+        let mut new_key = [0; 32];
+        hchacha.output_ad_bytes(&mut new_key);
+
+        let xchacha = XChaCha {
+            state: ChaChaState::init(&new_key, &nonce[16..24]),
+            output: [0u8; 64],
+            offset: 64,
+        };
+
+        xchacha
+    }
+
+    /// Seek the stream to a specific (64-bytes) block number
+    pub fn seek(&mut self, position: u32) {
+        self.state.set_counter(position);
+        self.offset = 64;
+    }
+
+    // put the the next 64 keystream bytes into self.output
+    fn update(&mut self) {
+        let mut state = self.state.clone();
+        state.rounds();
+        state.add_back(&self.state);
+
+        state.output_bytes(&mut self.output);
+
+        self.state.increment();
+        self.offset = 0;
+    }
+
+    /// Process the input in place through the cipher xoring
+    ///
+    /// To get only the stream of this cipher, one can just pass the zero
+    /// buffer (X xor 0 = X)
+    pub fn process_mut(&mut self, data: &mut [u8]) {
+        let len = data.len();
+        let mut i = 0;
+        while i < len {
+            // If there is no keystream available in the output buffer,
+            // generate the next block.
+            if self.offset == 64 {
+                self.update();
+            }
+
+            // Process the min(available keystream, remaining input length).
+            let count = cmp::min(64 - self.offset, len - i);
+            xor_keystream_mut(&mut data[i..i + count], &self.output[self.offset..]);
+            i += count;
+            self.offset += count;
+        }
+    }
+
+    /// Process the input through the cipher, xoring the byte one-by-one
+    ///
+    /// the output need to be the same size as the input otherwise
+    /// this function will panic.
+    pub fn process(&mut self, input: &[u8], output: &mut [u8]) {
+        assert_eq!(
+            input.len(),
+            output.len(),
+            "chacha::process need to have input and output of the same size"
+        );
+        output.copy_from_slice(input);
+        self.process_mut(output);
+    }
+}
+
+/// ChaCha Context (Original version - Bernstein & co)
+///
+/// This variant has an 8 bytes nonce initializer, and an 8 bytes counter
+///
+/// Note that the number of rounds is exposed here, and only the
+/// value of 8, 12 and 20 are supported. any other values triggers
+/// a runtime assertion.
+///
+/// If you don't know what round values to use, use 20
+#[derive(Clone)]
+pub struct ChaChaOriginal<const ROUNDS: usize> {
+    state: ChaChaState<ROUNDS>,
+    output: [u8; 64],
+    offset: usize,
+}
+
+impl<const ROUNDS: usize> ChaChaOriginal<ROUNDS> {
+    /// Create a new ChaCha20 context.
+    ///
+    /// * The key must be 16 or 32 bytes
+    /// * The nonce must be 8 bytes
+    ///
+    /// For using 12 bytes (96 bits) nonces, uses the IETF variant `ChaCha`
+    pub fn new(key: &[u8], nonce: &[u8; 8]) -> Self {
+        assert!(key.len() == 16 || key.len() == 32);
+        assert!(ROUNDS == 8 || ROUNDS == 12 || ROUNDS == 20);
+
+        Self {
+            state: ChaChaState::init(key, nonce),
+            output: [0u8; 64],
+            offset: 64,
+        }
+    }
+
+    // put the the next 64 keystream bytes into self.output
+    fn update(&mut self) {
+        let mut state = self.state.clone();
+        state.rounds();
+        state.add_back(&self.state);
+
+        state.output_bytes(&mut self.output);
+
+        // this is the only real subtle difference with IETF Chacha (along with initialization difference)
+        self.state.increment64();
+        self.offset = 0;
+    }
+
+    /// Process the input in place through the cipher xoring
+    ///
+    /// To get only the stream of this cipher, one can just pass the zero
+    /// buffer (X xor 0 = X)
+    pub fn process_mut(&mut self, data: &mut [u8]) {
+        let len = data.len();
+        let mut i = 0;
+        while i < len {
+            // If there is no keystream available in the output buffer,
+            // generate the next block.
+            if self.offset == 64 {
+                self.update();
+            }
+
+            // Process the min(available keystream, remaining input length).
+            let count = cmp::min(64 - self.offset, len - i);
+            xor_keystream_mut(&mut data[i..i + count], &self.output[self.offset..]);
+            i += count;
+            self.offset += count;
+        }
+    }
+
+    /// Process the input through the cipher, xoring the byte one-by-one
+    ///
+    /// the output need to be the same size as the input otherwise
+    /// this function will panic.
+    pub fn process(&mut self, input: &[u8], output: &mut [u8]) {
+        assert_eq!(
+            input.len(),
+            output.len(),
+            "chacha::process need to have input and output of the same size"
+        );
+        output.copy_from_slice(input);
+        self.process_mut(output);
+    }
+}
+
 #[cfg(test)]
 mod test {
     use alloc::vec::Vec;
     use core::iter::repeat;
 
     use super::ChaCha20;
+    use super::ChaChaOriginal;
+    use super::XChaCha;
 
     #[test]
     fn test_chacha20_256_tls_vectors() {
@@ -267,7 +416,7 @@ mod test {
         ];
 
         for tv in test_vectors.iter() {
-            let mut c = ChaCha20::new(&tv.key, &tv.nonce);
+            let mut c = ChaChaOriginal::<20>::new(&tv.key, &tv.nonce);
             let input: Vec<u8> = repeat(0).take(tv.keystream.len()).collect();
             let mut output: Vec<u8> = repeat(0).take(input.len()).collect();
             c.process(&input[..], &mut output[..]);
@@ -304,9 +453,9 @@ mod test {
             0x0e, 0x21, 0x69, 0x1d, 0x7e, 0xce, 0xc9, 0x3b, 0x75, 0xe6, 0xe4, 0x18, 0x3a,
         ];
 
-        let mut xchacha20 = ChaCha20::new_xchacha20(&key, &nonce);
+        let mut xchacha20 = XChaCha::<20>::new(&key, &nonce);
         xchacha20.process(&input, &mut stream);
-        assert!(stream[..] == result[..]);
+        assert_eq!(stream, result);
     }
 
     #[test]

@@ -1,3 +1,19 @@
+# unreleased
+
+* Improve performance of Salsa by 3x and Chacha by 10x
+* Clearly distinguish at the type level various variants of chacha:
+    * Chacha as IETF (recommended)
+    * Chacha as original paper (64 bits counters)
+    * XChacha
+* Distinguish at the type level Salsa and XSalsa
+
+Breaking Changes:
+
+* Chacha, Salsa and Poly1305 interface changes to expect fixed sized array instead of slice, for stronger type safety
+  and less runtime error.
+* `Chacha::new_xchacha20::<ROUNDS>()` is now `XChacha::<ROUNDS>::init()`
+* `Salsa::new_salsa20::<ROUNDS>()` is now `XSalsa::<ROUNDS>::init()`
+
 # 0.4.4
 
 * fix legacy blake2b and blake2s `output_bits` interface returning a value 8 times bigger.

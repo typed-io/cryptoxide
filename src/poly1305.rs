@@ -23,7 +23,7 @@ use crate::mac::{Mac, MacResult};
 /// `Poly1305` Context
 ///
 /// Use the `Mac` traits for interaction
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Poly1305 {
     r: [u32; 5],
     h: [u32; 5],
@@ -40,30 +40,31 @@ fn mul64(a: u32, b: u32) -> u64 {
 
 impl Poly1305 {
     /// Create a new `Poly1305` context using the key (32 bytes)
-    pub fn new(key: &[u8]) -> Self {
-        assert!(key.len() == 32);
-        let mut poly = Poly1305 {
-            r: [0u32; 5],
+    pub fn new(key: &[u8; 32]) -> Self {
+        // r &= 0xffffffc0ffffffc0ffffffc0fffffff
+        let r = [
+            (read_u32_le(&key[0..4])) & 0x3ffffff,
+            (read_u32_le(&key[3..7]) >> 2) & 0x3ffff03,
+            (read_u32_le(&key[6..10]) >> 4) & 0x3ffc0ff,
+            (read_u32_le(&key[9..13]) >> 6) & 0x3f03fff,
+            (read_u32_le(&key[12..16]) >> 8) & 0x00fffff,
+        ];
+
+        let pad = [
+            read_u32_le(&key[16..20]),
+            read_u32_le(&key[20..24]),
+            read_u32_le(&key[24..28]),
+            read_u32_le(&key[28..32]),
+        ];
+
+        Poly1305 {
+            r,
             h: [0u32; 5],
-            pad: [0u32; 4],
+            pad,
             leftover: 0,
             buffer: [0u8; 16],
             finalized: false,
-        };
-
-        // r &= 0xffffffc0ffffffc0ffffffc0fffffff
-        poly.r[0] = (read_u32_le(&key[0..4])) & 0x3ffffff;
-        poly.r[1] = (read_u32_le(&key[3..7]) >> 2) & 0x3ffff03;
-        poly.r[2] = (read_u32_le(&key[6..10]) >> 4) & 0x3ffc0ff;
-        poly.r[3] = (read_u32_le(&key[9..13]) >> 6) & 0x3f03fff;
-        poly.r[4] = (read_u32_le(&key[12..16]) >> 8) & 0x00fffff;
-
-        poly.pad[0] = read_u32_le(&key[16..20]);
-        poly.pad[1] = read_u32_le(&key[20..24]);
-        poly.pad[2] = read_u32_le(&key[24..28]);
-        poly.pad[3] = read_u32_le(&key[28..32]);
-
-        poly
+        }
     }
 
     #[rustfmt::skip]
@@ -255,7 +256,7 @@ mod test {
     use crate::mac::Mac;
     use crate::poly1305::Poly1305;
 
-    fn poly1305(key: &[u8], msg: &[u8], mac: &mut [u8]) {
+    fn poly1305(key: &[u8; 32], msg: &[u8], mac: &mut [u8]) {
         let mut poly = Poly1305::new(key);
         poly.input(msg);
         poly.raw_result(mac);
@@ -345,7 +346,7 @@ mod test {
             let key = [i as u8; 32];
             let msg = [i as u8; 256];
             let mut mac = [0u8; 16];
-            poly1305(&key[..], &msg[0..i], &mut mac);
+            poly1305(&key, &msg[0..i], &mut mac);
             tpoly.input(&mac);
         }
         tpoly.raw_result(&mut mac);

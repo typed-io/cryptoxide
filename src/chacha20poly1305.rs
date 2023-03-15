@@ -72,6 +72,7 @@ use crate::constant_time::{Choice, CtEqual};
 use crate::cryptoutil::write_u64_le;
 use crate::mac::Mac;
 use crate::poly1305::Poly1305;
+use core::convert::TryFrom;
 
 /// Chacha20Poly1305 Incremental Context for Authenticated Data (AAD)
 ///
@@ -155,7 +156,7 @@ impl<const ROUNDS: usize> Context<ROUNDS> {
         let zero_key = [0u8; 64];
         cipher.process(&zero_key, &mut mac_key);
 
-        let mac = Poly1305::new(&mac_key[..32]);
+        let mac = Poly1305::new(<&[u8; 32]>::try_from(&mac_key[..32]).unwrap());
         Context {
             cipher: cipher,
             mac: mac,

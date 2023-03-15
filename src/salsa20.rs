@@ -20,130 +20,34 @@
 //! ```
 //!
 
-// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
-// option. This file may not be copied, modified, or distributed
-// except according to those terms.
-
-use crate::cryptoutil::{read_u32_le, write_u32_le, xor_keystream};
-use crate::simd::u32x4;
+use crate::cryptoutil::{read_u32_le, write_u32_le, write_u32v_le, xor_keystream_mut};
 
 use core::cmp;
 
 #[derive(Clone)]
-struct SalsaState {
-    a: u32x4,
-    b: u32x4,
-    c: u32x4,
-    d: u32x4,
+struct State<const ROUNDS: usize> {
+    state: [u32; 16],
 }
 
-#[derive(Clone)]
-pub struct Salsa<const ROUNDS: usize> {
-    state: SalsaState,
-    output: [u8; 64],
-    offset: usize,
+macro_rules! QR {
+    ($a:ident, $b:ident, $c:ident, $d:ident) => {
+        $b ^= $a.wrapping_add($d).rotate_left(7);
+        $c ^= $b.wrapping_add($a).rotate_left(9);
+        $d ^= $c.wrapping_add($b).rotate_left(13);
+        $a ^= $d.wrapping_add($c).rotate_left(18);
+    };
 }
 
-pub type Salsa20 = Salsa<20>;
-
-const S7: u32x4 = u32x4(7, 7, 7, 7);
-const S9: u32x4 = u32x4(9, 9, 9, 9);
-const S13: u32x4 = u32x4(13, 13, 13, 13);
-const S18: u32x4 = u32x4(18, 18, 18, 18);
-const S32: u32x4 = u32x4(32, 32, 32, 32);
-
-macro_rules! prepare_rowround {
-    ($a: expr, $b: expr, $c: expr) => {{
-        let u32x4(a10, a11, a12, a13) = $a;
-        $a = u32x4(a13, a10, a11, a12);
-        let u32x4(b10, b11, b12, b13) = $b;
-        $b = u32x4(b12, b13, b10, b11);
-        let u32x4(c10, c11, c12, c13) = $c;
-        $c = u32x4(c11, c12, c13, c10);
-    }};
-}
-
-macro_rules! prepare_columnround {
-    ($a: expr, $b: expr, $c: expr) => {{
-        let u32x4(a13, a10, a11, a12) = $a;
-        $a = u32x4(a10, a11, a12, a13);
-        let u32x4(b12, b13, b10, b11) = $b;
-        $b = u32x4(b10, b11, b12, b13);
-        let u32x4(c11, c12, c13, c10) = $c;
-        $c = u32x4(c10, c11, c12, c13);
-    }};
-}
-
-macro_rules! add_rotate_xor {
-    ($dst: expr, $a: expr, $b: expr, $shift: expr) => {{
-        let v = $a + $b;
-        let r = S32 - $shift;
-        let right = v >> r;
-        $dst = $dst ^ (v << $shift) ^ right
-    }};
-}
-
-fn columnround(state: &mut SalsaState) {
-    add_rotate_xor!(state.a, state.d, state.c, S7);
-    add_rotate_xor!(state.b, state.a, state.d, S9);
-    add_rotate_xor!(state.c, state.b, state.a, S13);
-    add_rotate_xor!(state.d, state.c, state.b, S18);
-}
-
-fn rowround(state: &mut SalsaState) {
-    add_rotate_xor!(state.c, state.d, state.a, S7);
-    add_rotate_xor!(state.b, state.c, state.d, S9);
-    add_rotate_xor!(state.a, state.c, state.b, S13);
-    add_rotate_xor!(state.d, state.a, state.b, S18);
-}
-
-impl<const ROUNDS: usize> Salsa<ROUNDS> {
-    pub fn new(key: &[u8], nonce: &[u8]) -> Salsa20 {
-        assert!(key.len() == 16 || key.len() == 32);
-        assert!(nonce.len() == 8);
-        Salsa {
-            state: Salsa::<ROUNDS>::expand(key, nonce),
-            output: [0; 64],
-            offset: 64,
-        }
-    }
-
-    pub fn new_xsalsa20(key: &[u8], nonce: &[u8]) -> Salsa20 {
-        assert!(key.len() == 32);
-        assert!(nonce.len() == 24);
-        let mut xsalsa = Salsa {
-            state: Salsa::<ROUNDS>::expand(key, &nonce[0..16]),
-            output: [0; 64],
-            offset: 64,
-        };
-
-        let mut new_key = [0; 32];
-        xsalsa.hsalsa_hash(&mut new_key);
-        xsalsa.state = Salsa20::expand(&new_key, &nonce[16..24]);
-
-        xsalsa
-    }
-
-    fn expand(key: &[u8], nonce: &[u8]) -> SalsaState {
+impl<const ROUNDS: usize> State<ROUNDS> {
+    pub(crate) fn init(key: &[u8], nonce: &[u8]) -> Self {
         let constant = match key.len() {
             16 => b"expand 16-byte k",
             32 => b"expand 32-byte k",
             _ => unreachable!(),
         };
 
-        // The state vectors are laid out to facilitate SIMD operation,
-        // instead of the natural matrix ordering.
-        //
-        //  * Constant (x0, x5, x10, x15)
-        //  * Key (x1, x2, x3, x4, x11, x12, x13, x14)
-        //  * Input (x6, x7, x8, x9)
-
-        // (x11, x12, x13, x14)
         let key_tail = if key.len() == 16 { key } else { &key[16..32] };
 
-        // (x8, x9)
         let (x8, x9) = if nonce.len() == 16 {
             // HSalsa uses the full 16 byte nonce.
             (read_u32_le(&nonce[8..12]), read_u32_le(&nonce[12..16]))
@@ -151,77 +55,137 @@ impl<const ROUNDS: usize> Salsa<ROUNDS> {
             (0, 0)
         };
 
-        SalsaState {
-            a: u32x4(
-                read_u32_le(&key[12..16]),      // x4
-                x9,                             // x9
-                read_u32_le(&key_tail[12..16]), // x14
-                read_u32_le(&key[8..12]),       // x3
-            ),
-            b: u32x4(
-                x8,                            // x8
-                read_u32_le(&key_tail[8..12]), // x13
-                read_u32_le(&key[4..8]),       // x2
-                read_u32_le(&nonce[4..8]),     // x7
-            ),
-            c: u32x4(
-                read_u32_le(&key_tail[4..8]), // x12
-                read_u32_le(&key[0..4]),      // x1
-                read_u32_le(&nonce[0..4]),    // x6
-                read_u32_le(&key_tail[0..4]), // x11
-            ),
-            d: u32x4(
-                read_u32_le(&constant[0..4]),   // x0
-                read_u32_le(&constant[4..8]),   // x5
-                read_u32_le(&constant[8..12]),  // x10
-                read_u32_le(&constant[12..16]), // x15
-            ),
+        let state = [
+            read_u32_le(&constant[0..4]),
+            read_u32_le(&key[0..4]),
+            read_u32_le(&key[4..8]),
+            read_u32_le(&key[8..12]),
+            read_u32_le(&key[12..16]),
+            read_u32_le(&constant[4..8]),
+            read_u32_le(&nonce[0..4]),
+            read_u32_le(&nonce[4..8]),
+            x8,
+            x9,
+            read_u32_le(&constant[8..12]),
+            read_u32_le(&key_tail[0..4]),
+            read_u32_le(&key_tail[4..8]),
+            read_u32_le(&key_tail[8..12]),
+            read_u32_le(&key_tail[12..16]),
+            read_u32_le(&constant[12..16]),
+        ];
+        Self { state }
+    }
+
+    #[inline]
+    pub(crate) fn rounds(&mut self) {
+        let [mut x0, mut x1, mut x2, mut x3, mut x4, mut x5, mut x6, mut x7, mut x8, mut x9, mut x10, mut x11, mut x12, mut x13, mut x14, mut x15] =
+            self.state;
+
+        for _ in 0..(ROUNDS / 2) {
+            QR!(x0, x4, x8, x12);
+            QR!(x5, x9, x13, x1);
+            QR!(x10, x14, x2, x6);
+            QR!(x15, x3, x7, x11);
+            QR!(x0, x1, x2, x3);
+            QR!(x5, x6, x7, x4);
+            QR!(x10, x11, x8, x9);
+            QR!(x15, x12, x13, x14);
+        }
+
+        self.state = [
+            x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15,
+        ];
+    }
+
+    #[inline]
+    /// Add back the initial state
+    pub(crate) fn add_back(&mut self, initial: &Self) {
+        for i in 0..16 {
+            self.state[i] = self.state[i].wrapping_add(initial.state[i]);
         }
     }
 
-    fn hash(&mut self) {
+    #[inline]
+    pub(crate) fn increment(&mut self) {
+        self.state[8] = self.state[8].wrapping_add(1);
+        if self.state[8] == 0 {
+            self.state[9] = self.state[9].wrapping_add(1);
+        }
+    }
+
+    #[inline]
+    pub(crate) fn output_bytes(&self, output: &mut [u8]) {
+        write_u32v_le(output, &self.state);
+    }
+
+    #[inline]
+    pub(crate) fn output_ad_bytes(&self, output: &mut [u8; 32]) {
+        write_u32_le(&mut output[0..4], self.state[0]);
+        write_u32_le(&mut output[4..8], self.state[5]);
+        write_u32_le(&mut output[8..12], self.state[10]);
+        write_u32_le(&mut output[12..16], self.state[15]);
+        write_u32_le(&mut output[16..20], self.state[6]);
+        write_u32_le(&mut output[20..24], self.state[7]);
+        write_u32_le(&mut output[24..28], self.state[8]);
+        write_u32_le(&mut output[28..32], self.state[9]);
+    }
+}
+
+#[derive(Clone)]
+pub struct Salsa<const ROUNDS: usize> {
+    state: State<ROUNDS>,
+    output: [u8; 64],
+    offset: usize,
+}
+
+pub type Salsa20 = Salsa<20>;
+
+impl<const ROUNDS: usize> Salsa<ROUNDS> {
+    /// Create a new ChaCha20 context.
+    ///
+    /// * The key must be 16 or 32 bytes
+    /// * The nonce must be 8 bytes
+    pub fn new(key: &[u8], nonce: &[u8; 8]) -> Self {
+        assert!(key.len() == 16 || key.len() == 32);
+        assert!(ROUNDS == 8 || ROUNDS == 12 || ROUNDS == 20);
+
+        Salsa {
+            state: State::<ROUNDS>::init(key, nonce),
+            output: [0; 64],
+            offset: 64,
+        }
+    }
+
+    fn update(&mut self) {
         let mut state = self.state.clone();
-        for _ in 0..10 {
-            columnround(&mut state);
-            prepare_rowround!(state.a, state.b, state.c);
-            rowround(&mut state);
-            prepare_columnround!(state.a, state.b, state.c);
-        }
-        let u32x4(x4, x9, x14, x3) = self.state.a + state.a;
-        let u32x4(x8, x13, x2, x7) = self.state.b + state.b;
-        let u32x4(x12, x1, x6, x11) = self.state.c + state.c;
-        let u32x4(x0, x5, x10, x15) = self.state.d + state.d;
-        let lens = [
-            x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15,
-        ];
-        for (i, lensi) in lens.iter().enumerate() {
-            write_u32_le(&mut self.output[i * 4..(i + 1) * 4], *lensi);
-        }
+        state.rounds();
+        state.add_back(&self.state);
 
-        self.state.b = self.state.b + u32x4(1, 0, 0, 0);
-        let u32x4(_, _, _, ctr_lo) = self.state.b;
-        if ctr_lo == 0 {
-            self.state.a = self.state.a + u32x4(0, 1, 0, 0);
-        }
+        state.output_bytes(&mut self.output);
 
+        self.state.increment();
         self.offset = 0;
     }
 
-    fn hsalsa_hash(&mut self, out: &mut [u8]) {
-        let mut state = self.state.clone();
-        for _ in 0..10 {
-            columnround(&mut state);
-            prepare_rowround!(state.a, state.b, state.c);
-            rowround(&mut state);
-            prepare_columnround!(state.a, state.b, state.c);
-        }
-        let u32x4(_, x9, _, _) = state.a;
-        let u32x4(x8, _, _, x7) = state.b;
-        let u32x4(_, _, x6, _) = state.c;
-        let u32x4(x0, x5, x10, x15) = state.d;
-        let lens = [x0, x5, x10, x15, x6, x7, x8, x9];
-        for i in 0..lens.len() {
-            write_u32_le(&mut out[i * 4..(i + 1) * 4], lens[i]);
+    /// Process the input in place through the cipher xoring
+    ///
+    /// To get only the stream of this cipher, one can just pass the zero
+    /// buffer (X xor 0 = X)
+    pub fn process_mut(&mut self, data: &mut [u8]) {
+        let len = data.len();
+        let mut i = 0;
+        while i < len {
+            // If there is no keystream available in the output buffer,
+            // generate the next block.
+            if self.offset == 64 {
+                self.update();
+            }
+
+            // Process the min(available keystream, remaining input length).
+            let count = cmp::min(64 - self.offset, len - i);
+            xor_keystream_mut(&mut data[i..i + count], &self.output[self.offset..]);
+            i += count;
+            self.offset += count;
         }
     }
 
@@ -230,49 +194,96 @@ impl<const ROUNDS: usize> Salsa<ROUNDS> {
     /// the output need to be the same size as the input otherwise
     /// this function will panic.
     pub fn process(&mut self, input: &[u8], output: &mut [u8]) {
-        assert!(input.len() == output.len());
-        let len = input.len();
+        assert_eq!(
+            input.len(),
+            output.len(),
+            "chacha::process need to have input and output of the same size"
+        );
+        output.copy_from_slice(input);
+        self.process_mut(output);
+    }
+}
+
+#[derive(Clone)]
+pub struct XSalsa<const ROUNDS: usize> {
+    state: State<ROUNDS>,
+    output: [u8; 64],
+    offset: usize,
+}
+
+pub type XSalsa20 = XSalsa<20>;
+
+impl<const ROUNDS: usize> XSalsa<ROUNDS> {
+    /// Create a new XSalsa context.
+    ///
+    /// Key must be 32 bytes and the nonce 24 bytes.
+    pub fn new(key: &[u8; 32], nonce: &[u8; 24]) -> Self {
+        assert!(ROUNDS == 8 || ROUNDS == 12 || ROUNDS == 20);
+
+        let mut hsalsa = State::<ROUNDS>::init(key, &nonce[0..16]);
+        hsalsa.rounds();
+        let mut new_key = [0; 32];
+        hsalsa.output_ad_bytes(&mut new_key);
+
+        let xsalsa = Self {
+            state: State::init(&new_key, &nonce[16..24]),
+            output: [0u8; 64],
+            offset: 64,
+        };
+        xsalsa
+    }
+
+    fn update(&mut self) {
+        let mut state = self.state.clone();
+        state.rounds();
+        state.add_back(&self.state);
+
+        state.output_bytes(&mut self.output);
+
+        self.state.increment();
+        self.offset = 0;
+    }
+
+    /// Process the input in place through the cipher xoring
+    ///
+    /// To get only the stream of this cipher, one can just pass the zero
+    /// buffer (X xor 0 = X)
+    pub fn process_mut(&mut self, data: &mut [u8]) {
+        let len = data.len();
         let mut i = 0;
         while i < len {
             // If there is no keystream available in the output buffer,
             // generate the next block.
             if self.offset == 64 {
-                self.hash();
+                self.update();
             }
 
             // Process the min(available keystream, remaining input length).
             let count = cmp::min(64 - self.offset, len - i);
-            xor_keystream(
-                &mut output[i..i + count],
-                &input[i..i + count],
-                &self.output[self.offset..],
-            );
+            xor_keystream_mut(&mut data[i..i + count], &self.output[self.offset..]);
             i += count;
             self.offset += count;
         }
     }
-}
 
-pub fn hsalsa<const ROUNDS: usize>(key: &[u8], nonce: &[u8], out: &mut [u8]) {
-    assert!(key.len() == 32);
-    assert!(nonce.len() == 16);
-    assert!(ROUNDS == 8 || ROUNDS == 12 || ROUNDS == 20);
-
-    let mut h = Salsa20 {
-        state: Salsa20::expand(key, nonce),
-        output: [0; 64],
-        offset: 64,
-    };
-    h.hsalsa_hash(out);
-}
-
-pub fn hsalsa20(key: &[u8], nonce: &[u8], out: &mut [u8]) {
-    hsalsa::<20>(key, nonce, out)
+    /// Process the input through the cipher, xoring the byte one-by-one
+    ///
+    /// the output need to be the same size as the input otherwise
+    /// this function will panic.
+    pub fn process(&mut self, input: &[u8], output: &mut [u8]) {
+        assert_eq!(
+            input.len(),
+            output.len(),
+            "chacha::process need to have input and output of the same size"
+        );
+        output.copy_from_slice(input);
+        self.process_mut(output);
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use super::Salsa20;
+    use super::{Salsa20, XSalsa20};
 
     use crate::digest::Digest;
     use crate::sha2::Sha256;
@@ -293,7 +304,7 @@ mod test {
 
         let mut salsa20 = Salsa20::new(&key, &nonce);
         salsa20.process(&input, &mut stream);
-        assert!(stream[..] == result[..]);
+        assert_eq!(stream, result);
     }
 
     #[test]
@@ -315,7 +326,7 @@ mod test {
 
         let mut salsa20 = Salsa20::new(&key, &nonce);
         salsa20.process(&input, &mut stream);
-        assert!(stream[..] == result[..]);
+        assert_eq!(stream, result);
     }
 
     #[test]
@@ -341,7 +352,7 @@ mod test {
         }
 
         let out_str = sh.result_str();
-        assert!(&out_str[..] == output_str);
+        assert_eq!(out_str, output_str);
     }
 
     #[test]
@@ -370,9 +381,9 @@ mod test {
             0xf6, 0x04, 0x9d, 0x0a, 0x5c, 0x8a, 0x82, 0xf4, 0x29, 0x23, 0x1f, 0x00, 0x80,
         ];
 
-        let mut xsalsa20 = Salsa20::new_xsalsa20(&key, &nonce);
+        let mut xsalsa20 = XSalsa20::new(&key, &nonce);
         xsalsa20.process(&input, &mut stream);
-        assert!(stream[..] == result[..]);
+        assert_eq!(stream, result);
     }
 }
 

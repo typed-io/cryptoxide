@@ -25,6 +25,7 @@ pub use fe32::*;
 pub use fe64::*;
 
 impl Fe {
+    /// Raise a field element to 2^255-23
     pub fn pow25523(&self) -> Fe {
         let z2 = self.square();
         let z8 = z2.square_repeatdly(2);

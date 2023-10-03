@@ -689,10 +689,17 @@ enum Type {
 /// this allow to disassociate the chosen arguments (password, salt, aad),
 /// from the computationally and memory intensive tasks that argon2 go
 /// through to derive the final result.
+///
+/// After H0 is computed with one call to blake2, the secret values to the overall
+/// argon2 call can be disposed of, allowing for potentially tighter security around the secrets
 #[derive(Clone)]
 pub struct H0([u8; 64]);
 
 impl H0 {
+    /// Create a new initial hash value for Argon2
+    ///
+    /// The secret material to argon2 (password and key) can be disposed of after this call,
+    /// and the computation of the value is fast compared to running argon2
     pub fn new(
         params: &Params,
         password: &[u8],

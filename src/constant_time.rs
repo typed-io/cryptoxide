@@ -46,12 +46,17 @@ pub struct CtOption<T> {
 }
 
 impl Choice {
+    /// Return true if the Choice represent true
     pub fn is_true(self) -> bool {
         self.0 == 1
     }
+    /// return true if the Choice represent false
     pub fn is_false(self) -> bool {
         self.0 == 0
     }
+    /// Toggle the value represented by the Choice in constant time
+    ///
+    /// true become false, false become true
     pub fn negate(self) -> Self {
         Choice(1 ^ self.0)
     }
@@ -94,6 +99,7 @@ impl<T> From<(Choice, T)> for CtOption<T> {
 }
 
 impl<T> CtOption<T> {
+    /// Transform a `CtOption<T>` into a non constant `Option<T>`
     pub fn into_option(self) -> Option<T> {
         if self.present.is_true() {
             Some(self.t)
@@ -108,7 +114,12 @@ impl<T> CtOption<T> {
 /// Note that zero means 0 with integer primitive, or for array of integer
 /// it means all elements are 0
 pub trait CtZero {
+    /// Check that the element is 'zero' in constant time and return the associated `Choice`
     fn ct_zero(self) -> Choice;
+
+    /// Check that the element is 'non-zero' in constant time and return the associated `Choice`
+    ///
+    /// The following call `ct_nonzero(t)` is equivalent to `ct_zero(t).negate()`
     fn ct_nonzero(self) -> Choice;
 }
 
@@ -116,7 +127,14 @@ pub trait CtZero {
 ///
 /// This equivalent to the > operator found in the core library.
 pub trait CtGreater: Sized {
+    /// Check that the first element is greater to the second element in
+    /// constant time and return the associated `Choice`
     fn ct_gt(a: Self, b: Self) -> Choice;
+
+    /// Check that the first element is lesser or equal to the second element in
+    /// constant time and return the associated `Choice`
+    ///
+    /// This is equivalent to calling `ct_gt` with the argument swapped
     fn ct_le(a: Self, b: Self) -> Choice {
         Self::ct_gt(b, a)
     }
@@ -126,7 +144,14 @@ pub trait CtGreater: Sized {
 ///
 /// This equivalent to the < operator found in the core library.
 pub trait CtLesser: Sized {
+    /// Check that the first element is lesser to the second element in
+    /// constant time and return the associated `Choice`
     fn ct_lt(a: Self, b: Self) -> Choice;
+
+    /// Check that the first element is greater or equal to the second element in
+    /// constant time and return the associated `Choice`
+    ///
+    /// This is equivalent of calling `ct_lt` with the argument swapped
     fn ct_ge(a: Self, b: Self) -> Choice {
         Self::ct_lt(b, a)
     }
@@ -136,7 +161,12 @@ pub trait CtLesser: Sized {
 ///
 /// This equivalent to the == operator found in the core library.
 pub trait CtEqual<Rhs: ?Sized = Self> {
+    /// Check that the two element are equal in constant time and return the associated `Choice`
     fn ct_eq(self, b: Rhs) -> Choice;
+
+    /// Check that the two element are not equal in constant time and return the associated `Choice`
+    ///
+    /// this is equivalent to calling `lhs.ct_eq(rhs).negate()`
     fn ct_ne(self, b: Rhs) -> Choice;
 }
 

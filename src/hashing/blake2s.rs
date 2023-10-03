@@ -31,11 +31,15 @@
 use super::blake2::{EngineS as Engine, LastBlock};
 use crate::cryptoutil::{write_u32v_le, zero};
 
+/// Blake2s Algorithm parametrized by the number of bits to output
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Blake2s<const BITS: usize>;
 
 impl<const BITS: usize> Blake2s<BITS> {
+    /// Output of the hashing algorithm in bits
     pub const OUTPUT_BITS: usize = BITS;
+    /// The block size in bytes of the algorithm, which is the number of bytes the algorithm typically buffer
+    /// before calling its compression function
     pub const BLOCK_BYTES: usize = Engine::BLOCK_BYTES;
 
     /// Create a new context for this algorithm
@@ -94,11 +98,15 @@ impl<const BITS: usize> Context<BITS> {
         Self { eng, buf, buflen }
     }
 
+    /// Update the hashing state by adding the input bytes slice into the state
     pub fn update(mut self, input: &[u8]) -> Self {
         self.update_mut(input);
         self
     }
 
+    /// Update in-place the hashing state by adding the input bytes slice into the state
+    ///
+    /// For the immutable version see [`update`]
     pub fn update_mut(&mut self, mut input: &[u8]) {
         if input.is_empty() {
             return;
@@ -134,12 +142,20 @@ impl<const BITS: usize> Context<BITS> {
         write_u32v_le(&mut self.buf[0..32], &self.eng.h);
     }
 
+    /// Finalize the context and output the array of bytes into the mut output slice
+    ///
+    /// The context is consumed by this function, to prevent buggy reuse.
+    /// The output slice size is assert checked to have the correct expected size.
+    ///
+    /// If the context need to be kept before finalizing, the user can clone the Context
     pub fn finalize_at(mut self, out: &mut [u8]) {
         assert!(out.len() == ((BITS + 7) / 8));
         self.internal_final();
         out.copy_from_slice(&self.buf[0..out.len()]);
     }
 
+    /// Same as `finalize` but do not consume the context, but instead
+    /// reset it in a ready to use state.
     pub fn finalize_reset_at(&mut self, out: &mut [u8]) {
         assert!(out.len() == ((BITS + 7) / 8));
         self.internal_final();
@@ -147,6 +163,7 @@ impl<const BITS: usize> Context<BITS> {
         self.reset();
     }
 
+    /// Same as `finalize_reset` but also specify the key to reset with
     pub fn finalize_reset_with_key_at(&mut self, key: &[u8], out: &mut [u8]) {
         assert!(out.len() == ((BITS + 7) / 8));
         self.internal_final();
@@ -161,6 +178,7 @@ impl<const BITS: usize> Context<BITS> {
         zero(&mut self.buf[..]);
     }
 
+    /// Reset the context to the state after calling `new_keyed` with the given key
     pub fn reset_with_key(&mut self, key: &[u8]) {
         assert!(key.len() <= Engine::MAX_KEYLEN);
 
@@ -211,11 +229,15 @@ impl ContextDyn {
         }
     }
 
+    /// Update the hashing state by adding the input bytes slice into the state
     pub fn update(mut self, input: &[u8]) -> Self {
         self.update_mut(input);
         self
     }
 
+    /// Update in-place the hashing state by adding the input bytes slice into the state
+    ///
+    /// For the immutable version see [`update`]
     pub fn update_mut(&mut self, mut input: &[u8]) {
         if input.is_empty() {
             return;
@@ -251,12 +273,20 @@ impl ContextDyn {
         write_u32v_le(&mut self.buf[0..32], &self.eng.h);
     }
 
+    /// Finalize the context and output the array of bytes into the mut output slice
+    ///
+    /// The context is consumed by this function, to prevent buggy reuse.
+    /// The output slice size is assert checked to have the correct expected size.
+    ///
+    /// If the context need to be kept before finalizing, the user can clone the Context
     pub fn finalize_at(mut self, out: &mut [u8]) {
         assert!(out.len() == self.outlen);
         self.internal_final();
         out.copy_from_slice(&self.buf[0..out.len()]);
     }
 
+    /// Same as `finalize` but do not consume the context, but instead
+    /// reset it in a ready to use state.
     pub fn finalize_reset_at(&mut self, out: &mut [u8]) {
         assert!(out.len() == self.outlen);
         self.internal_final();
@@ -264,6 +294,7 @@ impl ContextDyn {
         self.reset();
     }
 
+    /// Same as `finalize_reset` but also specify the key to reset with
     pub fn finalize_reset_with_key_at(&mut self, key: &[u8], out: &mut [u8]) {
         assert!(out.len() == self.outlen);
         self.internal_final();
@@ -278,6 +309,7 @@ impl ContextDyn {
         zero(&mut self.buf[..]);
     }
 
+    /// Reset the context to the state after calling `new_keyed` with the given key
     pub fn reset_with_key(&mut self, key: &[u8]) {
         assert!(key.len() <= Engine::MAX_KEYLEN);
 
@@ -293,6 +325,7 @@ impl ContextDyn {
         }
     }
 
+    /// The output size in bits
     pub fn output_bits(&self) -> usize {
         self.outlen * 8
     }
@@ -303,16 +336,26 @@ impl ContextDyn {
 macro_rules! context_finalize {
     ($size:literal) => {
         impl Context<$size> {
+            /// Finalize the context and return an array of bytes
+            ///
+            /// The context is consumed by this function, to prevent buggy reuse.
+            ///
+            /// If the context need to be kept before finalizing, the user can clone the Context
             pub fn finalize(self) -> [u8; $size / 8] {
                 let mut out = [0; $size / 8];
                 self.finalize_at(&mut out);
                 out
             }
+
+            /// Same as `finalize` but do not consume the context, but instead
+            /// reset it in a ready to use state.
             pub fn finalize_reset(&mut self) -> [u8; $size / 8] {
                 let mut out = [0; $size / 8];
                 self.finalize_reset_at(&mut out);
                 out
             }
+
+            /// Same as `finalize_reset` but also specify the key to reset with
             pub fn finalize_reset_with_key(&mut self, key: &[u8]) -> [u8; $size / 8] {
                 let mut out = [0; $size / 8];
                 self.finalize_reset_with_key_at(key, &mut out);

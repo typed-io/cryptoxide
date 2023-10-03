@@ -357,7 +357,10 @@ fn mk_result(st: &mut Context, rs: &mut [u8; 20]) {
 pub struct Sha1;
 
 impl Sha1 {
+    /// Output of the hashing algorithm in bits
     pub const OUTPUT_BITS: usize = 160;
+    /// The block size in bytes of the algorithm, which is the number of bytes the algorithm typically buffer
+    /// before calling its compression function
     pub const BLOCK_BYTES: usize = 64;
 
     /// Create a new context for this algorithm
@@ -391,11 +394,15 @@ impl Context {
         }
     }
 
+    /// Update the hashing state by adding the input bytes slice into the state
     pub fn update(mut self, input: &[u8]) -> Self {
         self.update_mut(input);
         self
     }
 
+    /// Update in-place the hashing state by adding the input bytes slice into
+    ///
+    /// For the immutable version see [`update`]
     pub fn update_mut(&mut self, input: &[u8]) {
         self.processed_bytes += input.len() as u64;
         let h = &mut self.h;
@@ -404,18 +411,26 @@ impl Context {
         });
     }
 
+    /// Finalize the context and return an array of bytes
+    ///
+    /// The context is consumed by this function, to prevent buggy reuse.
+    ///
+    /// If the context need to be kept before finalizing, the user can clone the Context
     pub fn finalize(mut self) -> [u8; 20] {
         let mut out = [0; 20];
         mk_result(&mut self, &mut out);
         out
     }
 
+    /// Reset the context state, as if a new context had been created
     pub fn reset(&mut self) {
         self.processed_bytes = 0;
         self.h = H;
         self.buffer.reset();
     }
 
+    /// Same as `finalize` but do not consume the context, but instead
+    /// reset it in a ready to use state.
     pub fn finalize_reset(&mut self) -> [u8; 20] {
         let mut out = [0; 20];
         mk_result(self, &mut out);

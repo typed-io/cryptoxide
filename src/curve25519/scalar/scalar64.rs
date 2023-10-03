@@ -2,7 +2,7 @@
 //!
 //! port of <https://github.com/floodyberry/ed25519-donna/blob/master/modm-donna-64bit.h>
 //!
-//! scalar is back by 5 Limbs in 56 bits unsaturated (except last)
+//! scalar is backed by 5 Limbs in 56 bits unsaturated (except last)
 
 /// Scalar in the field ℤ/2^252 + 27742317777372353535851937790883648493)
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,9 +80,15 @@ const MASK40: u64 = 0x0000_00ff_ffff_ffff;
 const MASK56: u64 = 0x00ff_ffff_ffff_ffff;
 
 impl Scalar {
+    /// The 0 Scalar constant
     pub const ZERO: Self = Scalar([0, 0, 0, 0, 0]);
+
+    /// The 1 Scalar constant
     pub const ONE: Self = Scalar([1, 0, 0, 0, 0]);
 
+    /// Create a Scalar from bytes
+    ///
+    /// Unpack 32 bytes into the 5 64bits limbs unsaturated representation
     pub const fn from_bytes(bytes: &[u8; 32]) -> Self {
         // load 8 bytes from input[ofs..ofs+7] as little endian u64
         #[inline]
@@ -110,7 +116,7 @@ impl Scalar {
         Scalar([out0, out1, out2, out3, out4])
     }
 
-    // Same as from_bytes but check whether the value
+    /// Same as from_bytes but check whether the value is less than the order of the `Scalar` Field.
     pub fn from_bytes_canonical(bytes: &[u8; 32]) -> Option<Self> {
         let scalar = Self::from_bytes(bytes);
         if lt_order(&scalar.0) {
@@ -120,6 +126,10 @@ impl Scalar {
         }
     }
 
+    /// Convert the Scalar back into a raw array of 32 bytes
+    ///
+    /// The function expect the limbs to have been reduce
+    /// ahead of calling.
     pub const fn to_bytes(&self) -> [u8; 32] {
         // contract limbs into saturated limbs
         let c0 = self.0[1] << 56 | self.0[0];

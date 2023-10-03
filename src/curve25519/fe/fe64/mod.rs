@@ -36,9 +36,13 @@ impl PartialEq for Fe {
 impl Eq for Fe {}
 
 impl Fe {
+    /// Field Element constant representing 0
     pub const ZERO: Fe = Fe([0, 0, 0, 0, 0]);
+
+    /// Field Element constant representing 1
     pub const ONE: Fe = Fe([1, 0, 0, 0, 0]);
 
+    /// Field Element constant for Sqrt(-1)
     pub const SQRTM1: Fe = Fe([
         0x61B274A0EA0B0,
         0xD5A5FC8F189D,
@@ -46,6 +50,8 @@ impl Fe {
         0x78595A6804C9E,
         0x2B8324804FC1D,
     ]);
+
+    /// Field element constant for D
     pub const D: Fe = Fe([
         0x34DCA135978A3,
         0x1A8283B156EBD,
@@ -53,6 +59,8 @@ impl Fe {
         0x739C663A03CBB,
         0x52036CEE2B6FF,
     ]);
+
+    /// Field element constant for D2
     pub const D2: Fe = Fe([
         0x69B9426B2F159,
         0x35050762ADD7A,
@@ -381,10 +389,12 @@ impl Fe {
         x
     }
 
+    /// Check that the field element is non zero
     pub fn is_nonzero(&self) -> bool {
         CtEqual::ct_ne(&self.to_bytes(), &[0; 32]).into()
     }
 
+    /// Check that the field element is 'negative'
     pub fn is_negative(&self) -> bool {
         (self.to_packed()[0] & 1) != 0
     }

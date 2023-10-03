@@ -59,16 +59,18 @@ macro_rules! bytes_impl {
     };
 }
 
-/// Secret Key
+/// X25519 Secret Key
 pub struct SecretKey([u8; 32]);
 
 bytes_impl!(SecretKey, 32);
 
-/// Public Key
+/// X25519 Public Key
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PublicKey([u8; 32]);
 
 bytes_impl!(PublicKey, 32);
 
+/// X25519 Shared Secret (ECDH)
 pub struct SharedSecret([u8; 32]);
 
 bytes_impl!(SharedSecret, 32);

@@ -35,6 +35,7 @@ use crate::mac::{Mac, MacResult};
 use alloc::vec::Vec;
 use core::iter::repeat;
 
+/// Blake2b Context (Dynamic output size)
 pub type Context = blake2b::ContextDyn;
 
 /// Blake2b Context
@@ -84,11 +85,13 @@ impl Blake2b {
         self.computed = false;
     }
 
+    /// Reset the blake2 context with a key
     pub fn reset_with_key(&mut self, key: &[u8]) {
         self.ctx.reset_with_key(key);
         self.computed = false;
     }
 
+    /// Compute the blake2 function as one call
     pub fn blake2b(out: &mut [u8], input: &[u8], key: &[u8]) {
         let mut hasher: Blake2b = if !key.is_empty() {
             Blake2b::new_keyed(out.len(), key)

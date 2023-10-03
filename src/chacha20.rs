@@ -60,6 +60,7 @@ pub struct ChaCha<const ROUNDS: usize> {
     offset: usize,
 }
 
+/// Alias to usual ChaCha context with 20 rounds
 pub type ChaCha20 = ChaCha<20>;
 
 impl<const ROUNDS: usize> ChaCha<ROUNDS> {

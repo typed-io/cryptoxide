@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use core::cmp::Ordering;
 use core::ops::{Add, Neg, Sub};
 

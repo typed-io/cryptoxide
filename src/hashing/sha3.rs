@@ -301,7 +301,10 @@ macro_rules! sha3_impl {
         pub struct $C;
 
         impl $C {
+            /// Output of the hashing algorithm in bits
             pub const OUTPUT_BITS: usize = $digestlength * 8;
+            /// The block size in bytes of the algorithm, which is the number of bytes the algorithm typically buffer
+            /// before calling its compression function
             pub const BLOCK_BYTES: usize = B - ($digestlength * 2);
 
             /// Create a new context for this algorithm
@@ -316,19 +319,26 @@ macro_rules! sha3_impl {
         pub struct $context(Engine<$digestlength, 2>);
 
         impl $context {
+            /// Create a new SHA3 Context
             pub const fn new() -> Self {
                 Self(Engine::new())
             }
 
+            /// Update in-place the hashing state by adding the input bytes slice into the state
+            ///
+            /// For the immutable version see [`update`]
             pub fn update_mut(&mut self, data: &[u8]) {
                 self.0.process(data)
             }
 
+            /// Update the hashing state by adding the input bytes slice into the state
             pub fn update(mut self, data: &[u8]) -> Self {
                 self.0.process(data);
                 self
             }
 
+            /// Same as `finalize` but do not consume the context, but instead
+            /// reset it in a ready to use state.
             pub fn finalize_reset(&mut self) -> [u8; $digestlength] {
                 let mut out = [0; $digestlength];
                 self.0.output(&mut out);
@@ -336,12 +346,18 @@ macro_rules! sha3_impl {
                 out
             }
 
+            /// Finalize the context and return an array of bytes
+            ///
+            /// The context is consumed by this function, to prevent buggy reuse.
+            ///
+            /// If the context need to be kept before finalizing, the user can clone the Context
             pub fn finalize(mut self) -> [u8; $digestlength] {
                 let mut out = [0; $digestlength];
                 self.0.output(&mut out);
                 out
             }
 
+            /// Reset the context state, as if a new context had been created
             pub fn reset(&mut self) {
                 self.0.reset()
             }

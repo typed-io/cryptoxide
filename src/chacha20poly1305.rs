@@ -232,7 +232,9 @@ impl<const ROUNDS: usize> ContextEncryption<ROUNDS> {
 /// Whether or not, the decryption was succesful related to the expected tag
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecryptionResult {
+    /// The tag matched, the data has been verified as not tempered
     Match,
+    /// The tag mismatched, which imply that some data is incorrect or has been tempered
     MisMatch,
 }
 
@@ -281,6 +283,7 @@ fn pad16(mac: &mut Poly1305, len: u64) {
     }
 }
 
+/// Type alias to the common ChaChaPoly1305 with 20 rounds ChaCha
 pub type ChaCha20Poly1305 = ChaChaPoly1305<20>;
 
 impl<const ROUNDS: usize> ChaChaPoly1305<ROUNDS> {

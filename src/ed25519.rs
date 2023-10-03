@@ -27,11 +27,22 @@ use crate::hashing::sha2::Sha512;
 use core::convert::TryFrom;
 
 #[deprecated(since = "0.4.0", note = "use `PRIVATE_KEY_LENGTH`")]
+/// ED25519 Seed length
 pub const SEED_LENGTH: usize = 32;
+
+/// ED25519 Private key length (32 bytes)
 pub const PRIVATE_KEY_LENGTH: usize = 32;
+
+/// ED25519 Public key length (32 bytes)
 pub const PUBLIC_KEY_LENGTH: usize = 32;
+
+/// ED25519 Keypair length (64 bytes)
 pub const KEYPAIR_LENGTH: usize = PRIVATE_KEY_LENGTH + PUBLIC_KEY_LENGTH;
+
+/// ED25519 Extended key size (64 bytes)
 pub const EXTENDED_KEY_LENGTH: usize = 64;
+
+/// ED25519 Signature size (64 bytes)
 pub const SIGNATURE_LENGTH: usize = 64;
 
 // clamp the scalar by:

@@ -22,7 +22,10 @@ const WORK_BUF_LEN: usize = 16;
 pub struct Ripemd160;
 
 impl Ripemd160 {
+    /// Output of the hashing algorithm in bits
     pub const OUTPUT_BITS: usize = 160;
+    /// The block size in bytes of the algorithm, which is the number of bytes the algorithm typically buffer
+    /// before calling its compression function
     pub const BLOCK_BYTES: usize = 64;
 
     /// Create a new context for this algorithm
@@ -335,7 +338,7 @@ fn process_msg_blocks(data: &[u8], h: &mut [u32; DIGEST_BUF_LEN]) {
 const H: [u32; 5] = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0];
 
 impl Context {
-    // Construct a new `Ripemd160` object
+    /// Construct a new `Ripemd160` object
     pub const fn new() -> Self {
         Self {
             h: H,
@@ -344,6 +347,9 @@ impl Context {
         }
     }
 
+    /// Update in-place the hashing state by adding the input bytes slice into the state
+    ///
+    /// For the immutable version see [`update`]
     pub fn update_mut(&mut self, msg: &[u8]) {
         // Assumes that msg.len() can be converted to u64 without overflow
         self.processed_bytes += msg.len() as u64;
@@ -353,17 +359,21 @@ impl Context {
         });
     }
 
+    /// Update the hashing state by adding the input bytes slice into the state
     pub fn update(mut self, input: &[u8]) -> Self {
         self.update_mut(input);
         self
     }
 
+    /// Reset the context state, as if a new context had been created
     pub fn reset(&mut self) {
         self.processed_bytes = 0;
         self.h = H;
         self.buffer.reset();
     }
 
+    /// Same as `finalize` but do not consume the context, but instead
+    /// reset it in a ready to use state.
     pub fn finalize_reset(&mut self) -> [u8; 20] {
         let st_h = &mut self.h;
 
@@ -384,6 +394,11 @@ impl Context {
         out
     }
 
+    /// Finalize the context and return an array of bytes
+    ///
+    /// The context is consumed by this function, to prevent buggy reuse.
+    ///
+    /// If the context need to be kept before finalizing, the user can clone the Context
     pub fn finalize(mut self) -> [u8; 20] {
         self.finalize_reset()
     }

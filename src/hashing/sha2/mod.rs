@@ -85,7 +85,11 @@ macro_rules! digest {
         pub struct $name;
 
         impl $name {
+            /// Output of the hashing algorithm in bits
             pub const OUTPUT_BITS: usize = $output_bits;
+
+            /// The block size in bytes of the algorithm, which is the number of bytes the algorithm typically buffer
+            /// before calling its compression function
             pub const BLOCK_BYTES: usize = $block_size;
 
             /// Create a new context for this algorithm
@@ -108,15 +112,24 @@ macro_rules! digest {
                 }
             }
 
+            /// Update in-place the hashing state by adding the input bytes slice into the state
+            ///
+            /// For the immutable version see [`update`]
             pub fn update_mut(&mut self, input: &[u8]) {
                 self.engine.input(input)
             }
 
+            /// Update the hashing state by adding the input bytes slice into the state
             pub fn update(mut self, input: &[u8]) -> Self {
                 self.engine.input(input);
                 self
             }
 
+            /// Finalize the context and return an array of bytes
+            ///
+            /// The context is consumed by this function, to prevent buggy reuse.
+            ///
+            /// If the context need to be kept before finalizing, the user can clone the Context
             pub fn finalize(mut self) -> [u8; $output_bits / 8] {
                 let mut out = [0; $output_bits / 8];
                 self.engine.finish();
@@ -124,6 +137,8 @@ macro_rules! digest {
                 out
             }
 
+            /// Same as `finalize` but do not consume the context, but instead
+            /// reset it in a ready to use state.
             pub fn finalize_reset(&mut self) -> [u8; $output_bits / 8] {
                 let mut out = [0; $output_bits / 8];
                 self.engine.finish();
@@ -132,6 +147,7 @@ macro_rules! digest {
                 out
             }
 
+            /// Reset the context state, as if a new context had been created
             pub fn reset(&mut self) {
                 self.engine.reset(&$state);
             }

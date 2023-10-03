@@ -131,6 +131,7 @@ impl<const ROUNDS: usize> State<ROUNDS> {
     }
 }
 
+/// Salsa streaming cipher context
 #[derive(Clone)]
 pub struct Salsa<const ROUNDS: usize> {
     state: State<ROUNDS>,
@@ -138,6 +139,7 @@ pub struct Salsa<const ROUNDS: usize> {
     offset: usize,
 }
 
+/// Typealias for Salsa with (common) 20 rounds
 pub type Salsa20 = Salsa<20>;
 
 impl<const ROUNDS: usize> Salsa<ROUNDS> {
@@ -204,6 +206,7 @@ impl<const ROUNDS: usize> Salsa<ROUNDS> {
     }
 }
 
+/// XSalsa streaming cipher context (Salsa Variant)
 #[derive(Clone)]
 pub struct XSalsa<const ROUNDS: usize> {
     state: State<ROUNDS>,
@@ -211,6 +214,7 @@ pub struct XSalsa<const ROUNDS: usize> {
     offset: usize,
 }
 
+/// Typealias for XSalsa with (common) 20 rounds
 pub type XSalsa20 = XSalsa<20>;
 
 impl<const ROUNDS: usize> XSalsa<ROUNDS> {

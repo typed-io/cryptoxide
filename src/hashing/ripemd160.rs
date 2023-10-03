@@ -32,7 +32,7 @@ impl Ripemd160 {
 }
 
 /// Structure representing the state of a Ripemd160 computation
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct Context {
     h: [u32; DIGEST_BUF_LEN],
     processed_bytes: u64,

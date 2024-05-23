@@ -380,13 +380,13 @@ impl Add<&GeCached> for &Ge {
     type Output = GeP1P1;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
-    fn add(self, _rhs: &GeCached) -> GeP1P1 {
+    fn add(self, rhs: &GeCached) -> GeP1P1 {
         let y1_plus_x1 = &self.y + &self.x;
         let y1_minus_x1 = &self.y - &self.x;
-        let a = &y1_plus_x1 * &_rhs.y_plus_x;
-        let b = &y1_minus_x1 * &_rhs.y_minus_x;
-        let c = &_rhs.t2d * &self.t;
-        let zz = &self.z * &_rhs.z;
+        let a = &y1_plus_x1 * &rhs.y_plus_x;
+        let b = &y1_minus_x1 * &rhs.y_minus_x;
+        let c = &rhs.t2d * &self.t;
+        let zz = &self.z * &rhs.z;
         let d = &zz + &zz;
         let x3 = &a - &b;
         let y3 = &a + &b;
@@ -406,12 +406,12 @@ impl Add<&GePrecomp> for &Ge {
     type Output = GeP1P1;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
-    fn add(self, _rhs: &GePrecomp) -> GeP1P1 {
+    fn add(self, rhs: &GePrecomp) -> GeP1P1 {
         let y1_plus_x1 = &self.y + &self.x;
         let y1_minus_x1 = &self.y - &self.x;
-        let a = &y1_plus_x1 * &_rhs.y_plus_x;
-        let b = &y1_minus_x1 * &_rhs.y_minus_x;
-        let c = &_rhs.xy2d * &self.t;
+        let a = &y1_plus_x1 * &rhs.y_plus_x;
+        let b = &y1_minus_x1 * &rhs.y_minus_x;
+        let c = &rhs.xy2d * &self.t;
         let d = &self.z + &self.z;
         let x3 = &a - &b;
         let y3 = &a + &b;
@@ -439,13 +439,13 @@ impl Sub<&GeCached> for &Ge {
     type Output = GeP1P1;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
-    fn sub(self, _rhs: &GeCached) -> GeP1P1 {
+    fn sub(self, rhs: &GeCached) -> GeP1P1 {
         let y1_plus_x1 = &self.y + &self.x;
         let y1_minus_x1 = &self.y - &self.x;
-        let a = &y1_plus_x1 * &_rhs.y_minus_x;
-        let b = &y1_minus_x1 * &_rhs.y_plus_x;
-        let c = &_rhs.t2d * &self.t;
-        let zz = &self.z * &_rhs.z;
+        let a = &y1_plus_x1 * &rhs.y_minus_x;
+        let b = &y1_minus_x1 * &rhs.y_plus_x;
+        let c = &rhs.t2d * &self.t;
+        let zz = &self.z * &rhs.z;
         let d = &zz + &zz;
         let x3 = &a - &b;
         let y3 = &a + &b;
@@ -473,12 +473,12 @@ impl Sub<&GePrecomp> for &Ge {
     type Output = GeP1P1;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
-    fn sub(self, _rhs: &GePrecomp) -> GeP1P1 {
+    fn sub(self, rhs: &GePrecomp) -> GeP1P1 {
         let y1_plus_x1 = &self.y + &self.x;
         let y1_minus_x1 = &self.y - &self.x;
-        let a = &y1_plus_x1 * &_rhs.y_minus_x;
-        let b = &y1_minus_x1 * &_rhs.y_plus_x;
-        let c = &_rhs.xy2d * &self.t;
+        let a = &y1_plus_x1 * &rhs.y_minus_x;
+        let b = &y1_minus_x1 * &rhs.y_plus_x;
+        let c = &rhs.xy2d * &self.t;
         let d = &self.z + &self.z;
         let x3 = &a - &b;
         let y3 = &a + &b;

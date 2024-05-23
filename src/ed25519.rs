@@ -20,6 +20,19 @@
 //!
 //! * [RFC8032](https://www.rfc-editor.org/rfc/rfc8032.txt)
 //!
+//! # Extended Key
+//!
+//! This implementation exposes some internal of the Ed25519 scheme,
+//! specifically it allows the key to be used in the post-hash + clamp
+//! form directly (extended form), which would offer a tiny speedup in certain case
+//! and also allow different way of constructing those key than the standard hashing.
+//!
+//! For example arithmetic constructions using distributivity of multiplication
+//! over addition becomes possible using those interfaces.
+//!
+//! The interface `signature_extended` should only be used either through the `extended_secret`
+//! or with specific care of making sure the invariant expected by ed25519 are respected.
+//!
 
 use crate::constant_time::CtEqual;
 use crate::curve25519::{curve25519, scalar, Fe, Ge, GePartial, Scalar};
@@ -144,6 +157,11 @@ pub fn signature(message: &[u8], keypair: &[u8; KEYPAIR_LENGTH]) -> [u8; SIGNATU
 }
 
 /// Generate a signature for the given message using an extended ED25519 secret key
+///
+/// Note: no check are made to the structure of the extended key to make sure it is valid,
+/// and this is left to user to make sure either `extended_secret` has been used as per
+/// the Ed25519 specification, or that some other ad-hoc checks that enforce the correct invariants
+/// are performed by the user.
 pub fn signature_extended(
     message: &[u8],
     extended_secret: &[u8; EXTENDED_KEY_LENGTH],

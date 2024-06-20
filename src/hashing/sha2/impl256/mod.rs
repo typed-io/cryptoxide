@@ -32,29 +32,14 @@ mod reference;
 pub(crate) fn digest_block(state: &mut [u32; 8], block: &[u8]) {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
-        /// in waiting for https://github.com/rust-lang/rfcs/pull/2725
-        #[cfg(target_feature = "avx")]
-        const HAS_AVX: bool = true;
-        #[cfg(not(target_feature = "avx"))]
-        const HAS_AVX: bool = false;
-
-        #[cfg(target_feature = "sse4.1")]
-        const HAS_SSE41: bool = true;
-        #[cfg(not(target_feature = "sse4.1"))]
-        const HAS_SSE41: bool = false;
-
         #[cfg(target_feature = "avx")]
         {
-            if HAS_AVX {
-                return avx::digest_block(state, block);
-            }
+            return avx::digest_block(state, block);
         }
 
         #[cfg(target_feature = "sse4.1")]
         {
-            if HAS_SSE41 {
-                return sse41::digest_block(state, block);
-            }
+            return sse41::digest_block(state, block);
         }
     }
     #[cfg(target_arch = "aarch64")]

@@ -41,7 +41,6 @@
 #[cfg(feature = "with-bench")]
 extern crate test;
 
-#[cfg(not(feature = "std"))]
 extern crate alloc;
 
 #[cfg(test)]

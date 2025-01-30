@@ -1,5 +1,6 @@
-# unreleased
+# 0.5.0
 
+* set edition to 2021
 * Improve performance of Salsa by 3x and Chacha by 10x
 * Clearly distinguish at the type level various variants of chacha:
     * Chacha as IETF (recommended)

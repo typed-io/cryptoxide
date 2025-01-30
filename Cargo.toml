@@ -8,7 +8,8 @@ repository = "https://github.com/typed-io/cryptoxide/"
 description = "pure implementation of various common modern cryptographic algorithms, WASM compatible"
 keywords = [ "Crypto", "Cryptography", "Modern", "Pure" ]
 categories = [ "cryptography" ]
-edition = '2018'
+edition = '2021'
+rust-version = "1.78"
 
 [badges]
 

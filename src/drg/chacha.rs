@@ -30,8 +30,8 @@ use crate::chacha20::ChaCha;
 ///
 /// * u32
 /// * u64
-/// * bytes<N>
-/// * fill_bytes<N>
+/// * `bytes<N>`
+/// * `fill_bytes<N>`
 /// * fill_slice
 pub struct Drg<const ROUNDS: usize>(ChaCha<ROUNDS>);
 

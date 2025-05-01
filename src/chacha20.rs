@@ -587,7 +587,7 @@ mod bench {
 
     #[bench]
     pub fn chacha20_10(bh: &mut Bencher) {
-        let mut chacha20 = ChaCha20::new(&[0; 32], &[0; 8]);
+        let mut chacha20 = ChaCha20::new(&[0; 32], &[0; 12]);
         let input = [1u8; 10];
         let mut output = [0u8; 10];
         bh.iter(|| {
@@ -598,7 +598,7 @@ mod bench {
 
     #[bench]
     pub fn chacha20_1k(bh: &mut Bencher) {
-        let mut chacha20 = ChaCha20::new(&[0; 32], &[0; 8]);
+        let mut chacha20 = ChaCha20::new(&[0; 32], &[0; 12]);
         let input = [1u8; 1024];
         let mut output = [0u8; 1024];
         bh.iter(|| {
@@ -609,7 +609,7 @@ mod bench {
 
     #[bench]
     pub fn chacha20_64k(bh: &mut Bencher) {
-        let mut chacha20 = ChaCha20::new(&[0; 32], &[0; 8]);
+        let mut chacha20 = ChaCha20::new(&[0; 32], &[0; 12]);
         let input = [1u8; 65536];
         let mut output = [0u8; 65536];
         bh.iter(|| {

@@ -544,8 +544,8 @@ mod bench {
         let input = [1u8; 10];
         let aad = [3u8; 10];
         bh.iter(|| {
-            let mut cipher = ChaCha20Poly1305::new(&[0; 32], &[0; 8], &aad);
-            let mut decipher = ChaCha20Poly1305::new(&[0; 32], &[0; 8], &aad);
+            let mut cipher = ChaCha20Poly1305::new(&[0; 32], &[0; 12], &aad);
+            let mut decipher = ChaCha20Poly1305::new(&[0; 32], &[0; 12], &aad);
 
             let mut output = [0u8; 10];
             let mut tag = [0u8; 16];
@@ -561,8 +561,8 @@ mod bench {
         let input = [1u8; 1024];
         let aad = [3u8; 1024];
         bh.iter(|| {
-            let mut cipher = ChaCha20Poly1305::new(&[0; 32], &[0; 8], &aad);
-            let mut decipher = ChaCha20Poly1305::new(&[0; 32], &[0; 8], &aad);
+            let mut cipher = ChaCha20Poly1305::new(&[0; 32], &[0; 12], &aad);
+            let mut decipher = ChaCha20Poly1305::new(&[0; 32], &[0; 12], &aad);
 
             let mut output = [0u8; 1024];
             let mut tag = [0u8; 16];
@@ -579,8 +579,8 @@ mod bench {
         let input = [1u8; 65536];
         let aad = [3u8; 65536];
         bh.iter(|| {
-            let mut cipher = ChaCha20Poly1305::new(&[0; 32], &[0; 8], &aad);
-            let mut decipher = ChaCha20Poly1305::new(&[0; 32], &[0; 8], &aad);
+            let mut cipher = ChaCha20Poly1305::new(&[0; 32], &[0; 12], &aad);
+            let mut decipher = ChaCha20Poly1305::new(&[0; 32], &[0; 12], &aad);
 
             let mut output = [0u8; 65536];
             let mut tag = [0u8; 16];

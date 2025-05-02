@@ -1,3 +1,9 @@
+# unreleased
+
+* Fix chacha benchmarks
+* Fix some documentation warnings
+* Expose the variable hash function (hprime) from argon2 under a doc hidden flag
+
 # 0.5.0
 
 * set edition to 2021

@@ -517,7 +517,11 @@ fn fill_segment(params: &Params, position: &BlockPos, memory: &mut Memory) {
 /// by hashing repeatdly the current context
 ///
 /// initial hash : V0 = H(LE32(OUTPUT_LEN) | input);
-fn hprime(output: &mut [u8], input: &[u8]) {
+/// following hash : Vi = H(Vi-1, 64)
+///
+/// returns A1 | A2 | ... | Ar | Vr+1 where Ai = Vi[0..32]
+#[doc(hidden)]
+pub fn hprime(output: &mut [u8], input: &[u8]) {
     if output.len() <= 64 {
         blake2b::ContextDyn::new(output.len())
             .update(&(output.len() as u32).to_le_bytes())

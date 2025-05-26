@@ -389,7 +389,7 @@ unsafe fn compress_s_avx(h: *mut __m128i, block: *const __m128i, iv: *const __m1
     }
 
     macro_rules! ROUND {
-        ($r: expr, $load: expr) => {
+        ($load: expr) => {
             let (b0, b1, b2, b3) = $load;
             G1!(b0);
             G2!(b1);
@@ -688,16 +688,16 @@ unsafe fn compress_s_avx(h: *mut __m128i, block: *const __m128i, iv: *const __m1
         };
     }
 
-    ROUND!(0, load0!());
-    ROUND!(1, load1!());
-    ROUND!(2, load2!());
-    ROUND!(3, load3!());
-    ROUND!(4, load4!());
-    ROUND!(5, load5!());
-    ROUND!(6, load6!());
-    ROUND!(7, load7!());
-    ROUND!(8, load8!());
-    ROUND!(9, load9!());
+    ROUND!(load0!());
+    ROUND!(load1!());
+    ROUND!(load2!());
+    ROUND!(load3!());
+    ROUND!(load4!());
+    ROUND!(load5!());
+    ROUND!(load6!());
+    ROUND!(load7!());
+    ROUND!(load8!());
+    ROUND!(load9!());
 
     _mm_store_si128(h, _mm_xor_si128(orig_a, _mm_xor_si128(row1, row3)));
     _mm_store_si128(h.add(1), _mm_xor_si128(orig_b, _mm_xor_si128(row2, row4)));

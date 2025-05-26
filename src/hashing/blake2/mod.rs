@@ -21,6 +21,9 @@ mod avx;
 ))]
 mod avx2;
 
+#[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
+mod neon;
+
 use common::{b, s};
 
 /// Blake2s Context
@@ -136,6 +139,17 @@ impl EngineB {
                 if HAS_AVX {
                     return avx::compress_b(&mut self.h, &mut self.t, buf, last);
                 }
+            }
+        }
+        #[cfg(any(target_arch = "aarch64"))]
+        {
+            #[cfg(target_feature = "neon")]
+            const HAS_NEON: bool = true;
+            #[cfg(not(target_feature = "neon"))]
+            const HAS_NEON: bool = false;
+
+            if HAS_NEON {
+                return neon::compress_b(&mut self.h, &mut self.t, buf, last);
             }
         }
         reference::compress_b(&mut self.h, &mut self.t, buf, last)

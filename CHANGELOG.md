@@ -1,4 +1,4 @@
-# unreleased
+# 0.5.1
 
 * Fix chacha benchmarks
 * Fix some documentation warnings

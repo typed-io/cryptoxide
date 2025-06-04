@@ -1,6 +1,6 @@
 [package]
 name = "cryptoxide"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["Vincent Hanquez <vincent@coretype.io>", "Nicolas Di Prima <nicolas@prime-type.co.uk>", "The Rust-Crypto Project Developers"]
 license = "MIT/Apache-2.0"
 homepage = "https://github.com/typed-io/cryptoxide/"

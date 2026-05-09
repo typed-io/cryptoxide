@@ -50,6 +50,9 @@ pub mod blake2b;
 #[cfg(feature = "blake2")]
 pub mod blake2s;
 
+#[cfg(feature = "blake3")]
+pub mod blake3;
+
 #[cfg(feature = "sha1")]
 pub mod sha1;
 
@@ -102,6 +105,12 @@ pub fn blake2s_224(input: &[u8]) -> [u8; 28] {
 /// Compute blake2s-256 on the input and return the digest
 pub fn blake2s_256(input: &[u8]) -> [u8; 32] {
     blake2s::Blake2s::<256>::new().update(input).finalize()
+}
+
+#[cfg(feature = "blake3")]
+/// Compute blake3-256 on the input and return the digest
+pub fn blake3_256(input: &[u8]) -> [u8; 32] {
+    blake3::Blake3::new().update(input).finalize()
 }
 
 #[cfg(feature = "sha1")]

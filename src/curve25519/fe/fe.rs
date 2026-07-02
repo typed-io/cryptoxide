@@ -8,8 +8,6 @@
 use crate::constant_time::{ct_array64_maybe_set, ct_array64_maybe_swap_with, Choice, CtEqual};
 use core::ops::{Add, Mul, Neg, Sub};
 
-pub mod precomp;
-
 // multiple of P
 const FOUR_P0: u64 = 0x1fffffffffffb4;
 const FOUR_P1234: u64 = 0x1ffffffffffffc;

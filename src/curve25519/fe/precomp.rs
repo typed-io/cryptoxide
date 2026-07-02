@@ -1,6 +1,6 @@
 // TODO to compute -- all initialized to ONE
 
-use super::super::super::ge::GePrecomp;
+use super::super::ge::GePrecomp;
 use super::Fe;
 
 #[rustfmt::skip]

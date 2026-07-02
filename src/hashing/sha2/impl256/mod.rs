@@ -8,7 +8,7 @@
 //! at a time, then using the standard ALU to do the compression.
 //!
 
-#[cfg(all(target_arch = "aarch64", feature = "use-stdsimd"))]
+#[cfg(all(target_arch = "aarch64", target_feature = "sha2"))]
 mod aarch64;
 
 #[cfg(all(
@@ -57,12 +57,10 @@ pub(crate) fn digest_block(state: &mut [u32; 8], block: &[u8]) {
             }
         }
     }
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(all(target_arch = "aarch64", target_feature = "sha2"))]
     {
-        #[cfg(feature = "use-stdsimd")]
-        if true {
-            return aarch64::digest_block(state, block);
-        }
+        return aarch64::digest_block(state, block);
     }
+    #[allow(unreachable_code)]
     reference::digest_block(state, block)
 }

@@ -9,19 +9,8 @@
 //! it's possible that the 32 bits backend get removed alltogether as all main
 //! platform (apart from embedded) are 64bits.
 
-#[cfg(any(any(target_arch = "arm"), feature = "force-32bits"))]
-pub(crate) mod load;
-
-#[cfg(any(any(target_arch = "arm"), feature = "force-32bits"))]
-mod fe32;
-
-#[cfg(not(any(any(target_arch = "arm"), feature = "force-32bits")))]
 mod fe64;
 
-#[cfg(any(any(target_arch = "arm"), feature = "force-32bits"))]
-pub use fe32::*;
-
-#[cfg(not(any(any(target_arch = "arm"), feature = "force-32bits")))]
 pub use fe64::*;
 
 impl Fe {

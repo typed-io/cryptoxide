@@ -110,6 +110,18 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
             // If there is no keystream available in the output buffer,
             // generate the next block.
             if self.offset == 64 {
+                // Bulk fast path: generate and xor 4 blocks (256 bytes) at a
+                // time. On the NEON backend this runs a single 4-way pass; the
+                // other backends fall back to 4 single-block iterations.
+                while len - i >= 256 {
+                    let mut ks = [0u8; 256];
+                    self.state.keystream4(&mut ks);
+                    xor_keystream_mut(&mut data[i..i + 256], &ks);
+                    i += 256;
+                }
+                if i == len {
+                    break;
+                }
                 self.update();
             }
 
@@ -196,6 +208,18 @@ impl<const ROUNDS: usize> XChaCha<ROUNDS> {
             // If there is no keystream available in the output buffer,
             // generate the next block.
             if self.offset == 64 {
+                // Bulk fast path: generate and xor 4 blocks (256 bytes) at a
+                // time. On the NEON backend this runs a single 4-way pass; the
+                // other backends fall back to 4 single-block iterations.
+                while len - i >= 256 {
+                    let mut ks = [0u8; 256];
+                    self.state.keystream4(&mut ks);
+                    xor_keystream_mut(&mut data[i..i + 256], &ks);
+                    i += 256;
+                }
+                if i == len {
+                    break;
+                }
                 self.update();
             }
 
@@ -310,6 +334,64 @@ impl<const ROUNDS: usize> ChaChaOriginal<ROUNDS> {
 mod test {
     use alloc::vec::Vec;
     use core::iter::repeat;
+
+    // The >=256 bytes bulk path (4 blocks at a time, a single 4-way pass on the
+    // NEON backend) must produce exactly the same keystream as the single-block
+    // path. Feeding the cipher in <256 bytes chunks never triggers the bulk
+    // path, so comparing a one-shot call against a chunk-by-chunk run validates
+    // the wide path against the RFC-verified single-block one, at every length
+    // and offset (including block/bulk boundaries).
+    #[test]
+    fn test_chacha20_bulk_matches_single_block() {
+        let key = [
+            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
+            0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b,
+            0x1c, 0x1d, 0x1e, 0x1f,
+        ];
+        let nonce = [0x24, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4a, 0x00, 0x00, 0x00, 0x00];
+
+        for &len in &[
+            1usize, 63, 64, 65, 127, 128, 200, 255, 256, 257, 300, 511, 512, 513, 1000, 4096, 4097,
+        ] {
+            // one-shot: exercises the 256-byte bulk path for len >= 256
+            let mut bulk = ChaCha20::new(&key, &nonce);
+            let mut out_bulk = vec![0u8; len];
+            bulk.process_mut(&mut out_bulk);
+
+            // fed in 100 bytes chunks: len(call) < 256 so the bulk path is never
+            // reached, only the single-block path is used
+            let mut chunked = ChaCha20::new(&key, &nonce);
+            let mut out_chunked = vec![0u8; len];
+            for chunk in out_chunked.chunks_mut(100) {
+                chunked.process_mut(chunk);
+            }
+
+            assert_eq!(out_bulk, out_chunked, "mismatch at len={}", len);
+        }
+    }
+
+    #[test]
+    fn test_xchacha20_bulk_matches_single_block() {
+        let key = [0x5a; 32];
+        let nonce = [
+            0x69, 0x69, 0x6e, 0xe9, 0x55, 0xb6, 0x2b, 0x73, 0xcd, 0x62, 0xbd, 0xa8, 0x75, 0xfc,
+            0x73, 0xd6, 0x82, 0x19, 0xe0, 0x03, 0x6b, 0x7a, 0x0b, 0x37,
+        ];
+
+        for &len in &[255usize, 256, 257, 512, 1000, 4097] {
+            let mut bulk = XChaCha::<20>::new(&key, &nonce);
+            let mut out_bulk = vec![0u8; len];
+            bulk.process_mut(&mut out_bulk);
+
+            let mut chunked = XChaCha::<20>::new(&key, &nonce);
+            let mut out_chunked = vec![0u8; len];
+            for chunk in out_chunked.chunks_mut(100) {
+                chunked.process_mut(chunk);
+            }
+
+            assert_eq!(out_bulk, out_chunked, "mismatch at len={}", len);
+        }
+    }
 
     use super::ChaCha20;
     use super::ChaChaOriginal;

@@ -132,4 +132,17 @@ impl<const ROUNDS: usize> State<ROUNDS> {
         write_u32v_le(&mut output[0..16], &self.state[0..4]);
         write_u32v_le(&mut output[16..32], &self.state[12..16]);
     }
+
+    /// Generate the next 4 keystream blocks (256 bytes) and advance the (32-bit)
+    /// block counter by 4. Software fallback matching the SIMD `keystream4`.
+    #[inline]
+    pub(crate) fn keystream4(&mut self, out: &mut [u8; 256]) {
+        for block in out.chunks_exact_mut(64) {
+            let mut state = self.clone();
+            state.rounds();
+            state.add_back(self);
+            state.output_bytes(block);
+            self.increment();
+        }
+    }
 }

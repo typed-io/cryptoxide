@@ -206,4 +206,18 @@ impl<const ROUNDS: usize> State<ROUNDS> {
             _mm_storeu_si128(o.add(1), self.d);
         }
     }
+
+    /// Generate the next 4 keystream blocks (256 bytes) and advance the (32-bit)
+    /// block counter by 4. Loop over the single-block path; the driver uses this
+    /// uniformly across backends (the NEON backend overrides it with a 4-way pass).
+    #[inline]
+    pub(crate) fn keystream4(&mut self, out: &mut [u8; 256]) {
+        for block in out.chunks_exact_mut(64) {
+            let mut state = self.clone();
+            state.rounds();
+            state.add_back(self);
+            state.output_bytes(block);
+            self.increment();
+        }
+    }
 }

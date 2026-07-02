@@ -16,15 +16,21 @@
 //! cipher operation encrypt and decrypt.
 //!
 
-#[cfg(not(all(
-    any(target_arch = "x86", target_arch = "x86_64"),
-    any(target_feature = "sse2", target_feature = "avx2")
+#[cfg(not(any(
+    all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        any(target_feature = "sse2", target_feature = "avx2")
+    ),
+    all(target_arch = "aarch64", target_feature = "neon"),
 )))]
 mod reference;
 
-#[cfg(not(all(
-    any(target_arch = "x86", target_arch = "x86_64"),
-    any(target_feature = "sse2", target_feature = "avx2")
+#[cfg(not(any(
+    all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        any(target_feature = "sse2", target_feature = "avx2")
+    ),
+    all(target_arch = "aarch64", target_feature = "neon"),
 )))]
 pub(crate) type ChaChaEngine<const R: usize> = reference::State<R>;
 
@@ -39,3 +45,9 @@ mod sse2;
     target_feature = "sse2",
 ))]
 pub(crate) type ChaChaEngine<const R: usize> = sse2::State<R>;
+
+#[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
+mod aarch64;
+
+#[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
+pub(crate) type ChaChaEngine<const R: usize> = aarch64::State<R>;

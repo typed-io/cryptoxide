@@ -109,3 +109,31 @@ digest!(Sha512Trunc256, Context512_256);
 digest!(Sha512Trunc224, Context512_224);
 digest!(Sha256, Context256);
 digest!(Sha224, Context224);
+
+#[cfg(all(test, feature = "with-bench"))]
+mod bench {
+    use super::{Sha256, Sha512};
+    use crate::digest::Digest;
+    use test::Bencher;
+
+    macro_rules! bench_hash {
+        ($name:ident, $hash:ident, $size:expr) => {
+            #[bench]
+            pub fn $name(bh: &mut Bencher) {
+                let mut sh = $hash::new();
+                let bytes = [1u8; $size];
+                bh.iter(|| {
+                    sh.input(&bytes);
+                });
+                bh.bytes = bytes.len() as u64;
+            }
+        };
+    }
+
+    bench_hash!(sha256_10, Sha256, 10);
+    bench_hash!(sha256_1k, Sha256, 1024);
+    bench_hash!(sha256_64k, Sha256, 65536);
+    bench_hash!(sha512_10, Sha512, 10);
+    bench_hash!(sha512_1k, Sha512, 1024);
+    bench_hash!(sha512_64k, Sha512, 65536);
+}

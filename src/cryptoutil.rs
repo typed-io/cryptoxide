@@ -70,9 +70,17 @@ read_array_type!(read_u32v_be, u32, from_be_bytes);
 read_array_type!(read_u32v_le, u32, from_le_bytes);
 
 /// Read the value of a vector of bytes as a u32 value in little-endian format.
+#[inline]
 pub fn read_u32_le(input: &[u8]) -> u32 {
     let tmp: [u8; 4] = *<&[u8; 4]>::try_from(input).unwrap();
     u32::from_le_bytes(tmp)
+}
+
+/// Read the value of a vector of bytes as a u64 value in little-endian format.
+#[inline]
+pub fn read_u64_le(input: &[u8]) -> u64 {
+    let tmp: [u8; 8] = *<&[u8; 8]>::try_from(input).unwrap();
+    u64::from_le_bytes(tmp)
 }
 
 /*

@@ -1,3 +1,12 @@
+# Unreleased
+
+* Add basic blake3 support. this implementation doesn't have any parallelisation capability yet
+* Remove 32 bits Curve25519 support, all arch use 64bits now.
+* Add poly1305 64 bits implementation
+* Optimise Chacha engine to have 4-blocks backends, and add a aarch64 neon backend
+* Fix SHA2-256 neon optimisation completely disabled by missing feature flag
+* Add SHA2-512 neon optimisation
+
 # 0.5.1
 
 * Fix chacha benchmarks

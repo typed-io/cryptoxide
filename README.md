@@ -31,11 +31,12 @@ efficient pure-rust implementation of popular cryptographic algorithms.
 
 It provides various common algorithms in the following categories :
 
-* Cryptographic digests: SHA1, SHA2, SHA3, Kekkak, Blake2, Ripemd160
+* Cryptographic digests: SHA1, SHA2, SHA3, Kekkak, Blake2, Blake3, Ripemd160
 * Message Authentication Code (MAC): HMAC, Poly1305
 * Symmetric ciphers: Salsa, Chacha
 * Authenticated Encryption (AE): ChachaPoly1305
-* Key Derivation Function (KDF): Pbkdf2, HKDF, Scrypt
+* Key Derivation Function (KDF): Pbkdf2, HKDF, Scrypt, Argon2
+* Asymmetric DH/Signing: Ed25519, X25519
 
 Our main goals is to provide a library that is usable in a wide array of
 contextes, by supporting many platforms, but only by providing a bare bone and

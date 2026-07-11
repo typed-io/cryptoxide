@@ -325,6 +325,12 @@ mod test {
     fn test_scrypt() {
         let tests = tests();
         for t in tests.iter() {
+            // The larger RFC vectors mix tens of MiB of Salsa20/8 and are far
+            // too slow under the Miri interpreter. The small `log_n == 4` vector
+            // exercises the same code paths, so keep only that one under Miri.
+            if cfg!(miri) && t.log_n > 4 {
+                continue;
+            }
             let mut result: Vec<u8> = repeat(0).take(t.expected.len()).collect();
             let params = ScryptParams::new(t.log_n, t.r, t.p);
             scrypt(

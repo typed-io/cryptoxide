@@ -334,6 +334,9 @@ mod test {
     }
 
     #[test]
+    // Streams and SHA-256-hashes 4 MiB; fine natively but far too slow under
+    // the Miri interpreter, so skip it there (`cargo miri test`).
+    #[cfg_attr(miri, ignore)]
     fn test_salsa20_256bit_nacl_vector_2() {
         let key = [
             0xdc, 0x90, 0x8d, 0xda, 0x0b, 0x93, 0x44, 0xa9, 0x53, 0x62, 0x9b, 0x73, 0x38, 0x20,

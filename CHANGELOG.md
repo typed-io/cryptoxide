@@ -1,4 +1,4 @@
-# Unreleased
+# 0.5.2
 
 * Add basic blake3 support. this implementation doesn't have any parallelisation capability yet
 * Remove 32 bits Curve25519 support, all arch use 64bits now.

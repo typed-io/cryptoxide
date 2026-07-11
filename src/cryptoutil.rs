@@ -49,8 +49,8 @@ macro_rules! read_array_type {
             assert!(dst.len() * SZ == input.len());
 
             unsafe {
-                let mut x: *mut $T = dst.get_unchecked_mut(0);
-                let mut y: *const u8 = input.get_unchecked(0);
+                let mut x: *mut $T = dst.as_mut_ptr();
+                let mut y: *const u8 = input.as_ptr();
 
                 for _ in 0..dst.len() {
                     let mut tmp = [0u8; SZ];

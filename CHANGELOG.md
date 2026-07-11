@@ -6,6 +6,7 @@
 * Optimise Chacha engine to have 4-blocks backends, and add a aarch64 neon backend
 * Fix SHA2-256 neon optimisation completely disabled by missing feature flag
 * Add SHA2-512 neon optimisation
+* Add SHA3/Keccak aarch64 optimisation using the ARMv8.2 SHA-3 crypto extensions
 
 # 0.5.1
 

@@ -27,89 +27,11 @@
 use alloc::vec;
 use core::cmp;
 
-use crate::cryptoutil::{read_u64v_le, write_u64v_le, zero};
+use crate::cryptoutil::zero;
+
+mod keccakf;
 
 pub(super) const B: usize = 200;
-const NROUNDS: usize = 24;
-const RC: [u64; 24] = [
-    0x0000000000000001,
-    0x0000000000008082,
-    0x800000000000808a,
-    0x8000000080008000,
-    0x000000000000808b,
-    0x0000000080000001,
-    0x8000000080008081,
-    0x8000000000008009,
-    0x000000000000008a,
-    0x0000000000000088,
-    0x0000000080008009,
-    0x000000008000000a,
-    0x000000008000808b,
-    0x800000000000008b,
-    0x8000000000008089,
-    0x8000000000008003,
-    0x8000000000008002,
-    0x8000000000000080,
-    0x000000000000800a,
-    0x800000008000000a,
-    0x8000000080008081,
-    0x8000000000008080,
-    0x0000000080000001,
-    0x8000000080008008,
-];
-const ROTC: [u32; 24] = [
-    1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14, 27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44,
-];
-const PIL: [usize; 24] = [
-    10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1,
-];
-const M5: [usize; 10] = [0, 1, 2, 3, 4, 0, 1, 2, 3, 4];
-
-// Code based on Keccak-compact64.c from ref implementation.
-#[allow(clippy::needless_range_loop)]
-fn keccak_f(state: &mut [u8; B]) {
-    let mut s: [u64; 25] = [0; 25];
-    let mut t: [u64; 1] = [0; 1];
-    let mut c: [u64; 5] = [0; 5];
-
-    read_u64v_le(&mut s, state);
-
-    for round in 0..NROUNDS {
-        // Theta
-        for x in 0..5 {
-            c[x] = s[x] ^ s[5 + x] ^ s[10 + x] ^ s[15 + x] ^ s[20 + x];
-        }
-        for x in 0..5 {
-            t[0] = c[M5[x + 4]] ^ c[M5[x + 1]].rotate_left(1);
-            for y in 0..5 {
-                s[y * 5 + x] ^= t[0];
-            }
-        }
-
-        // Rho Pi
-        t[0] = s[1];
-        for x in 0..24 {
-            c[0] = s[PIL[x]];
-            s[PIL[x]] = t[0].rotate_left(ROTC[x]);
-            t[0] = c[0];
-        }
-
-        // Chi
-        for y in 0..5 {
-            for x in 0..5 {
-                c[x] = s[y * 5 + x];
-            }
-            for x in 0..5 {
-                s[y * 5 + x] = c[x] ^ (!c[M5[x + 1]] & c[M5[x + 2]]);
-            }
-        }
-
-        // Iota
-        s[0] ^= RC[round];
-    }
-
-    write_u64v_le(state, &s);
-}
 
 /// Engine for Keccak implementation where
 /// DSLEN = 0 (Keccak), 2 (SHA-3), 4 (Shake)
@@ -220,7 +142,7 @@ impl<const DIGESTLEN: usize, const DSLEN: usize> Engine<DIGESTLEN, DSLEN> {
             }
 
             self.offset = 0;
-            keccak_f(&mut self.state);
+            keccakf::keccak_f(&mut self.state);
         }
     }
 
@@ -273,7 +195,7 @@ impl<const DIGESTLEN: usize, const DSLEN: usize> Engine<DIGESTLEN, DSLEN> {
                 self.offset += nread;
             }
 
-            keccak_f(&mut self.state);
+            keccakf::keccak_f(&mut self.state);
         }
 
         if DIGESTLEN != 0 && DIGESTLEN == self.offset {
@@ -374,6 +296,35 @@ sha3_impl!(Sha3_512, Context512, 64, "SHA3 512");
 mod tests {
     use super::super::tests::{test_hashing, Test};
     use super::*;
+
+    // Multi-block (256 bytes) known-answer test. SHA3-256 (136-byte rate) runs
+    // the permutation twice and SHA3-512 (72-byte rate) four times, exercising
+    // the absorb block-iteration loop and, on aarch64, the SHA-3 crypto
+    // extension backend. Reference digests generated with Python `hashlib`.
+    #[test]
+    fn test_sha3_multiblock() {
+        let msg: [u8; 256] = core::array::from_fn(|i| ((i * 7 + 3) & 0xff) as u8);
+
+        let mut ctx256 = Context256::new();
+        ctx256.update_mut(&msg);
+        let expected256 = [
+            0x55, 0x6d, 0xf4, 0x17, 0x5a, 0xc1, 0x2f, 0x17, 0x4d, 0x9a, 0x28, 0x3a, 0x29, 0x81,
+            0xc7, 0x54, 0xc8, 0x77, 0x34, 0x6e, 0xb1, 0xc7, 0x0d, 0xb3, 0xa0, 0x0b, 0xfe, 0x8e,
+            0x3e, 0xf3, 0xfc, 0xb4,
+        ];
+        assert_eq!(ctx256.finalize(), expected256);
+
+        let mut ctx512 = Context512::new();
+        ctx512.update_mut(&msg);
+        let expected512 = [
+            0x01, 0xd4, 0xec, 0x18, 0x18, 0x6d, 0x3b, 0xa8, 0x6f, 0xcb, 0x93, 0x5f, 0x4a, 0x41,
+            0x76, 0xc0, 0x4e, 0x7f, 0x64, 0x4c, 0xc7, 0x0f, 0x18, 0x65, 0xe1, 0x28, 0x69, 0x67,
+            0x7a, 0x9d, 0x59, 0xa0, 0x6e, 0xae, 0xd0, 0x3c, 0x46, 0x4f, 0x94, 0xea, 0x7d, 0x1a,
+            0xe9, 0x7a, 0x69, 0x13, 0x6c, 0x6a, 0xe9, 0x32, 0x5e, 0xbe, 0xeb, 0x82, 0xce, 0x0a,
+            0x63, 0xd8, 0xee, 0xc3, 0xbb, 0xe9, 0xca, 0x4e,
+        ];
+        assert_eq!(ctx512.finalize(), expected512);
+    }
 
     #[test]
     fn test_sha3_224() {
@@ -542,5 +493,51 @@ mod tests {
             |ctx| ctx.finalize_reset(),
             |ctx| ctx.reset(),
         )
+    }
+}
+
+#[cfg(all(test, feature = "with-bench"))]
+mod bench {
+    use super::keccakf;
+    use super::{Sha3_256, Sha3_512};
+    use test::Bencher;
+
+    #[bench]
+    pub fn keccak_f(bh: &mut Bencher) {
+        let mut state = [0u8; super::B];
+        bh.iter(|| {
+            keccakf::keccak_f(&mut state);
+        });
+        bh.bytes = super::B as u64;
+    }
+
+    #[bench]
+    pub fn sha3_256_1k(bh: &mut Bencher) {
+        let mut sh = Sha3_256::new();
+        let bytes = [1u8; 1024];
+        bh.iter(|| {
+            sh.update_mut(&bytes);
+        });
+        bh.bytes = bytes.len() as u64;
+    }
+
+    #[bench]
+    pub fn sha3_256_64k(bh: &mut Bencher) {
+        let mut sh = Sha3_256::new();
+        let bytes = [1u8; 65536];
+        bh.iter(|| {
+            sh.update_mut(&bytes);
+        });
+        bh.bytes = bytes.len() as u64;
+    }
+
+    #[bench]
+    pub fn sha3_512_64k(bh: &mut Bencher) {
+        let mut sh = Sha3_512::new();
+        let bytes = [1u8; 65536];
+        bh.iter(|| {
+            sh.update_mut(&bytes);
+        });
+        bh.bytes = bytes.len() as u64;
     }
 }

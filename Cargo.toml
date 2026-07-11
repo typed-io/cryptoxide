@@ -21,7 +21,8 @@ doctest = false
 [dependencies]
 
 [features]
-default = ["argon2", "blake2", "blake3", "sha1", "sha2", "sha3", "ripemd160", "chacha", "salsa", "hkdf", "hmac", "pbkdf2", "poly1305", "scrypt", "curve25519", "ed25519", "x25519"]
+default = ["aes", "argon2", "blake2", "blake3", "sha1", "sha2", "sha3", "ripemd160", "chacha", "salsa", "hkdf", "hmac", "pbkdf2", "poly1305", "scrypt", "curve25519", "ed25519", "x25519"]
+aes = []
 blake2 = ["digest", "mac"]
 blake3 = []
 sha1 = ["digest"]

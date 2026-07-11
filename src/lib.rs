@@ -46,6 +46,9 @@ extern crate alloc;
 #[macro_use]
 extern crate std;
 
+#[cfg(feature = "aes")]
+pub mod aes;
+
 #[cfg(feature = "blake2")]
 pub mod blake2b;
 

@@ -133,10 +133,8 @@ pub trait CtGreater: Sized {
 
     /// Check that the first element is lesser or equal to the second element in
     /// constant time and return the associated `Choice`
-    ///
-    /// This is equivalent to calling `ct_gt` with the argument swapped
     fn ct_le(a: Self, b: Self) -> Choice {
-        Self::ct_gt(b, a)
+        Self::ct_gt(a, b).negate()
     }
 }
 
@@ -150,10 +148,8 @@ pub trait CtLesser: Sized {
 
     /// Check that the first element is greater or equal to the second element in
     /// constant time and return the associated `Choice`
-    ///
-    /// This is equivalent of calling `ct_lt` with the argument swapped
     fn ct_ge(a: Self, b: Self) -> Choice {
-        Self::ct_lt(b, a)
+        Self::ct_lt(a, b).negate()
     }
 }
 
@@ -429,5 +425,14 @@ mod tests {
         assert!(u64::ct_gt(10, 20).is_false());
         let a: [u8; 4] = [0u8, 1, 2, 3];
         assert_eq!(<&[u8; 4]>::ct_lt(&a, &[1, 1, 2, 3]).is_true(), true);
+
+        for i in [1, 2, 3, 4, 5, 6, 7, 8] {
+            for j in [3, 2, 4, 6, 2, 0, 46, 7] {
+                assert_eq!(u64::ct_lt(i, j).is_true(), i < j, "{} < {}", i, j);
+                assert_eq!(u64::ct_gt(i, j).is_true(), i > j, "{} > {}", i, j);
+                assert_eq!(u64::ct_le(i, j).is_true(), i <= j, "{} <= {}", i, j);
+                assert_eq!(u64::ct_ge(i, j).is_true(), i >= j, "{} >= {}", i, j);
+            }
+        }
     }
 }

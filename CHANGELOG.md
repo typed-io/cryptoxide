@@ -7,6 +7,7 @@
 * Fix SHA2-256 neon optimisation completely disabled by missing feature flag
 * Add SHA2-512 neon optimisation
 * Add SHA3/Keccak aarch64 optimisation using the ARMv8.2 SHA-3 crypto extensions
+* Add AES-128 and AES-256 block cipher: constant-time fixsliced software backend, plus an aarch64 ARMv8 hardware backend using the AES crypto extensions
 
 # 0.5.1
 

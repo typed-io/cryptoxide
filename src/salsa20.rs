@@ -206,6 +206,30 @@ impl<const ROUNDS: usize> Salsa<ROUNDS> {
     }
 }
 
+/// HSalsa core function.
+///
+/// Derive a 32-byte output from a 32-byte key and a 16-byte input by running
+/// the Salsa core over `ROUNDS` rounds (20 for the standard HSalsa20). Unlike
+/// the Salsa keystream, the initial state is *not* added back to the result.
+///
+/// This is the key-derivation primitive used to build [`XSalsa`] from
+/// [`Salsa`] (it turns the 24-byte XSalsa nonce into a subkey), and it matches
+/// NaCl's `crypto_core_hsalsa20`.
+pub fn hsalsa<const ROUNDS: usize>(key: &[u8; 32], input: &[u8; 16]) -> [u8; 32] {
+    assert!(ROUNDS == 8 || ROUNDS == 12 || ROUNDS == 20);
+
+    let mut state = State::<ROUNDS>::init(key, input);
+    state.rounds();
+    let mut out = [0; 32];
+    state.output_ad_bytes(&mut out);
+    out
+}
+
+/// HSalsa20: the [`hsalsa`] core function with the standard 20 rounds.
+pub fn hsalsa20(key: &[u8; 32], input: &[u8; 16]) -> [u8; 32] {
+    hsalsa::<20>(key, input)
+}
+
 /// XSalsa streaming cipher context (Salsa Variant)
 #[derive(Clone)]
 pub struct XSalsa<const ROUNDS: usize> {
@@ -224,10 +248,7 @@ impl<const ROUNDS: usize> XSalsa<ROUNDS> {
     pub fn new(key: &[u8; 32], nonce: &[u8; 24]) -> Self {
         assert!(ROUNDS == 8 || ROUNDS == 12 || ROUNDS == 20);
 
-        let mut hsalsa = State::<ROUNDS>::init(key, &nonce[0..16]);
-        hsalsa.rounds();
-        let mut new_key = [0; 32];
-        hsalsa.output_ad_bytes(&mut new_key);
+        let new_key = hsalsa::<ROUNDS>(key, nonce[0..16].try_into().unwrap());
 
         let xsalsa = Self {
             state: State::init(&new_key, &nonce[16..24]),
@@ -287,7 +308,7 @@ impl<const ROUNDS: usize> XSalsa<ROUNDS> {
 
 #[cfg(test)]
 mod test {
-    use super::{Salsa20, XSalsa20};
+    use super::{hsalsa20, Salsa20, XSalsa20};
 
     use crate::digest::Digest;
     use crate::sha2::Sha256;
@@ -360,6 +381,25 @@ mod test {
 
         let out_str = sh.result_str();
         assert_eq!(out_str, output_str);
+    }
+
+    #[test]
+    // NaCl `crypto_core_hsalsa20` test vector (libsodium core1): the derived
+    // subkey here is the same value used as the key in `test_xsalsa20_cryptopp`.
+    fn test_hsalsa20_nacl() {
+        let key = [
+            0x4a, 0x5d, 0x9d, 0x5b, 0xa4, 0xce, 0x2d, 0xe1, 0x72, 0x8e, 0x3b, 0xf4, 0x80, 0x35,
+            0x0f, 0x25, 0xe0, 0x7e, 0x21, 0xc9, 0x47, 0xd1, 0x9e, 0x33, 0x76, 0xf0, 0x9b, 0x3c,
+            0x1e, 0x16, 0x17, 0x42,
+        ];
+        let input = [0u8; 16];
+        let expected = [
+            0x1b, 0x27, 0x55, 0x64, 0x73, 0xe9, 0x85, 0xd4, 0x62, 0xcd, 0x51, 0x19, 0x7a, 0x9a,
+            0x46, 0xc7, 0x60, 0x09, 0x54, 0x9e, 0xac, 0x64, 0x74, 0xf2, 0x06, 0xc4, 0xee, 0x08,
+            0x44, 0xf6, 0x83, 0x89,
+        ];
+
+        assert_eq!(hsalsa20(&key, &input), expected);
     }
 
     #[test]

@@ -1,3 +1,7 @@
+# 0.5.3
+
+* Expose hsalsa (part of XSalsa)
+
 # 0.5.2
 
 * Add basic blake3 support. this implementation doesn't have any parallelisation capability yet

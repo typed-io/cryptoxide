@@ -375,8 +375,8 @@ mod tests {
     use super::*;
     use crate::curve25519::testrng::{GeneratorOf, GeneratorOf2, GeneratorRaw};
 
-    fn next_scalar(gen: &mut GeneratorRaw) -> Scalar {
-        let mut bytes = gen.bytes();
+    fn next_scalar(gen_raw: &mut GeneratorRaw) -> Scalar {
+        let mut bytes = gen_raw.bytes();
         bytes[31] &= 0x0f; // 2^252 max for simplicity
         Scalar::from_bytes(&bytes)
     }

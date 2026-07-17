@@ -68,9 +68,8 @@
 // except according to those terms.
 
 use crate::chacha20::ChaCha;
-use crate::constant_time::{Choice, CtEqual};
 use crate::cryptoutil::write_u64_le;
-use crate::poly1305::Poly1305;
+use crate::poly1305::{Poly1305, Tag};
 use core::convert::TryFrom;
 
 /// Chacha20Poly1305 Incremental Context for Authenticated Data (AAD)
@@ -116,27 +115,6 @@ pub struct ContextEncryption<const ROUNDS: usize>(Context<ROUNDS>);
 /// ChaCha20Poly1305 Incremental Context for decryption
 #[derive(Clone)]
 pub struct ContextDecryption<const ROUNDS: usize>(Context<ROUNDS>);
-
-/// ChaCha20Poly1305 Authenticated Tag (128 bits)
-#[derive(Debug, Clone)]
-pub struct Tag(pub [u8; 16]);
-
-impl CtEqual for &Tag {
-    fn ct_eq(self, other: Self) -> Choice {
-        self.0.ct_eq(&other.0)
-    }
-    fn ct_ne(self, b: Self) -> Choice {
-        self.ct_eq(b).negate()
-    }
-}
-
-impl PartialEq for Tag {
-    fn eq(&self, other: &Self) -> bool {
-        self.ct_eq(other).is_true()
-    }
-}
-
-impl Eq for Tag {}
 
 impl<const ROUNDS: usize> Context<ROUNDS> {
     /// Create a new context given the key and nonce.
@@ -190,7 +168,7 @@ impl<const ROUNDS: usize> Context<ROUNDS> {
     }
 }
 
-fn finalize_raw<const ROUNDS: usize>(mut inner: Context<ROUNDS>) -> [u8; 16] {
+fn finalize_raw<const ROUNDS: usize>(mut inner: Context<ROUNDS>) -> Tag {
     let mut len_buf = [0u8; 16];
     pad16(&mut inner.mac, inner.data_len);
     write_u64_le(&mut len_buf[0..8], inner.aad_len);
@@ -222,7 +200,7 @@ impl<const ROUNDS: usize> ContextEncryption<ROUNDS> {
     /// Finalize the encryption context and return the tag
     #[must_use]
     pub fn finalize(self) -> Tag {
-        Tag(finalize_raw(self.0))
+        finalize_raw(self.0)
     }
 }
 
@@ -256,7 +234,7 @@ impl<const ROUNDS: usize> ContextDecryption<ROUNDS> {
     ///
     #[must_use = "if the result is not checked, then the data will not be verified against tempering"]
     pub fn finalize(self, expected_tag: &Tag) -> DecryptionResult {
-        let got_tag = Tag(finalize_raw(self.0));
+        let got_tag = finalize_raw(self.0);
         if &got_tag == expected_tag {
             DecryptionResult::Match
         } else {

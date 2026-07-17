@@ -6,8 +6,8 @@
 //! use cryptoxide::{mac::Mac, poly1305::Poly1305};
 //!
 //! let mut context = Poly1305::new(&[0u8;32]);
-//! context.input(b"data to authenticate");
-//! let mac = context.result();
+//! context.update_mut(b"data to authenticate");
+//! let mac = context.finalize();
 //! ```
 //!
 //! [1]: <https://cr.yp.to/mac/poly1305-20050329.pdf>
@@ -37,6 +37,8 @@ mod donna64;
 #[cfg(not(any(target_arch = "arm", feature = "force-32bits")))]
 use donna64::State;
 
+use crate::constant_time::{Choice, CtEqual};
+
 /// `Poly1305` Context
 ///
 /// Use the `Mac` traits for interaction
@@ -45,6 +47,39 @@ pub struct Poly1305 {
     state: State,
     leftover: usize,
     buffer: [u8; 16],
+}
+
+/// Poly1305 Authenticated Tag (128 bits)
+#[derive(Debug, Clone)]
+pub struct Tag(pub [u8; 16]);
+
+impl CtEqual for &Tag {
+    fn ct_eq(self, other: Self) -> Choice {
+        self.0.ct_eq(&other.0)
+    }
+    fn ct_ne(self, b: Self) -> Choice {
+        self.ct_eq(b).negate()
+    }
+}
+
+impl PartialEq for Tag {
+    fn eq(&self, other: &Self) -> bool {
+        self.ct_eq(other).is_true()
+    }
+}
+
+impl Eq for Tag {}
+
+impl AsRef<[u8; 16]> for Tag {
+    fn as_ref(&self) -> &[u8; 16] {
+        &self.0
+    }
+}
+
+impl AsMut<[u8; 16]> for Tag {
+    fn as_mut(&mut self) -> &mut [u8; 16] {
+        &mut self.0
+    }
 }
 
 impl Poly1305 {
@@ -91,7 +126,7 @@ impl Poly1305 {
     }
 
     /// Finalize the state and return the Poly1305 Tag
-    pub fn finalize(mut self) -> [u8; 16] {
+    pub fn finalize(mut self) -> Tag {
         // pad and process the remaining partial block (if any). the 0x01
         // terminator is written into the buffer, so the backend is told not to
         // add the implicit high bit for this block.
@@ -104,7 +139,7 @@ impl Poly1305 {
             self.state.blocks(&tmp, true);
         }
 
-        self.state.finish()
+        Tag(self.state.finish())
     }
 
     /// Finalize the state into the tag, and reset the state to a new context
@@ -130,9 +165,9 @@ impl Poly1305 {
 
 #[cfg(test)]
 mod test {
-    use crate::poly1305::Poly1305;
+    use super::{Poly1305, Tag};
 
-    fn poly1305(key: &[u8; 32], msg: &[u8]) -> [u8; 16] {
+    fn poly1305(key: &[u8; 32], msg: &[u8]) -> Tag {
         let mut poly = Poly1305::new(key);
         poly.update_mut(msg);
         poly.finalize()
@@ -159,13 +194,13 @@ mod test {
             0x5a, 0x74, 0xe3, 0x55, 0xa5,
         ];
 
-        let expected = [
+        let expected = Tag([
             0xf3, 0xff, 0xc7, 0x70, 0x3f, 0x94, 0x00, 0xe5, 0x2a, 0x7d, 0xfb, 0x4b, 0x3d, 0x33,
             0x05, 0xd9,
-        ];
+        ]);
 
         let mac = poly1305(&key, &msg);
-        assert_eq!(&mac[..], &expected[..]);
+        assert_eq!(mac, expected);
 
         let mut poly = Poly1305::new(&key);
         poly.update_mut(&msg[0..32]);
@@ -180,7 +215,7 @@ mod test {
         poly.update_mut(&msg[129..130]);
         poly.update_mut(&msg[130..131]);
         let mac = poly.finalize();
-        assert_eq!(&mac[..], &expected[..]);
+        assert_eq!(mac, expected);
     }
 
     #[test]
@@ -196,13 +231,13 @@ mod test {
             0xff, 0xff,
         ];
 
-        let wrap_mac = [
+        let wrap_mac = Tag([
             0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00,
-        ];
+        ]);
 
         let mac = poly1305(&wrap_key, &wrap_msg);
-        assert_eq!(&mac[..], &wrap_mac[..]);
+        assert_eq!(mac, wrap_mac);
 
         let total_key = [
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0xff, 0xfe, 0xfd, 0xfc, 0xfb, 0xfa, 0xf9,
@@ -210,20 +245,20 @@ mod test {
             0x00, 0x00, 0x00, 0x00,
         ];
 
-        let total_mac = [
+        let total_mac = Tag([
             0x64, 0xaf, 0xe2, 0xe8, 0xd6, 0xad, 0x7b, 0xbd, 0xd2, 0x87, 0xf9, 0x7c, 0x44, 0x62,
             0x3d, 0x39,
-        ];
+        ]);
 
         let mut tpoly = Poly1305::new(&total_key);
         for i in 0..256 {
             let key = [i as u8; 32];
             let msg = [i as u8; 256];
             let mac = poly1305(&key, &msg[0..i]);
-            tpoly.update_mut(&mac);
+            tpoly.update_mut(mac.as_ref());
         }
         let mac = tpoly.finalize();
-        assert_eq!(&mac[..], &total_mac[..]);
+        assert_eq!(mac, total_mac);
     }
 
     #[test]
@@ -231,18 +266,18 @@ mod test {
         // from http://tools.ietf.org/html/draft-agl-tls-chacha20poly1305-04
         let key = b"this is 32-byte key for Poly1305";
         let msg = [0u8; 32];
-        let expected = [
+        let expected = Tag([
             0x49, 0xec, 0x78, 0x09, 0x0e, 0x48, 0x1e, 0xc6, 0xc2, 0x6b, 0x33, 0xb9, 0x1c, 0xcc,
             0x03, 0x07,
-        ];
+        ]);
         let mac = poly1305(key, &msg);
         assert_eq!(mac, expected);
 
         let msg = b"Hello world!";
-        let expected = [
+        let expected = Tag([
             0xa6, 0xf7, 0x45, 0x00, 0x8f, 0x81, 0xc9, 0x16, 0xa2, 0x0d, 0xcc, 0x74, 0xee, 0xf2,
             0xb2, 0xf0,
-        ];
+        ]);
         let mac = poly1305(key, msg);
         assert_eq!(mac, expected);
     }

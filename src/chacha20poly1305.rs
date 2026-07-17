@@ -342,7 +342,7 @@ impl<const ROUNDS: usize> ChaChaPoly1305<ROUNDS> {
     /// // create a new cipher
     /// let mut cipher = ChaCha20Poly1305::new(&key, &nonce, &aad);
     ///
-    /// // encrypt the msg and append the tag at the end
+    /// // decrypt the msg
     /// if !cipher.decrypt(&ae_msg[0..12], &mut decrypt_msg, &ae_msg[12..]) {
     ///     panic!("encrypted message has been tempered")
     /// }

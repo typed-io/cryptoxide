@@ -1,5 +1,16 @@
 use crate::cryptoutil::read_u64v_be;
-use crate::simd::u64x2;
+
+#[derive(Clone, Copy)]
+#[allow(non_camel_case_types)]
+pub struct u64x2(pub u64, pub u64);
+
+impl core::ops::Add for u64x2 {
+    type Output = u64x2;
+
+    fn add(self, rhs: u64x2) -> u64x2 {
+        u64x2(self.0.wrapping_add(rhs.0), self.1.wrapping_add(rhs.1))
+    }
+}
 
 /// Not an intrinsic, but works like an unaligned load.
 #[inline]

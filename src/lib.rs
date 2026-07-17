@@ -111,6 +111,5 @@ pub mod sha3;
 pub mod ripemd160;
 
 mod cryptoutil;
-mod simd;
 
 pub mod constant_time;

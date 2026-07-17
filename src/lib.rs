@@ -49,10 +49,10 @@ extern crate std;
 #[cfg(feature = "aes")]
 pub mod aes;
 
-#[cfg(feature = "blake2")]
+#[cfg(all(feature = "blake2", feature = "digest"))]
 pub mod blake2b;
 
-#[cfg(feature = "blake2")]
+#[cfg(all(feature = "blake2", feature = "digest"))]
 pub mod blake2s;
 
 #[cfg(feature = "chacha")]
@@ -98,16 +98,16 @@ pub mod scrypt;
 #[cfg(feature = "salsa")]
 pub mod salsa20;
 
-#[cfg(feature = "sha1")]
+#[cfg(all(feature = "sha1", feature = "digest"))]
 pub mod sha1;
 
-#[cfg(feature = "sha2")]
+#[cfg(all(feature = "sha2", feature = "digest"))]
 pub mod sha2;
 
-#[cfg(feature = "sha3")]
+#[cfg(all(feature = "sha3", feature = "digest"))]
 pub mod sha3;
 
-#[cfg(feature = "ripemd160")]
+#[cfg(all(feature = "ripemd160", feature = "digest"))]
 pub mod ripemd160;
 
 mod cryptoutil;

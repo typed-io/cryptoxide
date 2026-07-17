@@ -70,7 +70,6 @@
 use crate::chacha20::ChaCha;
 use crate::constant_time::{Choice, CtEqual};
 use crate::cryptoutil::write_u64_le;
-use crate::mac::Mac;
 use crate::poly1305::Poly1305;
 use core::convert::TryFrom;
 
@@ -166,7 +165,7 @@ impl<const ROUNDS: usize> Context<ROUNDS> {
     }
 
     fn add_encrypted(&mut self, encrypted: &[u8]) {
-        self.mac.input(encrypted);
+        self.mac.update_mut(encrypted);
         self.data_len += encrypted.len() as u64;
     }
 
@@ -175,7 +174,7 @@ impl<const ROUNDS: usize> Context<ROUNDS> {
     /// This can be called multiple times
     pub fn add_data(&mut self, aad: &[u8]) {
         self.aad_len += aad.len() as u64;
-        self.mac.input(aad);
+        self.mac.update_mut(aad);
     }
 
     /// Finish authenticated part and move to the encryption phase
@@ -191,14 +190,13 @@ impl<const ROUNDS: usize> Context<ROUNDS> {
     }
 }
 
-fn finalize_raw<const ROUNDS: usize>(inner: &mut Context<ROUNDS>) -> [u8; 16] {
+fn finalize_raw<const ROUNDS: usize>(mut inner: Context<ROUNDS>) -> [u8; 16] {
     let mut len_buf = [0u8; 16];
     pad16(&mut inner.mac, inner.data_len);
     write_u64_le(&mut len_buf[0..8], inner.aad_len);
     write_u64_le(&mut len_buf[8..16], inner.data_len);
-    inner.mac.input(&len_buf);
-    inner.mac.raw_result(&mut len_buf);
-    len_buf
+    inner.mac.update_mut(&len_buf);
+    inner.mac.finalize()
 }
 
 impl<const ROUNDS: usize> ContextEncryption<ROUNDS> {
@@ -223,9 +221,8 @@ impl<const ROUNDS: usize> ContextEncryption<ROUNDS> {
 
     /// Finalize the encryption context and return the tag
     #[must_use]
-    pub fn finalize(mut self) -> Tag {
-        let tag = finalize_raw(&mut self.0);
-        Tag(tag)
+    pub fn finalize(self) -> Tag {
+        Tag(finalize_raw(self.0))
     }
 }
 
@@ -258,8 +255,8 @@ impl<const ROUNDS: usize> ContextDecryption<ROUNDS> {
     /// Finalize the decryption context and check that the tag match the expected value
     ///
     #[must_use = "if the result is not checked, then the data will not be verified against tempering"]
-    pub fn finalize(mut self, expected_tag: &Tag) -> DecryptionResult {
-        let got_tag = Tag(finalize_raw(&mut self.0));
+    pub fn finalize(self, expected_tag: &Tag) -> DecryptionResult {
+        let got_tag = Tag(finalize_raw(self.0));
         if &got_tag == expected_tag {
             DecryptionResult::Match
         } else {
@@ -279,7 +276,7 @@ fn pad16(mac: &mut Poly1305, len: u64) {
     if (len % 16) != 0 {
         let padding = [0u8; 15];
         let sz = 16 - (len % 16) as usize;
-        mac.input(&padding[0..sz]);
+        mac.update_mut(&padding[0..sz]);
     }
 }
 

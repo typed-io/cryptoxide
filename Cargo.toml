@@ -40,7 +40,7 @@ hmac = ["digest", "mac"]
 pbkdf2 = ["mac"]
 scrypt = ["pbkdf2", "mac", "hmac"]
 argon2 = ["blake2"]
-poly1305 = ["mac"]
+poly1305 = []
 
 curve25519 = []
 ed25519 = ["sha2", "curve25519"]

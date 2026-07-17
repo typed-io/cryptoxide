@@ -17,8 +17,6 @@
 
 use core::cmp::min;
 
-use crate::mac::{Mac, MacResult};
-
 // The arithmetic core comes in two flavours selected at compile time, sharing
 // the same `State` interface (`new` / `reset` / `blocks` / `finish`):
 //
@@ -47,8 +45,6 @@ pub struct Poly1305 {
     state: State,
     leftover: usize,
     buffer: [u8; 16],
-    tag: [u8; 16],
-    finalized: bool,
 }
 
 impl Poly1305 {
@@ -58,32 +54,11 @@ impl Poly1305 {
             state: State::new(key),
             leftover: 0,
             buffer: [0u8; 16],
-            tag: [0u8; 16],
-            finalized: false,
         }
     }
 
-    fn finalize(&mut self) {
-        // pad and process the remaining partial block (if any). the 0x01
-        // terminator is written into the buffer, so the backend is told not to
-        // add the implicit high bit for this block.
-        if self.leftover > 0 {
-            self.buffer[self.leftover] = 1;
-            for b in self.buffer[self.leftover + 1..].iter_mut() {
-                *b = 0;
-            }
-            let tmp = self.buffer;
-            self.state.blocks(&tmp, true);
-        }
-
-        self.tag = self.state.finish();
-        self.finalized = true;
-    }
-}
-
-impl Mac for Poly1305 {
-    fn input(&mut self, data: &[u8]) {
-        assert!(!self.finalized);
+    /// Update the local state using the data
+    pub fn update_mut(&mut self, data: &[u8]) {
         let mut m = data;
 
         if self.leftover > 0 {
@@ -115,40 +90,52 @@ impl Mac for Poly1305 {
         self.leftover = m.len();
     }
 
-    fn reset(&mut self) {
-        self.state.reset();
-        self.leftover = 0;
-        self.finalized = false;
-    }
-
-    fn result(&mut self) -> MacResult {
-        let mut mac = [0u8; 16];
-        self.raw_result(&mut mac);
-        MacResult::new(&mac[..])
-    }
-
-    fn raw_result(&mut self, output: &mut [u8]) {
-        assert!(output.len() >= 16);
-        if !self.finalized {
-            self.finalize();
+    /// Finalize the state and return the Poly1305 Tag
+    pub fn finalize(mut self) -> [u8; 16] {
+        // pad and process the remaining partial block (if any). the 0x01
+        // terminator is written into the buffer, so the backend is told not to
+        // add the implicit high bit for this block.
+        if self.leftover > 0 {
+            self.buffer[self.leftover] = 1;
+            for b in self.buffer[self.leftover + 1..].iter_mut() {
+                *b = 0;
+            }
+            let tmp = self.buffer;
+            self.state.blocks(&tmp, true);
         }
-        output[0..16].copy_from_slice(&self.tag);
+
+        self.state.finish()
     }
 
-    fn output_bytes(&self) -> usize {
-        16
+    /// Finalize the state into the tag, and reset the state to a new context
+    pub fn finalize_reset(&mut self, tag: &mut [u8; 16]) {
+        // pad and process the remaining partial block (if any). the 0x01
+        // terminator is written into the buffer, so the backend is told not to
+        // add the implicit high bit for this block.
+        if self.leftover > 0 {
+            self.buffer[self.leftover] = 1;
+            for b in self.buffer[self.leftover + 1..].iter_mut() {
+                *b = 0;
+            }
+            let tmp = self.buffer;
+            self.state.blocks(&tmp, true);
+        }
+        *tag = self.state.finish();
+
+        self.leftover = 0;
+        self.buffer = [0; 16];
+        self.state.reset();
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::mac::Mac;
     use crate::poly1305::Poly1305;
 
-    fn poly1305(key: &[u8; 32], msg: &[u8], mac: &mut [u8]) {
+    fn poly1305(key: &[u8; 32], msg: &[u8]) -> [u8; 16] {
         let mut poly = Poly1305::new(key);
-        poly.input(msg);
-        poly.raw_result(mac);
+        poly.update_mut(msg);
+        poly.finalize()
     }
 
     #[test]
@@ -177,23 +164,22 @@ mod test {
             0x05, 0xd9,
         ];
 
-        let mut mac = [0u8; 16];
-        poly1305(&key, &msg, &mut mac);
+        let mac = poly1305(&key, &msg);
         assert_eq!(&mac[..], &expected[..]);
 
         let mut poly = Poly1305::new(&key);
-        poly.input(&msg[0..32]);
-        poly.input(&msg[32..96]);
-        poly.input(&msg[96..112]);
-        poly.input(&msg[112..120]);
-        poly.input(&msg[120..124]);
-        poly.input(&msg[124..126]);
-        poly.input(&msg[126..127]);
-        poly.input(&msg[127..128]);
-        poly.input(&msg[128..129]);
-        poly.input(&msg[129..130]);
-        poly.input(&msg[130..131]);
-        poly.raw_result(&mut mac);
+        poly.update_mut(&msg[0..32]);
+        poly.update_mut(&msg[32..96]);
+        poly.update_mut(&msg[96..112]);
+        poly.update_mut(&msg[112..120]);
+        poly.update_mut(&msg[120..124]);
+        poly.update_mut(&msg[124..126]);
+        poly.update_mut(&msg[126..127]);
+        poly.update_mut(&msg[127..128]);
+        poly.update_mut(&msg[128..129]);
+        poly.update_mut(&msg[129..130]);
+        poly.update_mut(&msg[130..131]);
+        let mac = poly.finalize();
         assert_eq!(&mac[..], &expected[..]);
     }
 
@@ -215,8 +201,7 @@ mod test {
             0x00, 0x00,
         ];
 
-        let mut mac = [0u8; 16];
-        poly1305(&wrap_key, &wrap_msg, &mut mac);
+        let mac = poly1305(&wrap_key, &wrap_msg);
         assert_eq!(&mac[..], &wrap_mac[..]);
 
         let total_key = [
@@ -234,11 +219,10 @@ mod test {
         for i in 0..256 {
             let key = [i as u8; 32];
             let msg = [i as u8; 256];
-            let mut mac = [0u8; 16];
-            poly1305(&key, &msg[0..i], &mut mac);
-            tpoly.input(&mac);
+            let mac = poly1305(&key, &msg[0..i]);
+            tpoly.update_mut(&mac);
         }
-        tpoly.raw_result(&mut mac);
+        let mac = tpoly.finalize();
         assert_eq!(&mac[..], &total_mac[..]);
     }
 
@@ -251,17 +235,16 @@ mod test {
             0x49, 0xec, 0x78, 0x09, 0x0e, 0x48, 0x1e, 0xc6, 0xc2, 0x6b, 0x33, 0xb9, 0x1c, 0xcc,
             0x03, 0x07,
         ];
-        let mut mac = [0u8; 16];
-        poly1305(key, &msg, &mut mac);
-        assert_eq!(&mac[..], &expected[..]);
+        let mac = poly1305(key, &msg);
+        assert_eq!(mac, expected);
 
         let msg = b"Hello world!";
         let expected = [
             0xa6, 0xf7, 0x45, 0x00, 0x8f, 0x81, 0xc9, 0x16, 0xa2, 0x0d, 0xcc, 0x74, 0xee, 0xf2,
             0xb2, 0xf0,
         ];
-        poly1305(key, msg, &mut mac);
-        assert_eq!(&mac[..], &expected[..]);
+        let mac = poly1305(key, msg);
+        assert_eq!(mac, expected);
     }
 }
 

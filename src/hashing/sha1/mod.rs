@@ -20,6 +20,10 @@ use crate::cryptoutil::{write_u32_be, FixedBuffer};
 // portable software implementation, valid for all architectures
 mod reference;
 
+// aarch64 hardware acceleration using the SHA-1 crypto extension
+#[cfg(all(target_arch = "aarch64", target_feature = "sha2"))]
+mod aarch64;
+
 const STATE_LEN: usize = 5;
 
 /// Process one or more 64-bytes block with the SHA-1 algorithm.
@@ -27,6 +31,11 @@ const STATE_LEN: usize = 5;
 /// `block` length must be a non-zero multiple of 64 bytes. The best
 /// implementation available for the target is selected at compile time.
 fn digest_block(state: &mut [u32; STATE_LEN], block: &[u8]) {
+    #[cfg(all(target_arch = "aarch64", target_feature = "sha2"))]
+    {
+        return aarch64::digest_block(state, block);
+    }
+    #[allow(unreachable_code)]
     reference::digest_block(state, block)
 }
 

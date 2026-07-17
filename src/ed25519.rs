@@ -36,8 +36,10 @@
 
 use crate::constant_time::CtEqual;
 use crate::curve25519::{curve25519, scalar, Fe, Ge, GePartial, Scalar};
-use crate::hashing::sha2::Sha512;
 use core::convert::TryFrom;
+
+#[cfg(feature = "sha2")]
+use crate::hashing::sha2::Sha512;
 
 #[deprecated(since = "0.4.0", note = "use `PRIVATE_KEY_LENGTH`")]
 /// ED25519 Seed length
@@ -257,8 +259,7 @@ fn edwards_to_montgomery_x(ed_y: &Fe) -> Fe {
 mod tests {
     use super::{exchange, keypair, signature, verify};
     use crate::curve25519::{curve25519, curve25519_base};
-    use crate::digest::Digest;
-    use crate::sha2::Sha512;
+    use crate::hashing::sha2::Sha512;
     use core::convert::TryFrom;
 
     fn do_keypair_case(seed: [u8; 32], expected_secret: [u8; 64], expected_public: [u8; 32]) {
@@ -319,9 +320,8 @@ mod tests {
         let (ed_keypair, ed_public) = keypair(&private_key);
 
         let mut hasher = Sha512::new();
-        hasher.input(&ed_keypair[0..32]);
-        let mut hash: [u8; 64] = [0; 64];
-        hasher.result(&mut hash);
+        hasher.update_mut(&ed_keypair[0..32]);
+        let mut hash = hasher.finalize();
 
         super::clamp_scalar(&mut hash);
 

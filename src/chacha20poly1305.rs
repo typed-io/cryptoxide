@@ -326,6 +326,10 @@ impl<const ROUNDS: usize> ChaChaPoly1305<ROUNDS> {
     /// // encrypt the msg and append the tag at the end
     /// cipher.encrypt(input, &mut out[0..12], &mut tag);
     /// out[12..].copy_from_slice(&tag);
+    ///
+    /// // the output is the encrypted message followed by the authentication tag;
+    /// // this is exactly the `ae_msg` consumed by the `decrypt` example below
+    /// assert_eq!(out, [2, 246, 61, 76, 92, 157, 36, 94, 5, 75, 115, 85, 61, 163, 40, 26, 108, 216, 221, 47, 108, 231, 45, 0, 208, 59, 59, 228]);
     /// ```
     pub fn encrypt(&mut self, input: &[u8], output: &mut [u8], out_tag: &mut [u8]) {
         assert!(input.len() == output.len());
@@ -357,7 +361,7 @@ impl<const ROUNDS: usize> ChaChaPoly1305<ROUNDS> {
     /// let key : [u8; 16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
     /// let nonce : [u8; 12] = [1,2,3,4,5,6,7,8,9,10,11,12];
     /// let aad : [u8; 0] = [];
-    /// let ae_msg : [u8; 12+16] = [108, 82, 26, 254, 225, 35, 236, 248, 197, 246, 224, 48, 26, 63, 45, 5, 196, 47, 207, 128, 34, 182, 149, 185, 193, 73, 147, 29];
+    /// let ae_msg : [u8; 12+16] = [2, 246, 61, 76, 92, 157, 36, 94, 5, 75, 115, 85, 61, 163, 40, 26, 108, 216, 221, 47, 108, 231, 45, 0, 208, 59, 59, 228];
     /// let mut decrypt_msg : [u8; 12] = [0u8; 12];
     ///
     /// // create a new cipher

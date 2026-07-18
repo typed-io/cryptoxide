@@ -31,9 +31,6 @@
 
 use crate::digest::Digest;
 use crate::hashing::blake2s;
-use crate::mac::{Mac, MacResult};
-use alloc::vec::Vec;
-use core::iter::repeat;
 
 /// Blake2s Context (Dynamic output size)
 pub type Context = blake2s::ContextDyn;
@@ -120,51 +117,5 @@ impl Digest for Blake2s {
     fn block_size(&self) -> usize {
         // hack : this is a constant, not related to the number of bit
         blake2s::Blake2s::<0>::BLOCK_BYTES
-    }
-}
-
-impl Mac for Blake2s {
-    fn input(&mut self, data: &[u8]) {
-        self.update(data);
-    }
-
-    fn reset(&mut self) {
-        Blake2s::reset(self);
-    }
-
-    fn result(&mut self) -> MacResult {
-        let mut mac: Vec<u8> = repeat(0).take(self.ctx.output_bits() / 8).collect();
-        self.raw_result(&mut mac);
-        MacResult::new_from_owned(mac)
-    }
-
-    fn raw_result(&mut self, output: &mut [u8]) {
-        self.finalize(output);
-    }
-
-    fn output_bytes(&self) -> usize {
-        self.ctx.output_bits() / 8
-    }
-}
-
-#[cfg(test)]
-mod mac_tests {
-    use super::Blake2s;
-    use crate::mac::Mac;
-
-    #[test]
-    fn test_blake2s_mac() {
-        let key: [u8; 32] = [
-            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-            24, 25, 26, 27, 28, 29, 30, 31,
-        ];
-        let mut m = Blake2s::new_keyed(32, &key[..]);
-        m.input(&[1, 2, 4, 8]);
-        let expected = [
-            0x0e, 0x88, 0xf6, 0x8a, 0xaa, 0x5c, 0x4e, 0xd8, 0xf7, 0xed, 0x28, 0xf8, 0x04, 0x45,
-            0x01, 0x9c, 0x7e, 0xf9, 0x76, 0x2b, 0x4f, 0xf1, 0xad, 0x7e, 0x05, 0x5b, 0xa8, 0xc8,
-            0x82, 0x9e, 0xe2, 0x49,
-        ];
-        assert_eq!(m.result().code().to_vec(), expected.to_vec());
     }
 }

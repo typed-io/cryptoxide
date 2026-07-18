@@ -86,8 +86,6 @@ pub mod kdf;
 
 #[cfg(feature = "hmac")]
 pub mod hmac;
-#[cfg(feature = "mac")]
-pub mod mac;
 #[cfg(feature = "pbkdf2")]
 pub mod pbkdf2;
 #[cfg(feature = "poly1305")]

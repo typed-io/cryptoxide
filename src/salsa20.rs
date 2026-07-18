@@ -310,9 +310,6 @@ impl<const ROUNDS: usize> XSalsa<ROUNDS> {
 mod test {
     use super::{hsalsa20, Salsa20, XSalsa20};
 
-    use crate::digest::Digest;
-    use crate::sha2::Sha256;
-
     #[test]
     fn test_salsa20_128bit_ecrypt_set_1_vector_0() {
         let key = [128u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -355,17 +352,24 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "sha2")]
     // Streams and SHA-256-hashes 4 MiB; fine natively but far too slow under
     // the Miri interpreter, so skip it there (`cargo miri test`).
     #[cfg_attr(miri, ignore)]
     fn test_salsa20_256bit_nacl_vector_2() {
+        use crate::hashing::sha2::Sha256;
+
         let key = [
             0xdc, 0x90, 0x8d, 0xda, 0x0b, 0x93, 0x44, 0xa9, 0x53, 0x62, 0x9b, 0x73, 0x38, 0x20,
             0x77, 0x88, 0x80, 0xf3, 0xce, 0xb4, 0x21, 0xbb, 0x61, 0xb9, 0x1c, 0xbd, 0x4c, 0x3e,
             0x66, 0x25, 0x6c, 0xe4,
         ];
         let nonce = [0x82, 0x19, 0xe0, 0x03, 0x6b, 0x7a, 0x0b, 0x37];
-        let output_str = "662b9d0e3463029156069b12f918691a98f7dfb2ca0393c96bbfc6b1fbd630a2";
+        let expected = [
+            0x66, 0x2b, 0x9d, 0x0e, 0x34, 0x63, 0x02, 0x91, 0x56, 0x06, 0x9b, 0x12, 0xf9, 0x18,
+            0x69, 0x1a, 0x98, 0xf7, 0xdf, 0xb2, 0xca, 0x03, 0x93, 0xc9, 0x6b, 0xbf, 0xc6, 0xb1,
+            0xfb, 0xd6, 0x30, 0xa2,
+        ];
 
         let mut salsa20 = Salsa20::new(&key, &nonce);
 
@@ -376,11 +380,11 @@ mod test {
         let mut stream_output = [0u8; 512];
         for _ in 0..8192 {
             salsa20.process(&block, &mut stream_output);
-            sh.input(&stream_output);
+            sh.update_mut(&stream_output);
         }
 
-        let out_str = sh.result_str();
-        assert_eq!(out_str, output_str);
+        let got = sh.finalize();
+        assert_eq!(got, expected);
     }
 
     #[test]

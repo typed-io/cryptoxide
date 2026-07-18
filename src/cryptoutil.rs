@@ -135,7 +135,7 @@ pub fn xor_array64_mut<const N: usize>(lhs: &mut [u64; N], rhs: &[u64; N]) {
 }
 
 /// Zero all bytes in dst
-#[cfg(any(feature = "blake2", feature = "hmac"))]
+#[cfg(any(feature = "blake2", feature = "hmac", feature = "ripemd160", feature = "sha1", feature = "sha2"))]
 #[inline]
 pub fn zero(dst: &mut [u8]) {
     unsafe {

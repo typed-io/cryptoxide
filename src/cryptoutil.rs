@@ -125,12 +125,14 @@ pub fn zero(dst: &mut [u8]) {
 }
 
 /// A fixed size buffer of N bytes useful for cryptographic operations.
+#[cfg(any(feature = "ripemd160", feature = "sha1", feature = "sha2"))]
 #[derive(Clone)]
 pub(crate) struct FixedBuffer<const N: usize> {
     buffer: [u8; N],
     buffer_idx: usize,
 }
 
+#[cfg(any(feature = "ripemd160", feature = "sha1", feature = "sha2"))]
 impl<const N: usize> FixedBuffer<N> {
     /// Create a new buffer
     pub const fn new() -> Self {

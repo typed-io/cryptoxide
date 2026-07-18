@@ -1,3 +1,12 @@
+# 0.6.0
+
+* the `digest` feature is not automatically built anymore, including all the hashing modules at the root of the directory. use the hashing submodule.
+* the `mac` feature doesn't exist, and the mac module is gone
+* hmac use method on Context now and the new Tag<N> output
+* various internal reorganisation:
+  * Allowing small feature based subset to be build better
+  * making it less prones to spurious warnings
+
 # 0.5.3
 
 * Expose hsalsa (part of XSalsa)

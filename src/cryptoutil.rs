@@ -3,16 +3,27 @@
 use core::convert::TryFrom;
 use core::{mem::size_of, ptr};
 
+#[cfg(any(
+    all(feature = "chacha", feature = "poly1305"),
+    all(feature = "poly1305", not(feature = "force-32bits"))
+))]
 #[inline]
 pub(crate) fn write_u64_le(dst: &mut [u8], input: u64) {
     *<&mut [u8; 8]>::try_from(dst).unwrap() = input.to_le_bytes();
 }
 
+#[cfg(any(
+    feature = "ripemd160",
+    feature = "salsa",
+    feature = "scrypt",
+    all(feature = "poly1305", feature = "force-32bits")
+))]
 #[inline]
 pub(crate) fn write_u32_le(dst: &mut [u8], input: u32) {
     *<&mut [u8; 4]>::try_from(dst).unwrap() = input.to_le_bytes();
 }
 
+#[cfg(any(feature = "sha1", feature = "sha2"))]
 #[inline]
 pub(crate) fn write_u32_be(dst: &mut [u8], input: u32) {
     *<&mut [u8; 4]>::try_from(dst).unwrap() = input.to_be_bytes();
@@ -70,6 +81,11 @@ read_array_type!(read_u32v_be, u32, from_be_bytes);
 read_array_type!(read_u32v_le, u32, from_le_bytes);
 
 /// Read the value of a vector of bytes as a u32 value in little-endian format.
+#[cfg(any(
+    feature = "salsa",
+    feature = "chacha",
+    all(feature = "poly1305", feature = "force-32bits")
+))]
 #[inline]
 pub fn read_u32_le(input: &[u8]) -> u32 {
     let tmp: [u8; 4] = *<&[u8; 4]>::try_from(input).unwrap();
@@ -77,6 +93,7 @@ pub fn read_u32_le(input: &[u8]) -> u32 {
 }
 
 /// Read the value of a vector of bytes as a u64 value in little-endian format.
+#[cfg(all(feature = "poly1305", not(feature = "force-32bits")))]
 #[inline]
 pub fn read_u64_le(input: &[u8]) -> u64 {
     let tmp: [u8; 8] = *<&[u8; 8]>::try_from(input).unwrap();
@@ -96,6 +113,7 @@ pub fn read_u32_be(input: &[u8]) -> u32 {
 */
 
 /// XOR a keystream in a buffer
+#[cfg(any(feature = "chacha", feature = "salsa"))]
 pub fn xor_keystream_mut(buf: &mut [u8], keystream: &[u8]) {
     assert!(buf.len() <= keystream.len());
 
@@ -110,6 +128,7 @@ pub fn xor_keystream_mut(buf: &mut [u8], keystream: &[u8]) {
 /// XOR the content an array of u64 of size N with the right hand side in place:
 ///
 /// Figuratively this does: `lhs ^= rhs`
+#[cfg(feature = "argon2")]
 pub fn xor_array64_mut<const N: usize>(lhs: &mut [u64; N], rhs: &[u64; N]) {
     for (left, right) in lhs.iter_mut().zip(rhs.iter()) {
         *left ^= *right
@@ -117,6 +136,7 @@ pub fn xor_array64_mut<const N: usize>(lhs: &mut [u64; N], rhs: &[u64; N]) {
 }
 
 /// Zero all bytes in dst
+#[cfg(any(feature = "blake2", feature = "hmac"))]
 #[inline]
 pub fn zero(dst: &mut [u8]) {
     unsafe {

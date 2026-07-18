@@ -156,7 +156,8 @@ pub fn xor_array64_mut<const N: usize>(lhs: &mut [u64; N], rhs: &[u64; N]) {
     feature = "hmac",
     feature = "ripemd160",
     feature = "sha1",
-    feature = "sha2"
+    feature = "sha2",
+    feature = "sha3"
 ))]
 #[inline]
 pub fn zero(dst: &mut [u8]) {

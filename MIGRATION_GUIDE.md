@@ -51,3 +51,5 @@ The new Hashing APIs use a more functional approach and generally use an object
 consume approach (using rust's affine type), to prevent having to store a
 finalized boolean and the result of the algorithm in itself. The end result is
 marginally smaller data structure and a cleaner API.
+
+Mac trait is gone, just use Hmac or Poly1305 APIs directly.

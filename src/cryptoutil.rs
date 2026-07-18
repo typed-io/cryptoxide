@@ -47,7 +47,15 @@ macro_rules! write_array_type {
 
 write_array_type!(write_u64v_le, u64, to_le_bytes, "blake2", "sha3");
 write_array_type!(write_u64v_be, u64, to_be_bytes, "sha2");
-write_array_type!(write_u32v_le, u32, to_le_bytes, "salsa", "chacha", "blake2", "blake3");
+write_array_type!(
+    write_u32v_le,
+    u32,
+    to_le_bytes,
+    "salsa",
+    "chacha",
+    "blake2",
+    "blake3"
+);
 write_array_type!(write_u32v_be, u32, to_be_bytes, "sha2");
 
 macro_rules! read_array_type {
@@ -77,7 +85,15 @@ macro_rules! read_array_type {
 read_array_type!(read_u64v_be, u64, from_be_bytes, "sha2");
 read_array_type!(read_u64v_le, u64, from_le_bytes, "blake2", "sha3");
 read_array_type!(read_u32v_be, u32, from_be_bytes, "sha2", "sha1");
-read_array_type!(read_u32v_le, u32, from_le_bytes, "scrypt", "blake3", "ripemd160", "blake2");
+read_array_type!(
+    read_u32v_le,
+    u32,
+    from_le_bytes,
+    "scrypt",
+    "blake3",
+    "ripemd160",
+    "blake2"
+);
 
 /// Read the value of a vector of bytes as a u32 value in little-endian format.
 #[cfg(any(
@@ -135,7 +151,13 @@ pub fn xor_array64_mut<const N: usize>(lhs: &mut [u64; N], rhs: &[u64; N]) {
 }
 
 /// Zero all bytes in dst
-#[cfg(any(feature = "blake2", feature = "hmac", feature = "ripemd160", feature = "sha1", feature = "sha2"))]
+#[cfg(any(
+    feature = "blake2",
+    feature = "hmac",
+    feature = "ripemd160",
+    feature = "sha1",
+    feature = "sha2"
+))]
 #[inline]
 pub fn zero(dst: &mut [u8]) {
     unsafe {

@@ -40,6 +40,13 @@
 #[cfg(feature = "with-bench")]
 extern crate test;
 
+#[cfg(any(
+    test,
+    feature = "hkdf",
+    feature = "pbkdf2",
+    feature = "argon2",
+    feature = "sha3"
+))]
 extern crate alloc;
 
 #[cfg(test)]

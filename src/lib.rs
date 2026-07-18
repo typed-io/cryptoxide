@@ -45,7 +45,8 @@ extern crate test;
     feature = "hkdf",
     feature = "pbkdf2",
     feature = "argon2",
-    feature = "sha3"
+    feature = "sha3",
+    feature = "digest"
 ))]
 extern crate alloc;
 

@@ -14,6 +14,11 @@
 #   * x86-64:  SSE2 ChaCha, SSE4.1/AVX SHA-256, AVX/AVX2 BLAKE2
 #   * software: reference AES, reference ChaCha/Salsa/SHA-2/BLAKE2
 #   * 32-bit software arithmetic: poly1305 donna32
+#   * 32-bit ARM (target_arch=arm): all reference backends, with poly1305
+#     donna32 selected from target_arch alone (no force-32bits) -- plus a
+#     no_std bare-metal compile check (thumbv7m-none-eabi)
+#   * RISC-V (target_arch=riscv32/riscv64): all reference backends; poly1305
+#     uses donna32 on riscv32 and donna64 on riscv64
 
 set -e
 
@@ -149,6 +154,111 @@ else
         run "x86-64 force-32bits (build-only)" "" \
             build --target "$TARGET_X86_64" --features force-32bits
     fi
+fi
+
+# ------------------------------------------------------------------
+# 32-bit ARM backends (target_arch = "arm")
+# ------------------------------------------------------------------
+echo
+echo "################ 32-bit ARM backend matrix ################"
+#
+# On 32-bit ARM none of the aarch64 accelerated backends apply, so every
+# primitive falls back to its reference/software backend. What is unique to this
+# target is that poly1305 selects the 32-bit "donna32" arithmetic from
+# target_arch = "arm" alone -- a cfg branch that no other configuration in this
+# matrix reaches (elsewhere it is only taken via the force-32bits feature). It
+# also compiles the whole crate under a 32-bit pointer width, which is the
+# environment the crate is meant to support on embedded devices.
+#
+# 32-bit ARM binaries cannot run on this host unless it is itself a 32-bit ARM
+# machine, so both configs below are compile-checks by default. Building only the
+# library (rlib) needs no linker, which is why the cross checks work without an
+# ARM toolchain installed.
+
+# 32-bit ARM Linux target (std), used for the cross build/run check.
+TARGET_ARM32="armv7-unknown-linux-gnueabihf"
+# Bare-metal ARMv7-M target (no_std) -- matches the crate's embedded use case.
+TARGET_ARM32_BARE="thumbv7m-none-eabi"
+
+# Can we *execute* 32-bit ARM binaries? Only on a native 32-bit ARM host.
+ARM32_RUN=0
+case "$ARCH" in
+    armv6l | armv7l | armhf | arm) ARM32_RUN=1 ;;
+esac
+
+# (1) Bare-metal ARMv7-M, no_std. Always a compile-check: there is no test
+#     harness without std. Building the library needs no linker, so this runs
+#     anywhere the target is installed.
+if rustup target list --installed 2>/dev/null | grep -qx "$TARGET_ARM32_BARE"; then
+    run "arm32 bare-metal $TARGET_ARM32_BARE (build-only, no_std)" "" \
+        build --target "$TARGET_ARM32_BARE"
+else
+    echo "==== SKIP: target $TARGET_ARM32_BARE not installed"
+    echo "     install it with: rustup target add $TARGET_ARM32_BARE"
+fi
+
+# (2) 32-bit ARM Linux (std). Runs the full suite on a native 32-bit ARM host;
+#     everywhere else it is a cross-compile check of the library.
+if rustup target list --installed 2>/dev/null | grep -qx "$TARGET_ARM32"; then
+    if [ $ARM32_RUN -eq 1 ]; then
+        run "arm32 $TARGET_ARM32 (run)" "" test --target "$TARGET_ARM32"
+    else
+        echo "note: cannot execute 32-bit ARM binaries on this host -- compile-checking only."
+        run "arm32 $TARGET_ARM32 (build-only)" "" build --target "$TARGET_ARM32"
+    fi
+else
+    echo "==== SKIP: target $TARGET_ARM32 not installed"
+    echo "     install it with: rustup target add $TARGET_ARM32"
+fi
+
+# ------------------------------------------------------------------
+# RISC-V backends (target_arch = "riscv32" / "riscv64")
+# ------------------------------------------------------------------
+echo
+echo "################ RISC-V backend matrix ################"
+#
+# RISC-V has no accelerated backends in this crate, so every primitive uses its
+# reference implementation. The interesting split is poly1305's arithmetic:
+# exactly like arm32, the 32-bit target (riscv32) selects the "donna32" backend
+# from target_arch alone, while the 64-bit target (riscv64) uses "donna64".
+# riscv32 is the only 64-bit-free way (besides force-32bits) to exercise donna32.
+#
+# As with ARM, RISC-V binaries only run on a native RISC-V host; elsewhere these
+# are library compile-checks (rlib, no linker required).
+
+# 32-bit RISC-V, bare-metal (no_std) -- exercises riscv32 -> donna32.
+TARGET_RISCV32_BARE="riscv32imac-unknown-none-elf"
+# 64-bit RISC-V Linux (std) -- exercises riscv64 -> donna64, runnable on a host.
+TARGET_RISCV64="riscv64gc-unknown-linux-gnu"
+
+# Can we *execute* riscv64 binaries? Only on a native riscv64 host.
+RISCV64_RUN=0
+case "$ARCH" in
+    riscv64) RISCV64_RUN=1 ;;
+esac
+
+# (1) Bare-metal 32-bit RISC-V, no_std. Always a compile-check: there is no test
+#     harness without std. Building the library needs no linker.
+if rustup target list --installed 2>/dev/null | grep -qx "$TARGET_RISCV32_BARE"; then
+    run "riscv32 bare-metal $TARGET_RISCV32_BARE (build-only, no_std)" "" \
+        build --target "$TARGET_RISCV32_BARE"
+else
+    echo "==== SKIP: target $TARGET_RISCV32_BARE not installed"
+    echo "     install it with: rustup target add $TARGET_RISCV32_BARE"
+fi
+
+# (2) 64-bit RISC-V Linux (std). Runs the full suite on a native riscv64 host;
+#     everywhere else it is a cross-compile check of the library.
+if rustup target list --installed 2>/dev/null | grep -qx "$TARGET_RISCV64"; then
+    if [ $RISCV64_RUN -eq 1 ]; then
+        run "riscv64 $TARGET_RISCV64 (run)" "" test --target "$TARGET_RISCV64"
+    else
+        echo "note: cannot execute RISC-V binaries on this host -- compile-checking only."
+        run "riscv64 $TARGET_RISCV64 (build-only)" "" build --target "$TARGET_RISCV64"
+    fi
+else
+    echo "==== SKIP: target $TARGET_RISCV64 not installed"
+    echo "     install it with: rustup target add $TARGET_RISCV64"
 fi
 
 echo

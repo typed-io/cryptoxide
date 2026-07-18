@@ -5,6 +5,7 @@ pub(super) struct Test<const OUTPUT: usize> {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub(super) struct TestKey<const OUTPUT: usize> {
     pub input: &'static [u8],
     pub key: &'static [u8],
@@ -12,6 +13,7 @@ pub(super) struct TestKey<const OUTPUT: usize> {
 }
 
 // a simple hashing test framework based on passing closures
+#[allow(dead_code)]
 pub(super) fn test_hashing<
     A,
     T,
@@ -141,6 +143,7 @@ pub(super) fn test_hashing<
 }
 
 // a simple hashing test framework based on passing closures
+#[allow(dead_code)]
 pub(super) fn test_hashing_keyed<
     A,
     T,

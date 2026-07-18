@@ -99,6 +99,7 @@ read_array_type!(
 #[cfg(any(
     feature = "salsa",
     feature = "chacha",
+    feature = "scrypt",
     all(feature = "poly1305", feature = "force-32bits")
 ))]
 #[inline]

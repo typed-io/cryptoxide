@@ -1,3 +1,7 @@
+# 0.6.1
+
+* compilation on 32bits arm. also add tests for riscv
+
 # 0.6.0
 
 * the `digest` feature is not automatically built anymore, including all the hashing modules at the root of the directory. use the hashing submodule.

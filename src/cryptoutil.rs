@@ -1,8 +1,5 @@
 //! Various utility to write/read in buffers
 
-use core::convert::TryFrom;
-use core::{mem::size_of, ptr};
-
 #[cfg(any(
     all(feature = "chacha", feature = "poly1305"),
     all(feature = "poly1305", not(feature = "force-32bits"))
@@ -30,10 +27,11 @@ pub(crate) fn write_u32_be(dst: &mut [u8], input: u32) {
 }
 
 macro_rules! write_array_type {
-    ($C: ident, $T: ident, $F: ident) => {
+    ($C: ident, $T: ident, $F: ident, $($feat: literal),+) => {
         /// Write a $T into a vector, which must be of the correct size. The value is written using $F for endianness
+        #[cfg(any($(feature = $feat),+))]
         pub fn $C(dst: &mut [u8], input: &[$T]) {
-            const SZ: usize = size_of::<$T>();
+            const SZ: usize = core::mem::size_of::<$T>();
             assert!(dst.len() == SZ * input.len());
             let mut offset = 0;
             for v in input.iter() {
@@ -47,16 +45,17 @@ macro_rules! write_array_type {
     };
 }
 
-write_array_type!(write_u64v_le, u64, to_le_bytes);
-write_array_type!(write_u64v_be, u64, to_be_bytes);
-write_array_type!(write_u32v_le, u32, to_le_bytes);
-write_array_type!(write_u32v_be, u32, to_be_bytes);
+write_array_type!(write_u64v_le, u64, to_le_bytes, "blake2", "sha3");
+write_array_type!(write_u64v_be, u64, to_be_bytes, "sha2");
+write_array_type!(write_u32v_le, u32, to_le_bytes, "salsa", "chacha", "blake2", "blake3");
+write_array_type!(write_u32v_be, u32, to_be_bytes, "sha2");
 
 macro_rules! read_array_type {
-    ($C: ident, $T: ident, $F: ident) => {
+    ($C: ident, $T: ident, $F: ident, $($feat: literal),+) => {
         /// Read an array of bytes into an array of $T. The values are read with $F for endianness.
+        #[cfg(any($(feature = $feat),+))]
         pub fn $C(dst: &mut [$T], input: &[u8]) {
-            const SZ: usize = size_of::<$T>();
+            const SZ: usize = core::mem::size_of::<$T>();
             assert!(dst.len() * SZ == input.len());
 
             unsafe {
@@ -65,7 +64,7 @@ macro_rules! read_array_type {
 
                 for _ in 0..dst.len() {
                     let mut tmp = [0u8; SZ];
-                    ptr::copy_nonoverlapping(y, &mut tmp as *mut _ as *mut u8, SZ);
+                    core::ptr::copy_nonoverlapping(y, &mut tmp as *mut _ as *mut u8, SZ);
                     *x = $T::$F(tmp);
                     x = x.add(1);
                     y = y.add(SZ);
@@ -75,10 +74,10 @@ macro_rules! read_array_type {
     };
 }
 
-read_array_type!(read_u64v_be, u64, from_be_bytes);
-read_array_type!(read_u64v_le, u64, from_le_bytes);
-read_array_type!(read_u32v_be, u32, from_be_bytes);
-read_array_type!(read_u32v_le, u32, from_le_bytes);
+read_array_type!(read_u64v_be, u64, from_be_bytes, "sha2");
+read_array_type!(read_u64v_le, u64, from_le_bytes, "blake2", "sha3");
+read_array_type!(read_u32v_be, u32, from_be_bytes, "sha2", "sha1");
+read_array_type!(read_u32v_le, u32, from_le_bytes, "scrypt", "blake3", "ripemd160", "blake2");
 
 /// Read the value of a vector of bytes as a u32 value in little-endian format.
 #[cfg(any(
@@ -140,7 +139,7 @@ pub fn xor_array64_mut<const N: usize>(lhs: &mut [u64; N], rhs: &[u64; N]) {
 #[inline]
 pub fn zero(dst: &mut [u8]) {
     unsafe {
-        ptr::write_bytes(dst.as_mut_ptr(), 0, dst.len());
+        core::ptr::write_bytes(dst.as_mut_ptr(), 0, dst.len());
     }
 }
 

@@ -21,20 +21,21 @@ use core::cmp::min;
 // the same `State` interface (`new` / `reset` / `blocks` / `finish`):
 //
 // * a 32-bits backend (5x26-bits limbs, 32x32->64 multiplications), used on
-//   32-bits architectures and when the `force-32bits` feature is enabled.
+//   known 32-bits architectures (arm, riscv32) and when the `force-32bits`
+//   feature is enabled.
 // * a 64-bits backend (3x44-bits limbs, 64x64->128 multiplications), used
 //   everywhere else as it is roughly twice as fast.
 //
 // This mirrors the architecture split already used by the curve25519 backends.
 
-#[cfg(any(target_arch = "arm", feature = "force-32bits"))]
+#[cfg(any(target_arch = "arm", target_arch = "riscv32", feature = "force-32bits"))]
 mod donna32;
-#[cfg(any(target_arch = "arm", feature = "force-32bits"))]
+#[cfg(any(target_arch = "arm", target_arch = "riscv32", feature = "force-32bits"))]
 use donna32::State;
 
-#[cfg(not(any(target_arch = "arm", feature = "force-32bits")))]
+#[cfg(not(any(target_arch = "arm", target_arch = "riscv32", feature = "force-32bits")))]
 mod donna64;
-#[cfg(not(any(target_arch = "arm", feature = "force-32bits")))]
+#[cfg(not(any(target_arch = "arm", target_arch = "riscv32", feature = "force-32bits")))]
 use donna64::State;
 
 use crate::constant_time::{Choice, CtEqual};

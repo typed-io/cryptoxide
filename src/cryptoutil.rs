@@ -2,7 +2,10 @@
 
 #[cfg(any(
     all(feature = "chacha", feature = "poly1305"),
-    all(feature = "poly1305", not(feature = "force-32bits"))
+    all(
+        feature = "poly1305",
+        not(any(target_arch = "arm", target_arch = "riscv32", feature = "force-32bits"))
+    )
 ))]
 #[inline]
 pub(crate) fn write_u64_le(dst: &mut [u8], input: u64) {
@@ -13,7 +16,10 @@ pub(crate) fn write_u64_le(dst: &mut [u8], input: u64) {
     feature = "ripemd160",
     feature = "salsa",
     feature = "scrypt",
-    all(feature = "poly1305", feature = "force-32bits")
+    all(
+        feature = "poly1305",
+        any(target_arch = "arm", target_arch = "riscv32", feature = "force-32bits")
+    )
 ))]
 #[inline]
 pub(crate) fn write_u32_le(dst: &mut [u8], input: u32) {
@@ -100,7 +106,10 @@ read_array_type!(
     feature = "salsa",
     feature = "chacha",
     feature = "scrypt",
-    all(feature = "poly1305", feature = "force-32bits")
+    all(
+        feature = "poly1305",
+        any(target_arch = "arm", target_arch = "riscv32", feature = "force-32bits")
+    )
 ))]
 #[inline]
 pub fn read_u32_le(input: &[u8]) -> u32 {
@@ -109,7 +118,10 @@ pub fn read_u32_le(input: &[u8]) -> u32 {
 }
 
 /// Read the value of a vector of bytes as a u64 value in little-endian format.
-#[cfg(all(feature = "poly1305", not(feature = "force-32bits")))]
+#[cfg(all(
+    feature = "poly1305",
+    not(any(target_arch = "arm", target_arch = "riscv32", feature = "force-32bits"))
+))]
 #[inline]
 pub fn read_u64_le(input: &[u8]) -> u64 {
     let tmp: [u8; 8] = *<&[u8; 8]>::try_from(input).unwrap();

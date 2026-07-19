@@ -1,3 +1,7 @@
+# Unreleased
+
+* add SHAKE128 and SHAKE256 extendable-output functions (XOF) in the `hashing::shake` module
+
 # 0.6.1
 
 * compilation on 32bits arm. also add tests for riscv

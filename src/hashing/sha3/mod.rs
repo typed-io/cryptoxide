@@ -35,7 +35,11 @@ pub(super) const B: usize = 200;
 
 /// Engine for Keccak implementation where
 /// DSLEN = 0 (Keccak), 2 (SHA-3), 4 (Shake)
-/// DIGESTLEN = size in bytes of the digest (28, 32, 48, 64)
+/// DIGESTLEN = capacity in bytes divided by 2. For the fixed-output algorithms
+/// (Keccak, SHA-3) this happens to equal the digest length in bytes (28, 32,
+/// 48, 64) and also bounds the squeeze output. For the SHAKE XOFs it is only
+/// the security parameter (16 for SHAKE128, 32 for SHAKE256) that determines
+/// the rate, while the output length is unbounded.
 #[derive(Clone)]
 pub(super) struct Engine<const DIGESTLEN: usize, const DSLEN: usize> {
     state: [u8; B],    // B bytes
@@ -47,6 +51,10 @@ pub(super) struct Engine<const DIGESTLEN: usize, const DSLEN: usize> {
 
 impl<const DIGESTLEN: usize, const DSLEN: usize> Engine<DIGESTLEN, DSLEN> {
     //pub const CAPACITY: usize = DIGESTLEN * 2;
+
+    /// Whether the squeeze output is bounded to `DIGESTLEN` bytes (Keccak,
+    /// SHA-3) or unbounded (SHAKE extendable-output functions, `DSLEN == 4`).
+    const BOUNDED: bool = DSLEN != 4;
 
     fn rate(&self) -> usize {
         B - (DIGESTLEN * 2)
@@ -65,14 +73,14 @@ impl<const DIGESTLEN: usize, const DSLEN: usize> Engine<DIGESTLEN, DSLEN> {
     pub(super) fn finalize(&mut self) {
         assert!(self.can_absorb);
 
-        fn set_domain_sep(out_len: usize, buf: &mut [u8]) {
+        fn set_domain_sep(dslen: usize, buf: &mut [u8]) {
             assert!(!buf.is_empty());
-            if out_len != 0 {
-                // 01...
+            if dslen == 2 {
+                // SHA-3 domain separation: 01...
                 buf[0] &= 0xfe;
                 buf[0] |= 0x2;
-            } else {
-                // 1111...
+            } else if dslen == 4 {
+                // SHAKE domain separation: 1111...
                 buf[0] |= 0xf;
             }
         }
@@ -107,7 +115,7 @@ impl<const DIGESTLEN: usize, const DSLEN: usize> Engine<DIGESTLEN, DSLEN> {
         let mut p = vec::from_elem(0, p_len);
 
         if DSLEN != 0 {
-            set_domain_sep(DIGESTLEN * 8, &mut p);
+            set_domain_sep(DSLEN, &mut p);
         }
 
         set_pad::<DSLEN>(&mut p);
@@ -163,10 +171,9 @@ impl<const DIGESTLEN: usize, const DSLEN: usize> Engine<DIGESTLEN, DSLEN> {
         }
 
         let r = self.rate();
-        if DIGESTLEN != 0 {
+        if Self::BOUNDED {
             assert!(self.offset < DIGESTLEN);
         } else {
-            // FIXME: only for SHAKE
             assert!(self.offset < r);
         }
 
@@ -177,7 +184,7 @@ impl<const DIGESTLEN: usize, const DSLEN: usize> Engine<DIGESTLEN, DSLEN> {
         while in_pos < in_len {
             let offset = self.offset % r;
             let mut nread = cmp::min(r - offset, in_len - in_pos);
-            if DIGESTLEN != 0 {
+            if Self::BOUNDED {
                 nread = cmp::min(nread, DIGESTLEN - self.offset);
             }
 
@@ -189,32 +196,21 @@ impl<const DIGESTLEN: usize, const DSLEN: usize> Engine<DIGESTLEN, DSLEN> {
                 break;
             }
 
-            if DIGESTLEN == 0 {
-                self.offset = 0;
-            } else {
+            if Self::BOUNDED {
                 self.offset += nread;
+            } else {
+                self.offset = 0;
             }
 
             keccakf::keccak_f(&mut self.state);
         }
 
-        if DIGESTLEN != 0 && DIGESTLEN == self.offset {
+        if Self::BOUNDED && DIGESTLEN == self.offset {
             self.can_squeeze = false;
         }
     }
 }
 
-/*
-/// New SHAKE-128 instance.
-pub fn shake_128() -> Sha3 {
-    Sha3::new(Sha3Mode::Shake128)
-}
-
-/// New SHAKE-256 instance.
-pub fn shake_256() -> Sha3 {
-    Sha3::new(Sha3Mode::Shake256)
-}
-*/
 macro_rules! sha3_impl {
     ($C: ident, $context:ident, $digestlength:literal, $doc:expr) => {
         #[doc=$doc]

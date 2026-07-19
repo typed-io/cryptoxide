@@ -32,6 +32,7 @@ efficient pure-rust implementation of popular cryptographic algorithms.
 It provides various common algorithms in the following categories :
 
 * Cryptographic digests: SHA1, SHA2, SHA3, Kekkak, Blake2, Blake3, Ripemd160
+* Extendable-output functions (XOF): SHAKE128, SHAKE256
 * Message Authentication Code (MAC): HMAC, Poly1305
 * Symmetric ciphers: Salsa, Chacha
 * Authenticated Encryption (AE): ChachaPoly1305

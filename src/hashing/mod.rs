@@ -65,6 +65,9 @@ pub mod sha3;
 #[cfg(feature = "sha3")]
 pub mod keccak;
 
+#[cfg(feature = "sha3")]
+pub mod shake;
+
 #[cfg(feature = "ripemd160")]
 pub mod ripemd160;
 
@@ -189,6 +192,24 @@ pub fn keccak384(input: &[u8]) -> [u8; 48] {
 /// Compute KECCAK512 on the input and return the digest
 pub fn keccak512(input: &[u8]) -> [u8; 64] {
     keccak::Keccak512::new().update(input).finalize()
+}
+
+#[cfg(feature = "sha3")]
+/// Squeeze `OUT` bytes of SHAKE128 output from the input
+///
+/// SHAKE128 is an extendable-output function, so the caller chooses the output
+/// length through the `OUT` const parameter.
+pub fn shake128<const OUT: usize>(input: &[u8]) -> [u8; OUT] {
+    shake::Shake128::new().update(input).finalize()
+}
+
+#[cfg(feature = "sha3")]
+/// Squeeze `OUT` bytes of SHAKE256 output from the input
+///
+/// SHAKE256 is an extendable-output function, so the caller chooses the output
+/// length through the `OUT` const parameter.
+pub fn shake256<const OUT: usize>(input: &[u8]) -> [u8; OUT] {
+    shake::Shake256::new().update(input).finalize()
 }
 
 #[cfg(feature = "ripemd160")]

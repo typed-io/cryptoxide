@@ -3,7 +3,7 @@
 //! # Examples
 //!
 //! ```
-//! use cryptoxide::{mac::Mac, poly1305::Poly1305};
+//! use cryptoxide::poly1305::Poly1305;
 //!
 //! let mut context = Poly1305::new(&[0u8;32]);
 //! context.update_mut(b"data to authenticate");

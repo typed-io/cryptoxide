@@ -1,6 +1,8 @@
 # Unreleased
 
 * add SHAKE128 and SHAKE256 extendable-output functions (XOF) in the `hashing::shake` module
+* add ML-KEM (FIPS 203) in the `mlkem` module, with the three standard parameter
+  sets ML-KEM-512, ML-KEM-768 and ML-KEM-1024, under the new `mlkem` feature
 
 # 0.6.1
 

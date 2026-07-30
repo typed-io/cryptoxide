@@ -169,7 +169,6 @@ shake_impl!(Shake256, Context256, Reader256, 32, 256, "SHAKE256");
 mod tests {
     use super::super::tests::{test_hashing, Test};
     use super::*;
-    use alloc::vec;
 
     // Drive the fixed-length test harness at a fixed 32-byte output. The
     // harness exercises one-shot, byte-by-byte and chunked updates, plus reset

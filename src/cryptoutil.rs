@@ -167,6 +167,7 @@ pub fn xor_array64_mut<const N: usize>(lhs: &mut [u64; N], rhs: &[u64; N]) {
 #[cfg(any(
     feature = "blake2",
     feature = "hmac",
+    feature = "poly1305",
     feature = "ripemd160",
     feature = "sha1",
     feature = "sha2",
@@ -180,14 +181,24 @@ pub fn zero(dst: &mut [u8]) {
 }
 
 /// A fixed size buffer of N bytes useful for cryptographic operations.
-#[cfg(any(feature = "ripemd160", feature = "sha1", feature = "sha2"))]
+#[cfg(any(
+    feature = "poly1305",
+    feature = "ripemd160",
+    feature = "sha1",
+    feature = "sha2"
+))]
 #[derive(Clone)]
 pub(crate) struct FixedBuffer<const N: usize> {
     buffer: [u8; N],
     buffer_idx: usize,
 }
 
-#[cfg(any(feature = "ripemd160", feature = "sha1", feature = "sha2"))]
+#[cfg(any(
+    feature = "poly1305",
+    feature = "ripemd160",
+    feature = "sha1",
+    feature = "sha2"
+))]
 impl<const N: usize> FixedBuffer<N> {
     /// Create a new buffer
     pub const fn new() -> Self {
@@ -237,7 +248,15 @@ impl<const N: usize> FixedBuffer<N> {
         self.buffer_idx = 0;
     }
 
-    fn zero_until(&mut self, idx: usize) {
+    /// Return whether the buffer holds no pending byte
+    #[cfg(feature = "poly1305")]
+    pub fn is_empty(&self) -> bool {
+        self.buffer_idx == 0
+    }
+
+    /// Zero the buffer from the current position until idx, and set the
+    /// current position to idx
+    pub fn zero_until(&mut self, idx: usize) {
         assert!(idx >= self.buffer_idx);
         zero(&mut self.buffer[self.buffer_idx..idx]);
         self.buffer_idx = idx;
@@ -259,6 +278,7 @@ impl<const N: usize> FixedBuffer<N> {
     /// and is guaranteed to have exactly rem remaining bytes when it returns. If there are not at
     /// least rem bytes available, the buffer will be zero padded, processed, cleared, and then
     /// filled with zeros again until only rem bytes are remaining.
+    #[cfg(any(feature = "ripemd160", feature = "sha1", feature = "sha2"))]
     pub fn standard_padding<F: FnMut(&[u8; N])>(&mut self, rem: usize, mut func: F) {
         self.next::<1>()[0] = 128;
 

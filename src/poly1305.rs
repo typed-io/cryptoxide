@@ -15,8 +15,6 @@
 // This is a port of Andrew Moons poly1305-donna
 // <https://github.com/floodyberry/poly1305-donna>
 
-use core::cmp::min;
-
 // The arithmetic core comes in two flavours selected at compile time, sharing
 // the same `State` interface (`new` / `reset` / `blocks` / `finish`):
 //
@@ -39,6 +37,10 @@ mod donna64;
 use donna64::State;
 
 use crate::constant_time::{Choice, CtEqual};
+use crate::cryptoutil::FixedBuffer;
+
+/// Number of bytes in a poly1305 block
+const BLOCK_BYTES: usize = 16;
 
 /// `Poly1305` Context
 ///
@@ -46,8 +48,7 @@ use crate::constant_time::{Choice, CtEqual};
 #[derive(Clone)]
 pub struct Poly1305 {
     state: State,
-    leftover: usize,
-    buffer: [u8; 16],
+    buffer: FixedBuffer<BLOCK_BYTES>,
 }
 
 /// Poly1305 Authenticated Tag (128 bits)
@@ -88,78 +89,39 @@ impl Poly1305 {
     pub fn new(key: &[u8; 32]) -> Self {
         Poly1305 {
             state: State::new(key),
-            leftover: 0,
-            buffer: [0u8; 16],
+            buffer: FixedBuffer::new(),
         }
     }
 
     /// Update the local state using the data
     pub fn update_mut(&mut self, data: &[u8]) {
-        let mut m = data;
+        let state = &mut self.state;
+        self.buffer.input(data, |d| state.blocks(d, false));
+    }
 
-        if self.leftover > 0 {
-            let want = min(16 - self.leftover, m.len());
-
-            self.buffer[self.leftover..self.leftover + want].copy_from_slice(&m[..want]);
-            m = &m[want..];
-            self.leftover += want;
-
-            if self.leftover < 16 {
-                return;
-            }
-
-            let tmp = self.buffer;
-            self.state.blocks(&tmp, false);
-
-            self.leftover = 0;
+    /// Pad and process the remaining partial block (if any). the 0x01
+    /// terminator is written into the buffer, so the backend is told not to
+    /// add the implicit high bit for this block.
+    fn final_block(&mut self) {
+        if !self.buffer.is_empty() {
+            self.buffer.next::<1>()[0] = 1;
+            self.buffer.zero_until(BLOCK_BYTES);
+            self.state.blocks(self.buffer.full_buffer(), true);
         }
-
-        let nblocks = m.len() / 16;
-        if nblocks > 0 {
-            let nbytes = nblocks * 16;
-            self.state.blocks(&m[..nbytes], false);
-            m = &m[nbytes..];
-        }
-
-        self.buffer[..m.len()].copy_from_slice(m);
-
-        self.leftover = m.len();
     }
 
     /// Finalize the state and return the Poly1305 Tag
     pub fn finalize(mut self) -> Tag {
-        // pad and process the remaining partial block (if any). the 0x01
-        // terminator is written into the buffer, so the backend is told not to
-        // add the implicit high bit for this block.
-        if self.leftover > 0 {
-            self.buffer[self.leftover] = 1;
-            for b in self.buffer[self.leftover + 1..].iter_mut() {
-                *b = 0;
-            }
-            let tmp = self.buffer;
-            self.state.blocks(&tmp, true);
-        }
-
+        self.final_block();
         Tag(self.state.finish())
     }
 
     /// Finalize the state into the tag, and reset the state to a new context
     pub fn finalize_reset(&mut self, tag: &mut [u8; 16]) {
-        // pad and process the remaining partial block (if any). the 0x01
-        // terminator is written into the buffer, so the backend is told not to
-        // add the implicit high bit for this block.
-        if self.leftover > 0 {
-            self.buffer[self.leftover] = 1;
-            for b in self.buffer[self.leftover + 1..].iter_mut() {
-                *b = 0;
-            }
-            let tmp = self.buffer;
-            self.state.blocks(&tmp, true);
-        }
+        self.final_block();
         *tag = self.state.finish();
 
-        self.leftover = 0;
-        self.buffer = [0; 16];
+        self.buffer.reset();
         self.state.reset();
     }
 }

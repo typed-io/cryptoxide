@@ -18,7 +18,10 @@
 //! * Maintained
 //! * Extended ED25519 support for extended secret key (64 bytes) support
 //! * Proper implementation of ChaChaPoly1305
-//! * Many cryptographic algorithms removed: AES, Blowfish, Fortuna, RC4, RIPEMD160, Whirlpool, MD5, SHA1.
+//! * old cryptographic algorithms removed: Blowfish, Fortuna, RC4, Whirlpool and MD5.
+//! * Argon2 support
+//! * SHA-3 support
+//! * ML-KEM support
 //!
 //! As with everything cryptographic implementations, please make sure it suits your security requirements,
 //! and review and audit before using.
@@ -91,6 +94,9 @@ pub mod ed25519;
 pub mod hkdf;
 
 pub mod kdf;
+
+#[cfg(feature = "mlkem")]
+pub mod mlkem;
 
 #[cfg(feature = "hmac")]
 pub mod hmac;

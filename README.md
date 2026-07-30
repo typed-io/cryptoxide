@@ -38,6 +38,7 @@ It provides various common algorithms in the following categories :
 * Authenticated Encryption (AE): ChachaPoly1305
 * Key Derivation Function (KDF): Pbkdf2, HKDF, Scrypt, Argon2
 * Asymmetric DH/Signing: Ed25519, X25519
+* Key Encapsulation Mechanism (KEM): ML-KEM (post-quantum, FIPS 203)
 
 Our main goals is to provide a library that is usable in a wide array of
 contextes, by supporting many platforms, but only by providing a bare bone and

@@ -39,7 +39,8 @@ default = [
     "scrypt",
     "curve25519",
     "ed25519",
-    "x25519"
+    "x25519",
+    "mlkem"
 ]
 aes = []
 blake2 = []
@@ -63,6 +64,8 @@ poly1305 = []
 curve25519 = []
 ed25519 = ["sha2", "curve25519"]
 x25519 = ["curve25519"]
+
+mlkem = ["sha3"]
 
 with-bench = []
 force-32bits = []

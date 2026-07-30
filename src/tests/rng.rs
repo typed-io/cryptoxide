@@ -1,3 +1,8 @@
+//! Tests random generator
+//!
+//! DO NOT USE in any other context than this crate unit tests, it has no guarantee of unbiasness
+//! or ability to tests special cases, it is just to create arbitrary looking data for tests
+
 pub(crate) struct GeneratorRaw(u64);
 
 const MUL_FACTOR: u64 = 636_4136_2238_4679_3005;

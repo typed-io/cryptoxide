@@ -119,3 +119,6 @@ pub mod ripemd160;
 mod cryptoutil;
 
 pub mod constant_time;
+
+#[cfg(test)]
+pub(crate) mod tests;

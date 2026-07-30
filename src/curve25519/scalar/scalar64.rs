@@ -373,7 +373,7 @@ pub(crate) fn muladd(a: &Scalar, b: &Scalar, c: &Scalar) -> Scalar {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::curve25519::testrng::{GeneratorOf, GeneratorOf2, GeneratorRaw};
+    use crate::tests::{GeneratorOf, GeneratorOf2, GeneratorRaw};
 
     fn next_scalar(gen_raw: &mut GeneratorRaw) -> Scalar {
         let mut bytes = gen_raw.bytes();

@@ -34,7 +34,7 @@
 //! or with specific care of making sure the invariant expected by ed25519 are respected.
 //!
 
-use crate::constant_time::CtEqual;
+use crate::constant_time::{CtEqual, CtZero};
 use crate::curve25519::{curve25519, scalar, Fe, Ge, GePartial, Scalar};
 use core::convert::TryFrom;
 
@@ -209,11 +209,7 @@ pub fn verify(
     };
 
     // reject all-0 public keys
-    let mut d = 0;
-    for pk_byte in public_key.iter() {
-        d |= *pk_byte;
-    }
-    if d == 0 {
+    if public_key.ct_zero().is_true() {
         return false;
     }
 

@@ -1,3 +1,10 @@
+# unreleased
+
+* add support for using an alternative 512 bits hash function with ed25519, through
+  the new `_with` suffixed functions of the `ed25519` module (e.g. `signature_with`),
+  and the ready-to-use `ed25519::blake2b` module for the BLAKE2b-512 variant.
+  The existing SHA512 APIs are unchanged.
+
 # 0.6.2
 
 * add SHAKE128 and SHAKE256 extendable-output functions (XOF) in the `hashing::shake` module

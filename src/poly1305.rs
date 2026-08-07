@@ -248,45 +248,41 @@ mod test {
 
 #[cfg(all(test, feature = "with-bench"))]
 mod bench {
-    use crate::mac::Mac;
-    use crate::poly1305::Poly1305;
+    use super::Poly1305;
     use test::Bencher;
 
     #[bench]
     pub fn poly1305_10(bh: &mut Bencher) {
-        let mut mac = [0u8; 16];
         let key = [0u8; 32];
         let bytes = [1u8; 10];
         bh.iter(|| {
             let mut poly = Poly1305::new(&key);
-            poly.input(&bytes);
-            poly.raw_result(&mut mac);
+            poly.update_mut(&bytes);
+            poly.finalize()
         });
         bh.bytes = bytes.len() as u64;
     }
 
     #[bench]
     pub fn poly1305_1k(bh: &mut Bencher) {
-        let mut mac = [0u8; 16];
         let key = [0u8; 32];
         let bytes = [1u8; 1024];
         bh.iter(|| {
             let mut poly = Poly1305::new(&key);
-            poly.input(&bytes);
-            poly.raw_result(&mut mac);
+            poly.update_mut(&bytes);
+            poly.finalize()
         });
         bh.bytes = bytes.len() as u64;
     }
 
     #[bench]
     pub fn poly1305_64k(bh: &mut Bencher) {
-        let mut mac = [0u8; 16];
         let key = [0u8; 32];
         let bytes = [1u8; 65536];
         bh.iter(|| {
             let mut poly = Poly1305::new(&key);
-            poly.input(&bytes);
-            poly.raw_result(&mut mac);
+            poly.update_mut(&bytes);
+            poly.finalize()
         });
         bh.bytes = bytes.len() as u64;
     }

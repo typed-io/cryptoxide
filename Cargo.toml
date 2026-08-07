@@ -62,7 +62,7 @@ argon2 = ["blake2"]
 poly1305 = []
 
 curve25519 = []
-ed25519 = ["sha2", "curve25519"]
+ed25519 = ["curve25519"]
 x25519 = ["curve25519"]
 
 mlkem = ["sha3"]

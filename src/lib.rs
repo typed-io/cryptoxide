@@ -17,6 +17,7 @@
 //!
 //! * Maintained
 //! * Extended ED25519 support for extended secret key (64 bytes) support
+//! * ED25519 parametrized by its hash function, allowing BLAKE2b-512 in place of SHA512
 //! * Proper implementation of ChaChaPoly1305
 //! * old cryptographic algorithms removed: Blowfish, Fortuna, RC4, Whirlpool and MD5.
 //! * Argon2 support

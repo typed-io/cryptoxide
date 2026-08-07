@@ -59,6 +59,7 @@ Notable differences with the original sources:
 
 * Maintained.
 * Extended ED25519 support for extended secret key (64 bytes) support.
+* ED25519 parametrized by its hash function, allowing BLAKE2b-512 in place of SHA512.
 * Proper implementation of ChaChaPoly1305 (according to spec).
 * Many cryptographic algorithms removed: Blowfish, Fortuna, RC4, Whirlpool, MD5.
 * Some algorithms have SIMD optimisation using AVX & AVX2

@@ -2,8 +2,7 @@
 //!
 //! Blake3 [Specification][1].
 //!
-//! Note that this implementation doesn't take advantages of parallelism speed-up now,
-//! nor that this implementation has any SIMD support right now.
+//! Note that this implementation doesn't have any SIMD support right now.
 //!
 //! # Example
 //!
@@ -16,6 +15,16 @@
 //! context.update_mut(b"hello world");
 //! let digest = context.finalize::<32>();
 //! ```
+//!
+//! # Parallelism
+//!
+//! BLAKE3 hashes its input as a binary Merkle tree over independent chunks,
+//! which makes it possible to compute disjoint pieces of the input separately
+//! and combine the results afterwards. The [`parallel`] submodule exposes this
+//! structure: it lets the input be split into independent chunk groups that can
+//! each be hashed on their own (on another thread, core or machine — the module
+//! never spawns anything itself) and then combined, in order, into the final
+//! digest via a central [`parallel::TreeBuilder`].
 //!
 //! [1]: <https://github.com/BLAKE3-team/BLAKE3-specs/blob/master/blake3.pdf>
 
@@ -135,6 +144,7 @@ fn compress(
     state
 }
 
+#[derive(Clone)]
 struct Output {
     input_chaining_value: [u32; 8],
     block_words: [u32; 16],
@@ -288,6 +298,54 @@ fn parent_cv(left_cv: [u32; 8], right_cv: [u32; 8], key_words: &[u32; 8], flags:
     parent_output(left_cv, right_cv, key_words, flags).chaining_value()
 }
 
+/// Merge a completed subtree chaining value into a chaining-value stack.
+///
+/// `total_subtrees` is the number of subtrees completed so far (including the
+/// one being added, so it is 1-based). Its trailing zero bits determine how
+/// many parent merges happen before the new value is pushed, which reconstructs
+/// the canonical BLAKE3 left-full tree over the subtrees pushed in order.
+///
+/// This is shared between the streaming [`Context`] (where each subtree is a
+/// single chunk) and the [`parallel`] combiner (where each subtree is an
+/// independently-hashed group of chunks).
+fn cv_stack_add(
+    cv_stack: &mut [[u32; 8]; MAX_DEPTH],
+    cv_stack_len: &mut u8,
+    key_words: &[u32; 8],
+    flags: u32,
+    mut new_cv: [u32; 8],
+    mut total_subtrees: u64,
+) {
+    while total_subtrees & 1 == 0 {
+        *cv_stack_len -= 1;
+        let left = cv_stack[*cv_stack_len as usize];
+        new_cv = parent_cv(left, new_cv, key_words, flags);
+        total_subtrees >>= 1;
+    }
+    cv_stack[*cv_stack_len as usize] = new_cv;
+    *cv_stack_len += 1;
+}
+
+/// Fold a chaining-value stack over a base [`Output`] to produce the root output.
+///
+/// The stack is walked from top to bottom, wrapping `output` in a parent node at
+/// each step. The result is the topmost node of the tree, ready to be root
+/// finalized (see [`Output::root_output_bytes`] / [`Output::into_output_reader`]).
+fn cv_stack_root_output(
+    cv_stack: &[[u32; 8]; MAX_DEPTH],
+    cv_stack_len: u8,
+    key_words: &[u32; 8],
+    flags: u32,
+    mut output: Output,
+) -> Output {
+    let mut idx = cv_stack_len as usize;
+    while idx > 0 {
+        idx -= 1;
+        output = parent_output(cv_stack[idx], output.chaining_value(), key_words, flags);
+    }
+    output
+}
+
 /// Blake3 algorithm
 ///
 /// # Modes
@@ -312,11 +370,11 @@ impl Blake3 {
         Context::new_keyed(key)
     }
 
-    /// Create a new derive-key context from a context string
+    /// Create a new derive-key context from a context bytes
     ///
-    /// The context string should be a hardcoded, globally unique,
-    /// application-specific string.
-    pub fn new_derive_key(context: &str) -> Context {
+    /// The context bytes should be a hardcoded, globally unique,
+    /// application-specific bytes.
+    pub fn new_derive_key(context: &[u8]) -> Context {
         Context::new_derive_key(context)
     }
 }
@@ -351,15 +409,15 @@ impl Context {
         Self::new_internal(key_words, FLAG_KEYED_HASH)
     }
 
-    /// Create a new derive-key context from a context string
+    /// Create a new derive-key context from a context bytes
     ///
-    /// This uses a two-phase initialization: the context string is
+    /// This uses a two-phase initialization: the context bytes is
     /// first hashed with `DERIVE_KEY_CONTEXT` flags to produce key words,
     /// which then initialize a hasher with `DERIVE_KEY_MATERIAL` flags.
-    pub fn new_derive_key(context: &str) -> Self {
+    pub fn new_derive_key(context: &[u8]) -> Self {
         // Phase 1: hash the context string
         let mut context_hasher = Self::new_internal(IV, FLAG_DERIVE_KEY_CONTEXT);
-        context_hasher.update_mut(context.as_bytes());
+        context_hasher.update_mut(context);
         let mut context_key = [0u8; 32];
         context_hasher
             .final_output()
@@ -381,23 +439,15 @@ impl Context {
         }
     }
 
-    fn push_stack(&mut self, cv: [u32; 8]) {
-        self.cv_stack[self.cv_stack_len as usize] = cv;
-        self.cv_stack_len += 1;
-    }
-
-    fn pop_stack(&mut self) -> [u32; 8] {
-        self.cv_stack_len -= 1;
-        self.cv_stack[self.cv_stack_len as usize]
-    }
-
-    fn add_chunk_chaining_value(&mut self, mut new_cv: [u32; 8], mut total_chunks: u64) {
-        // Merge completed binary subtrees using trailing zero bits
-        while total_chunks & 1 == 0 {
-            new_cv = parent_cv(self.pop_stack(), new_cv, &self.key_words, self.flags);
-            total_chunks >>= 1;
-        }
-        self.push_stack(new_cv);
+    fn add_chunk_chaining_value(&mut self, new_cv: [u32; 8], total_chunks: u64) {
+        cv_stack_add(
+            &mut self.cv_stack,
+            &mut self.cv_stack_len,
+            &self.key_words,
+            self.flags,
+            new_cv,
+            total_chunks,
+        );
     }
 
     /// Update the hashing state by adding the input bytes slice into the state
@@ -430,20 +480,13 @@ impl Context {
     }
 
     fn final_output(&self) -> Output {
-        let mut output = self.chunk_state.output();
-
-        // Walk the CV stack from top to bottom, merging
-        let mut cv_stack_idx = self.cv_stack_len as usize;
-        while cv_stack_idx > 0 {
-            cv_stack_idx -= 1;
-            output = parent_output(
-                self.cv_stack[cv_stack_idx],
-                output.chaining_value(),
-                &self.key_words,
-                self.flags,
-            );
-        }
-        output
+        cv_stack_root_output(
+            &self.cv_stack,
+            self.cv_stack_len,
+            &self.key_words,
+            self.flags,
+            self.chunk_state.output(),
+        )
     }
 
     /// Finalize the context and output the array of bytes into the mut output slice
@@ -549,6 +592,408 @@ impl OutputReader {
     }
 }
 
+/// Independent / parallel chunk-group computation for BLAKE3.
+///
+/// BLAKE3 hashes its input as a binary Merkle tree over 1 KiB *chunks*. Any
+/// aligned, power-of-two-sized span of chunks forms an independent subtree whose
+/// chaining value depends only on that span's bytes and the index of its first
+/// chunk. This module exposes that structure so the input can be split into
+/// independent pieces, each computed on its own — on another thread, core or
+/// machine; this module never spawns anything itself — and then combined, in
+/// order, into the final digest.
+///
+/// # Model
+///
+/// * [`Params`] captures the mode (plain / keyed / derive-key). It is cheap to
+///   clone and share between every worker and the combiner.
+/// * [`Layout`] partitions an input of a given length into equal *groups* of
+///   `group_size` chunks each (only the last group may be shorter).
+/// * [`Params::hash_group`] (or the streaming [`GroupHasher`]) hashes one group
+///   independently, yielding a [`GroupHash`]. Groups are fully independent and
+///   can be computed in any order.
+/// * [`TreeBuilder`] is the central combiner: [`push`](TreeBuilder::push) the
+///   groups **in input order**, then finalize to a fixed-size digest or an
+///   [`OutputReader`] for XOF output.
+///
+/// The result is bit-for-bit identical to feeding the whole input to a
+/// [`Context`] sequentially.
+///
+/// # Contract
+///
+/// When combining groups manually (i.e. without [`Layout`]), every group except
+/// the last must cover exactly the same power-of-two number of chunks, groups
+/// must be pushed in input order, and each group's `start_chunk` must equal its
+/// index times that group size. [`Layout`] computes conforming spans for you.
+///
+/// # Example
+///
+/// ```
+/// use cryptoxide::hashing::blake3::{Blake3, parallel};
+///
+/// let input = [0xabu8; 100_000];
+///
+/// let params = parallel::Params::new();
+/// // split into groups of 8 chunks (8 KiB) each
+/// let layout = parallel::Layout::new(8, input.len());
+///
+/// // Each group in this loop is fully independent: the `hash_group` calls could
+/// // run concurrently on different threads. Only the ordered `push` into the
+/// // central builder needs to happen in group order.
+/// let mut builder = params.builder();
+/// for i in 0..layout.num_groups() {
+///     let (start_chunk, range) = layout.group(i);
+///     let group = params.hash_group(start_chunk, &input[range]);
+///     builder.push(group);
+/// }
+/// let digest = builder.finalize::<32>();
+///
+/// assert_eq!(digest, Blake3::new().update(&input).finalize::<32>());
+/// ```
+pub mod parallel {
+    use super::{
+        cv_stack_add, cv_stack_root_output, read_u32v_le, ChunkState, Context, Output,
+        OutputReader, CHUNK_LEN, FLAG_DERIVE_KEY_CONTEXT, FLAG_DERIVE_KEY_MATERIAL,
+        FLAG_KEYED_HASH, IV, MAX_DEPTH,
+    };
+
+    /// BLAKE3 mode parameters (key words + domain-separation flags).
+    ///
+    /// A `Params` fully describes a hashing mode and is all a worker needs to
+    /// hash a group ([`hash_group`](Params::hash_group)) or the central object
+    /// needs to combine them ([`builder`](Params::builder)). It is cheap to
+    /// clone and can be shared freely across workers.
+    #[derive(Clone)]
+    pub struct Params {
+        key_words: [u32; 8],
+        flags: u32,
+    }
+
+    impl Params {
+        /// Parameters for the default hash mode, matching [`Blake3::new`](super::Blake3::new).
+        pub fn new() -> Self {
+            Params {
+                key_words: IV,
+                flags: 0,
+            }
+        }
+
+        /// Parameters for the keyed hash mode, matching [`Blake3::new_keyed`](super::Blake3::new_keyed).
+        pub fn new_keyed(key: &[u8; 32]) -> Self {
+            let mut key_words = [0u32; 8];
+            read_u32v_le(&mut key_words, key);
+            Params {
+                key_words,
+                flags: FLAG_KEYED_HASH,
+            }
+        }
+
+        /// Parameters for the derive-key mode, matching [`Blake3::new_derive_key`](super::Blake3::new_derive_key).
+        ///
+        /// The context data is hashed once here to derive the key words; the
+        /// resulting `Params` can then be reused for every group and the builder.
+        pub fn new_derive_key(context: &[u8]) -> Self {
+            let mut context_hasher = Context::new_internal(IV, FLAG_DERIVE_KEY_CONTEXT);
+            context_hasher.update_mut(context);
+            let mut context_key = [0u8; 32];
+            context_hasher
+                .final_output()
+                .root_output_bytes(&mut context_key);
+
+            let mut key_words = [0u32; 8];
+            read_u32v_le(&mut key_words, &context_key);
+            Params {
+                key_words,
+                flags: FLAG_DERIVE_KEY_MATERIAL,
+            }
+        }
+
+        /// Create a [`GroupHasher`] for the group whose first chunk is `start_chunk`.
+        ///
+        /// `start_chunk` is the 0-based index, within the whole message, of the
+        /// first chunk of this group (i.e. `group_index * group_size`).
+        pub fn group_hasher(&self, start_chunk: u64) -> GroupHasher {
+            GroupHasher::new(self.key_words, self.flags, start_chunk)
+        }
+
+        /// Hash a single group's bytes independently in one call.
+        ///
+        /// `start_chunk` is the 0-based index, within the whole message, of the
+        /// first chunk of `input`. `input` should contain a whole number of
+        /// chunks except possibly its last chunk (which is only allowed for the
+        /// final group of the whole message).
+        pub fn hash_group(&self, start_chunk: u64, input: &[u8]) -> GroupHash {
+            self.group_hasher(start_chunk).update(input).finalize()
+        }
+
+        /// Create the central [`TreeBuilder`] that combines the group hashes.
+        pub fn builder(&self) -> TreeBuilder {
+            TreeBuilder::new(self.key_words, self.flags)
+        }
+    }
+
+    impl Default for Params {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    /// Partition of an input of a fixed length into equal-sized chunk groups.
+    ///
+    /// Every group but the last covers exactly `group_size` chunks
+    /// (`group_size * 1024` bytes); the last group holds the remainder. Use
+    /// [`num_groups`](Layout::num_groups) and [`group`](Layout::group) to drive
+    /// the independent per-group computations.
+    #[derive(Clone, Copy)]
+    pub struct Layout {
+        group_size_chunks: u64,
+        group_len_bytes: u64,
+        len: usize,
+    }
+
+    impl Layout {
+        /// Describe splitting a `len`-byte input into groups of `group_size` chunks.
+        ///
+        /// # Panics
+        ///
+        /// Panics if `group_size` is zero or not a power of two: an aligned
+        /// power-of-two group size is what guarantees each group is a valid
+        /// BLAKE3 subtree that combines correctly.
+        pub fn new(group_size: u64, len: usize) -> Self {
+            assert!(
+                group_size >= 1 && group_size.is_power_of_two(),
+                "blake3 parallel group_size must be a power-of-two number of chunks"
+            );
+            Layout {
+                group_size_chunks: group_size,
+                group_len_bytes: group_size * CHUNK_LEN as u64,
+                len,
+            }
+        }
+
+        /// Number of chunks in each full group.
+        pub fn group_size(&self) -> u64 {
+            self.group_size_chunks
+        }
+
+        /// Number of groups the input is split into (always at least one, so
+        /// that the empty input maps to a single empty group).
+        pub fn num_groups(&self) -> u64 {
+            if self.len == 0 {
+                1
+            } else {
+                (self.len as u64).div_ceil(self.group_len_bytes)
+            }
+        }
+
+        /// Return the `(start_chunk, byte_range)` of group `index`.
+        ///
+        /// `start_chunk` is passed to [`Params::hash_group`] /
+        /// [`Params::group_hasher`], and the input for the group is
+        /// `&input[byte_range]`.
+        ///
+        /// # Panics
+        ///
+        /// Panics if `index >= num_groups()`.
+        pub fn group(&self, index: u64) -> (u64, core::ops::Range<usize>) {
+            assert!(index < self.num_groups(), "group index out of range");
+            let start_byte = index * self.group_len_bytes;
+            let end_byte = core::cmp::min((index + 1) * self.group_len_bytes, self.len as u64);
+            let start_chunk = index * self.group_size_chunks;
+            (start_chunk, start_byte as usize..end_byte as usize)
+        }
+    }
+
+    /// The chaining value produced by hashing one group independently.
+    ///
+    /// Feed these into a [`TreeBuilder`], in input order, to obtain the final
+    /// digest. A `GroupHash` also carries enough state to become the tree root
+    /// itself when it is the last (or only) group.
+    #[derive(Clone)]
+    pub struct GroupHash {
+        output: Output,
+        chunks: u64,
+    }
+
+    impl GroupHash {
+        /// Number of chunks this group covered.
+        pub fn num_chunks(&self) -> u64 {
+            self.chunks
+        }
+    }
+
+    /// Streaming hasher for a single group (subtree) of the input.
+    ///
+    /// Created via [`Params::group_hasher`]. Feed it exactly the bytes of its
+    /// group with [`update`](GroupHasher::update) /
+    /// [`update_mut`](GroupHasher::update_mut), then
+    /// [`finalize`](GroupHasher::finalize) to obtain a [`GroupHash`].
+    ///
+    /// It maintains its own local chaining-value stack, so it uses no heap
+    /// allocation and is completely independent from any other group.
+    #[derive(Clone)]
+    pub struct GroupHasher {
+        chunk_state: ChunkState,
+        key_words: [u32; 8],
+        flags: u32,
+        base_chunk: u64,
+        cv_stack: [[u32; 8]; MAX_DEPTH],
+        cv_stack_len: u8,
+    }
+
+    impl GroupHasher {
+        fn new(key_words: [u32; 8], flags: u32, start_chunk: u64) -> Self {
+            GroupHasher {
+                chunk_state: ChunkState::new(&key_words, start_chunk, flags),
+                key_words,
+                flags,
+                base_chunk: start_chunk,
+                cv_stack: [[0u32; 8]; MAX_DEPTH],
+                cv_stack_len: 0,
+            }
+        }
+
+        /// Add input bytes to the group, consuming and returning the hasher.
+        pub fn update(mut self, input: &[u8]) -> Self {
+            self.update_mut(input);
+            self
+        }
+
+        /// Add input bytes to the group in place.
+        pub fn update_mut(&mut self, mut input: &[u8]) {
+            while !input.is_empty() {
+                // A completed chunk is only folded in once more input arrives, so
+                // the final chunk stays pending in `chunk_state` for finalize.
+                if self.chunk_state.len() == CHUNK_LEN {
+                    let chunk_cv = self.chunk_state.output().chaining_value();
+                    let next_counter = self.chunk_state.chunk_counter + 1;
+                    // Merge structure is local to the group; the compression
+                    // counter stays global (kept by ChunkState::chunk_counter).
+                    let local_total = next_counter - self.base_chunk;
+                    cv_stack_add(
+                        &mut self.cv_stack,
+                        &mut self.cv_stack_len,
+                        &self.key_words,
+                        self.flags,
+                        chunk_cv,
+                        local_total,
+                    );
+                    self.chunk_state = ChunkState::new(&self.key_words, next_counter, self.flags);
+                }
+
+                let want = CHUNK_LEN - self.chunk_state.len();
+                let take = core::cmp::min(want, input.len());
+                self.chunk_state.update(&input[..take]);
+                input = &input[take..];
+            }
+        }
+
+        /// Finalize the group into a [`GroupHash`].
+        pub fn finalize(self) -> GroupHash {
+            let chunks = (self.chunk_state.chunk_counter - self.base_chunk) + 1;
+            let output = cv_stack_root_output(
+                &self.cv_stack,
+                self.cv_stack_len,
+                &self.key_words,
+                self.flags,
+                self.chunk_state.output(),
+            );
+            GroupHash { output, chunks }
+        }
+    }
+
+    /// Central object that combines independently-computed [`GroupHash`]es.
+    ///
+    /// Push the groups with [`push`](TreeBuilder::push) **in input order** (group
+    /// 0 first), then finalize. Combining is incremental: each push does a small,
+    /// bounded amount of work and only a fixed-size stack is retained, so the
+    /// builder holds no more than `O(log n)` state regardless of input size.
+    pub struct TreeBuilder {
+        key_words: [u32; 8],
+        flags: u32,
+        cv_stack: [[u32; 8]; MAX_DEPTH],
+        cv_stack_len: u8,
+        pending: Option<GroupHash>,
+        groups_completed: u64,
+        group_chunks: u64,
+    }
+
+    impl TreeBuilder {
+        fn new(key_words: [u32; 8], flags: u32) -> Self {
+            TreeBuilder {
+                key_words,
+                flags,
+                cv_stack: [[0u32; 8]; MAX_DEPTH],
+                cv_stack_len: 0,
+                pending: None,
+                groups_completed: 0,
+                group_chunks: 0,
+            }
+        }
+
+        /// Add the next group's hash, in input order.
+        ///
+        /// The previously pushed group (now known to be an interior group) is
+        /// folded into the internal tree, while the just-pushed group is held
+        /// pending in case it turns out to be the last one.
+        pub fn push(&mut self, group: GroupHash) {
+            if let Some(prev) = self.pending.take() {
+                if self.groups_completed == 0 {
+                    debug_assert!(
+                        prev.chunks.is_power_of_two(),
+                        "interior group must span a power-of-two number of chunks"
+                    );
+                    self.group_chunks = prev.chunks;
+                } else {
+                    debug_assert_eq!(
+                        prev.chunks, self.group_chunks,
+                        "every non-final group must span the same number of chunks"
+                    );
+                }
+                self.groups_completed += 1;
+                cv_stack_add(
+                    &mut self.cv_stack,
+                    &mut self.cv_stack_len,
+                    &self.key_words,
+                    self.flags,
+                    prev.output.chaining_value(),
+                    self.groups_completed,
+                );
+            }
+            self.pending = Some(group);
+        }
+
+        fn root_output(self) -> Output {
+            let base = self
+                .pending
+                .expect("TreeBuilder: at least one group must be pushed before finalizing");
+            cv_stack_root_output(
+                &self.cv_stack,
+                self.cv_stack_len,
+                &self.key_words,
+                self.flags,
+                base.output,
+            )
+        }
+
+        /// Finalize and write the digest into `out`.
+        pub fn finalize_at(self, out: &mut [u8]) {
+            self.root_output().root_output_bytes(out);
+        }
+
+        /// Finalize and return a fixed-size digest.
+        pub fn finalize<const OUT: usize>(self) -> [u8; OUT] {
+            let mut out = [0u8; OUT];
+            self.finalize_at(&mut out);
+            out
+        }
+
+        /// Finalize into an [`OutputReader`] for arbitrary-length XOF output.
+        pub fn finalize_xof(self) -> OutputReader {
+            self.root_output().into_output_reader()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -559,7 +1004,7 @@ mod tests {
     const TEST_KEY: &[u8; 32] = b"whats the Elvish word for friend";
 
     // Official C2SP context string for derive_key mode
-    const TEST_CONTEXT: &str = "BLAKE3 2019-12-27 16:29:52 test vectors context";
+    const TEST_CONTEXT: &[u8] = b"BLAKE3 2019-12-27 16:29:52 test vectors context";
 
     fn test_input(len: usize) -> Vec<u8> {
         (0..len).map(|i| (i % 251) as u8).collect()
@@ -956,5 +1401,118 @@ mod tests {
                 "derive_key mode reset mismatch"
             );
         }
+    }
+
+    // Combine an input by hashing each group independently and pushing the
+    // group hashes, in order, into the central TreeBuilder.
+    fn parallel_hash<const N: usize>(
+        params: &parallel::Params,
+        group_size: u64,
+        input: &[u8],
+    ) -> [u8; N] {
+        let layout = parallel::Layout::new(group_size, input.len());
+        let mut builder = params.builder();
+        for i in 0..layout.num_groups() {
+            let (start_chunk, range) = layout.group(i);
+            builder.push(params.hash_group(start_chunk, &input[range]));
+        }
+        builder.finalize::<N>()
+    }
+
+    fn parallel_xof(params: &parallel::Params, group_size: u64, input: &[u8], out: &mut [u8]) {
+        let layout = parallel::Layout::new(group_size, input.len());
+        let mut builder = params.builder();
+        for i in 0..layout.num_groups() {
+            let (start_chunk, range) = layout.group(i);
+            builder.push(params.hash_group(start_chunk, &input[range]));
+        }
+        builder.finalize_xof().fill(out);
+    }
+
+    #[test]
+    fn test_blake3_parallel_matches_serial() {
+        // Cover single/partial chunks, exact powers of two, and awkward
+        // remainders that exercise a non-power-of-two number of groups plus a
+        // partial final chunk.
+        let lengths = [
+            0usize, 1, 63, 64, 65, 1023, 1024, 1025, 2048, 2049, 3000, 4096, 4097, 7000, 8192,
+            8193, 100_000,
+        ];
+        // group sizes in chunks (all powers of two)
+        let group_sizes = [1u64, 2, 4, 8, 16];
+
+        for &len in &lengths {
+            let input = test_input(len);
+
+            let expected = Blake3::new().update(&input).finalize::<32>();
+            let mut expected_xof = [0u8; 131];
+            Blake3::new()
+                .update(&input)
+                .finalize_xof()
+                .fill(&mut expected_xof);
+
+            let expected_keyed = Blake3::new_keyed(TEST_KEY).update(&input).finalize::<32>();
+            let expected_derive = Blake3::new_derive_key(TEST_CONTEXT)
+                .update(&input)
+                .finalize::<32>();
+
+            for &gs in &group_sizes {
+                let digest = parallel_hash::<32>(&parallel::Params::new(), gs, &input);
+                assert_eq!(
+                    digest, expected,
+                    "hash mode parallel mismatch len={} group_size={}",
+                    len, gs
+                );
+
+                let mut xof = [0u8; 131];
+                parallel_xof(&parallel::Params::new(), gs, &input, &mut xof);
+                assert_eq!(
+                    xof, expected_xof,
+                    "hash mode parallel XOF mismatch len={} group_size={}",
+                    len, gs
+                );
+
+                let keyed = parallel_hash::<32>(&parallel::Params::new_keyed(TEST_KEY), gs, &input);
+                assert_eq!(
+                    keyed, expected_keyed,
+                    "keyed mode parallel mismatch len={} group_size={}",
+                    len, gs
+                );
+
+                let derive = parallel_hash::<32>(
+                    &parallel::Params::new_derive_key(TEST_CONTEXT),
+                    gs,
+                    &input,
+                );
+                assert_eq!(
+                    derive, expected_derive,
+                    "derive_key mode parallel mismatch len={} group_size={}",
+                    len, gs
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_blake3_parallel_streaming_group() {
+        // Feeding a group's bytes incrementally must match hashing it in one go.
+        let input = test_input(4096 + 500);
+        let params = parallel::Params::new();
+
+        let expected = Blake3::new().update(&input).finalize::<32>();
+
+        // group_size = 4 chunks -> group 0 covers chunks 0..4, group 1 the rest
+        let layout = parallel::Layout::new(4, input.len());
+        let mut builder = params.builder();
+        for i in 0..layout.num_groups() {
+            let (start_chunk, range) = layout.group(i);
+            let mut hasher = params.group_hasher(start_chunk);
+            // feed this group in small, irregular pieces
+            for piece in input[range].chunks(7) {
+                hasher.update_mut(piece);
+            }
+            builder.push(hasher.finalize());
+        }
+        assert_eq!(builder.finalize::<32>(), expected);
     }
 }

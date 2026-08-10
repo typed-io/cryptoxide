@@ -240,10 +240,10 @@ mod tests {
     use super::*;
     use crate::tests::{GeneratorOf, GeneratorOf2, GeneratorRaw};
 
-    fn next_poly(gen: &mut GeneratorRaw) -> Poly {
+    fn next_poly(generator: &mut GeneratorRaw) -> Poly {
         let mut f = [0; N];
         for c in f.iter_mut() {
-            *c = reduce(gen.next_u64() as u32);
+            *c = reduce(generator.next_u64() as u32);
         }
         Poly(f)
     }
@@ -335,10 +335,10 @@ mod tests {
     fn sample_ntt_is_canonical() {
         // all coefficients must be canonical, and a full polynomial must be
         // produced whatever the seed
-        let mut gen = GeneratorRaw::new(0);
+        let mut generator = GeneratorRaw::new(0);
         for _ in 0..4 {
-            let [b0, b1] = gen.bytes::<2>();
-            let p = sample_ntt(&gen.bytes(), b0, b1);
+            let [b0, b1] = generator.bytes::<2>();
+            let p = sample_ntt(&generator.bytes(), b0, b1);
             assert!(p.0.iter().all(|c| *c < Q));
             assert!(p.0.iter().any(|c| *c != 0));
         }

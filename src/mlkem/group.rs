@@ -139,8 +139,8 @@ mod tests {
     use super::*;
     use crate::tests::{GeneratorOf2, GeneratorRaw};
 
-    fn next_element(gen: &mut GeneratorRaw) -> Zq {
-        reduce(gen.next_u64() as u32)
+    fn next_element(generator: &mut GeneratorRaw) -> Zq {
+        reduce(generator.next_u64() as u32)
     }
 
     #[test]
@@ -154,11 +154,11 @@ mod tests {
         for v in [0, 1, 2, QU - 1, QU, QU + 1, u32::MAX - 1, u32::MAX] {
             check(v);
         }
-        let mut gen = GeneratorRaw::new(0);
+        let mut generator = GeneratorRaw::new(0);
         for _ in 0..100_000 {
-            check(gen.next_u64() as u32);
+            check(generator.next_u64() as u32);
             // and the sub-range that `mul` actually produces
-            check(gen.next_u64() as u32 % (QU * QU));
+            check(generator.next_u64() as u32 % (QU * QU));
         }
     }
 

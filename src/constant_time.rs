@@ -7,6 +7,7 @@
 //! * CtEqual : constant time equality and non-equality checking
 //! * CtLesser : constant time less (<) and opposite greater-equal (>=) checking
 //! * CtGreater : constant time greater (>) and opposite lesser-equal (<=) checking
+//! * CtSelect : constant time selection between / conditional assignment of values
 //!
 //! And simple types to manipulate those capabilities in a safer way:
 //!
@@ -223,6 +224,15 @@ pub trait CtSelect: Sized {
     /// Returns `a` when `cond` is true and `b` otherwise. This is the equivalent
     /// of the `if cond { a } else { b }` expression of the core library.
     fn ct_select(cond: Choice, a: &Self, b: &Self) -> Self;
+}
+
+impl CtEqual for Choice {
+    fn ct_eq(self, b: Self) -> Choice {
+        (self & b) | (self.negate() & b.negate())
+    }
+    fn ct_ne(self, b: Self) -> Choice {
+        self.ct_eq(b).negate()
+    }
 }
 
 impl CtZero for u64 {

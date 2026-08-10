@@ -9,7 +9,7 @@ description = "pure implementation of various common modern cryptographic algori
 keywords = [ "Crypto", "Cryptography", "Modern", "Pure" ]
 categories = [ "cryptography" ]
 edition = '2021'
-rust-version = "1.78"
+rust-version = "1.79.0"
 
 [badges]
 

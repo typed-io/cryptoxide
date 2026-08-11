@@ -61,6 +61,9 @@ extern crate std;
 #[cfg(feature = "aes")]
 pub mod aes;
 
+#[cfg(feature = "aes-gcm")]
+pub mod aes_gcm;
+
 #[cfg(all(feature = "blake2", feature = "digest"))]
 pub mod blake2b;
 

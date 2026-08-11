@@ -5,6 +5,7 @@
   and the ready-to-use `ed25519::blake2b` module for the BLAKE2b-512 variant.
   The existing SHA512 APIs are unchanged.
 * add blake3 parallel module
+* add AES-GCM one-shot and incremental interface
 
 # 0.6.2
 

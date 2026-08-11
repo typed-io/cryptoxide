@@ -23,6 +23,7 @@ doctest = false
 [features]
 default = [
     "aes",
+    "aes-gcm",
     "argon2",
     "blake2",
     "blake3",
@@ -43,6 +44,7 @@ default = [
     "mlkem"
 ]
 aes = []
+aes-gcm = ["aes"]
 blake2 = []
 blake3 = []
 sha1 = []

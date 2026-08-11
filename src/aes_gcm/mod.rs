@@ -319,6 +319,280 @@ impl Drop for AesGcm256 {
     }
 }
 
+enum Cipher {
+    /// AES-128 cipher
+    Aes128(Aes128),
+    /// AES-256 cipher
+    Aes256(Aes256),
+}
+
+impl Cipher {
+    fn encrypt_block(&self, input: &[u8; 16]) -> [u8; 16] {
+        match self {
+            Cipher::Aes128(c) => c.encrypt_block(input),
+            Cipher::Aes256(c) => c.encrypt_block(input),
+        }
+    }
+}
+
+/// AES-GCM incremental context -- add authenticated data before transitioning to encryption or decryption.
+///
+/// Created via AES128 based [`Context::new128`] or AES256 based [`Context::new256`].
+///
+/// Feed authenticated data (AAD) with [`Context::add_data`], then call
+/// [`Context::to_encryption`] or [`Context::to_decryption`] to transition
+/// to the ciphered data processing phase.
+///
+/// # Examples
+///
+/// ```
+/// use cryptoxide::aes_gcm;
+///
+/// let key = [0u8; 16];
+/// let nonce = [0u8; 12];
+/// let mut ctx = aes_gcm::Context::new128(&key, &nonce);
+/// ctx.add_data(b"authenticated data");
+/// let enc_ctx = ctx.to_encryption();
+/// ```
+pub struct Context {
+    ghash: GHash,
+    ctr: Ctr,
+    cipher: Cipher,
+    j0: [u8; 16],
+    aad_len: u64,
+}
+
+impl Context {
+    /// Create a new AES-GCM incremental context backed by AES128 using the specified key and nonce
+    pub fn new128(key: &[u8; 16], nonce: &[u8; 12]) -> Self {
+        let j0 = make_j0(nonce);
+        let cipher = Aes128::new(key);
+        let h = cipher.encrypt_block(&[0u8; 16]);
+        Context {
+            ghash: GHash::new(&h),
+            ctr: Ctr::new(&j0),
+            cipher: Cipher::Aes128(cipher),
+            j0,
+            aad_len: 0,
+        }
+    }
+
+    /// Create a new AES-GCM incremental context backed by AES256 using the specified key and nonce
+    pub fn new256(key: &[u8; 32], nonce: &[u8; 12]) -> Self {
+        let j0 = make_j0(nonce);
+        let cipher = Aes256::new(key);
+        let h = cipher.encrypt_block(&[0u8; 16]);
+        Context {
+            ghash: GHash::new(&h),
+            ctr: Ctr::new(&j0),
+            cipher: Cipher::Aes256(Aes256::new(key)),
+            j0,
+            aad_len: 0,
+        }
+    }
+
+    /// Add authenticated data (AAD) to the context.
+    ///
+    /// This can be called multiple times to incrementally feed AAD.
+    /// All AAD must be added before transitioning to encryption or decryption.
+    pub fn add_data(&mut self, aad: &[u8]) {
+        self.ghash.update(aad);
+        self.aad_len += aad.len() as u64;
+    }
+
+    /// Finish the AAD phase and transition to encryption.
+    ///
+    /// After calling this method, use [`ContextEncryption::encrypt`] to
+    /// encrypt data incrementally, then [`ContextEncryption::finalize`]
+    /// to obtain the authentication tag.
+    pub fn to_encryption(mut self) -> ContextEncryption {
+        self.ghash.pad();
+        ContextEncryption {
+            ghash: self.ghash,
+            ctr: self.ctr,
+            cipher: self.cipher,
+            j0: self.j0,
+            aad_len: self.aad_len,
+            ct_len: 0,
+        }
+    }
+
+    /// Finish the AAD phase and transition to decryption.
+    ///
+    /// After calling this method, use [`ContextDecryption::decrypt`] to
+    /// decrypt data incrementally, then [`ContextDecryption::finalize`]
+    /// to verify the authentication tag.
+    pub fn to_decryption(mut self) -> ContextDecryption {
+        self.ghash.pad();
+        ContextDecryption {
+            ghash: self.ghash,
+            ctr: self.ctr,
+            cipher: self.cipher,
+            j0: self.j0,
+            aad_len: self.aad_len,
+            ct_len: 0,
+        }
+    }
+}
+
+/// AES-GCM incremental encryption context.
+///
+/// Obtained by calling [`Context::to_encryption`]. Encrypts data incrementally
+/// and accumulates the authentication state. Call [`ContextEncryption::finalize`]
+/// to produce the authentication tag.
+pub struct ContextEncryption {
+    ghash: GHash,
+    ctr: Ctr,
+    cipher: Cipher,
+    j0: [u8; 16],
+    aad_len: u64,
+    ct_len: u64,
+}
+
+impl ContextEncryption {
+    /// Encrypt the input slice to the output slice.
+    ///
+    /// The ciphertext written to `output` is also fed into GHASH for
+    /// authentication. This can be called multiple times.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `input.len() != output.len()`.
+    pub fn encrypt(&mut self, input: &[u8], output: &mut [u8]) {
+        assert_eq!(input.len(), output.len());
+        let enc = |block: &[u8; 16]| -> [u8; 16] { self.cipher.encrypt_block(block) };
+        self.ctr.process(&enc, input, output);
+        // Feed ciphertext to GHASH
+        self.ghash.update(output);
+        self.ct_len += output.len() as u64;
+    }
+
+    /// Encrypt data in place.
+    ///
+    /// The buffer is encrypted and the resulting ciphertext is fed into
+    /// GHASH for authentication. This can be called multiple times.
+    pub fn encrypt_mut(&mut self, data: &mut [u8]) {
+        let enc = |block: &[u8; 16]| -> [u8; 16] { self.cipher.encrypt_block(block) };
+        // We need a temporary buffer for in-place operation since CTR process
+        // requires separate input and output. Process block by block.
+        let len = data.len();
+        let mut tmp = [0u8; 16];
+        let mut offset = 0;
+        while offset + 16 <= len {
+            let chunk = &data[offset..offset + 16];
+            self.ctr.process(&enc, chunk, &mut tmp);
+            data[offset..offset + 16].copy_from_slice(&tmp);
+            offset += 16;
+        }
+        if offset < len {
+            let remaining = len - offset;
+            self.ctr
+                .process(&enc, &data[offset..len], &mut tmp[..remaining]);
+            data[offset..len].copy_from_slice(&tmp[..remaining]);
+        }
+        // Feed ciphertext to GHASH
+        self.ghash.update(data);
+        self.ct_len += len as u64;
+    }
+
+    /// Finalize the encryption context and return the authentication tag.
+    ///
+    /// Completes the GHASH computation with the length block and encrypts
+    /// the result with AES(J0) to produce the final tag.
+    #[must_use]
+    pub fn finalize(self) -> Tag {
+        let ghash_out = self.ghash.finalize(self.aad_len, self.ct_len);
+        compute_tag(
+            |block| self.cipher.encrypt_block(block),
+            &self.j0,
+            &ghash_out,
+        )
+    }
+}
+
+/// AES-GCM incremental decryption context.
+///
+/// Obtained by calling [`Context::to_decryption`]. Decrypts data incrementally
+/// and accumulates the authentication state. Call [`ContextDecryption::finalize`]
+/// to verify the authentication tag.
+pub struct ContextDecryption {
+    ghash: GHash,
+    ctr: Ctr,
+    cipher: Cipher,
+    j0: [u8; 16],
+    aad_len: u64,
+    ct_len: u64,
+}
+
+impl ContextDecryption {
+    /// Decrypt the input slice to the output slice.
+    ///
+    /// The input (ciphertext) is fed into GHASH **before** CTR decryption,
+    /// ensuring authentication is computed over ciphertext, not plaintext
+    /// (encrypt-then-MAC order).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `input.len() != output.len()`.
+    pub fn decrypt(&mut self, input: &[u8], output: &mut [u8]) {
+        assert_eq!(input.len(), output.len());
+        // Feed ciphertext to GHASH FIRST (before decryption)
+        self.ghash.update(input);
+        self.ct_len += input.len() as u64;
+        // Then CTR decrypt
+        let enc = |block: &[u8; 16]| -> [u8; 16] { self.cipher.encrypt_block(block) };
+        self.ctr.process(&enc, input, output);
+    }
+
+    /// Decrypt data in place.
+    ///
+    /// The original ciphertext is fed into GHASH before being decrypted.
+    /// A copy of the ciphertext is made internally to preserve the
+    /// authentication input.
+    pub fn decrypt_mut(&mut self, data: &mut [u8]) {
+        // Feed ciphertext to GHASH FIRST
+        self.ghash.update(data);
+        self.ct_len += data.len() as u64;
+        // Then CTR decrypt in place
+        let enc = |block: &[u8; 16]| -> [u8; 16] { self.cipher.encrypt_block(block) };
+        let len = data.len();
+        let mut tmp = [0u8; 16];
+        let mut offset = 0;
+        while offset + 16 <= len {
+            let chunk = &data[offset..offset + 16];
+            self.ctr.process(&enc, chunk, &mut tmp);
+            data[offset..offset + 16].copy_from_slice(&tmp);
+            offset += 16;
+        }
+        if offset < len {
+            let remaining = len - offset;
+            self.ctr
+                .process(&enc, &data[offset..len], &mut tmp[..remaining]);
+            data[offset..len].copy_from_slice(&tmp[..remaining]);
+        }
+    }
+
+    /// Finalize the decryption context and verify the authentication tag.
+    ///
+    /// Computes the expected tag and compares it with the provided tag
+    /// using constant-time comparison. Returns [`DecryptionResult::Match`]
+    /// if the tag is valid, [`DecryptionResult::MisMatch`] otherwise.
+    #[must_use = "if the result is not checked, the encrypted data is not authenticated"]
+    pub fn finalize(self, expected_tag: &Tag) -> DecryptionResult {
+        let ghash_out = self.ghash.finalize(self.aad_len, self.ct_len);
+        let computed = compute_tag(
+            |block| self.cipher.encrypt_block(block),
+            &self.j0,
+            &ghash_out,
+        );
+        if &computed == expected_tag {
+            DecryptionResult::Match
+        } else {
+            DecryptionResult::MisMatch
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -367,16 +641,28 @@ mod tests {
         assert_eq!(tag.0, expected_tag, "NIST Test Case 2 tag mismatch");
     }
 
+    const KEY128_TEST_VECTOR: [u8; 16] = [
+        0xfe, 0xff, 0xe9, 0x92, 0x86, 0x65, 0x73, 0x1c, 0x6d, 0x6a, 0x8f, 0x94, 0x67, 0x30, 0x83,
+        0x08,
+    ];
+    const KEY256_TEST_VECTOR: [u8; 32] = [
+        0xfe, 0xff, 0xe9, 0x92, 0x86, 0x65, 0x73, 0x1c, 0x6d, 0x6a, 0x8f, 0x94, 0x67, 0x30, 0x83,
+        0x08, 0xfe, 0xff, 0xe9, 0x92, 0x86, 0x65, 0x73, 0x1c, 0x6d, 0x6a, 0x8f, 0x94, 0x67, 0x30,
+        0x83, 0x08,
+    ];
+    const NONCE_TEST_VECTOR: [u8; 12] = [
+        0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88,
+    ];
+    const AAD_TEST_VECTOR: [u8; 20] = [
+        0xfe, 0xed, 0xfa, 0xce, 0xde, 0xad, 0xbe, 0xef, 0xfe, 0xed, 0xfa, 0xce, 0xde, 0xad, 0xbe,
+        0xef, 0xab, 0xad, 0xda, 0xd2,
+    ];
+
     // NIST SP 800-38D Test Case 3: AES-128-GCM, 64-byte plaintext, empty AAD
     #[test]
     fn test_aes128_gcm_nist_test_case_3() {
-        let key: [u8; 16] = [
-            0xfe, 0xff, 0xe9, 0x92, 0x86, 0x65, 0x73, 0x1c, 0x6d, 0x6a, 0x8f, 0x94, 0x67, 0x30,
-            0x83, 0x08,
-        ];
-        let nonce: [u8; 12] = [
-            0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88,
-        ];
+        let key = KEY128_TEST_VECTOR;
+        let nonce = NONCE_TEST_VECTOR;
         let plaintext: [u8; 64] = [
             0xd9, 0x31, 0x32, 0x25, 0xf8, 0x84, 0x06, 0xe5, 0xa5, 0x59, 0x09, 0xc5, 0xaf, 0xf5,
             0x26, 0x9a, 0x86, 0xa7, 0xa9, 0x53, 0x15, 0x34, 0xf7, 0xda, 0x2e, 0x4c, 0x30, 0x3d,
@@ -411,13 +697,8 @@ mod tests {
     // NIST SP 800-38D Test Case 4: AES-128-GCM, 60-byte plaintext, 20-byte AAD
     #[test]
     fn test_aes128_gcm_nist_test_case_4() {
-        let key: [u8; 16] = [
-            0xfe, 0xff, 0xe9, 0x92, 0x86, 0x65, 0x73, 0x1c, 0x6d, 0x6a, 0x8f, 0x94, 0x67, 0x30,
-            0x83, 0x08,
-        ];
-        let nonce: [u8; 12] = [
-            0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88,
-        ];
+        let key = KEY128_TEST_VECTOR;
+        let nonce = NONCE_TEST_VECTOR;
         let plaintext: [u8; 60] = [
             0xd9, 0x31, 0x32, 0x25, 0xf8, 0x84, 0x06, 0xe5, 0xa5, 0x59, 0x09, 0xc5, 0xaf, 0xf5,
             0x26, 0x9a, 0x86, 0xa7, 0xa9, 0x53, 0x15, 0x34, 0xf7, 0xda, 0x2e, 0x4c, 0x30, 0x3d,
@@ -511,19 +792,75 @@ mod tests {
         assert_eq!(&pt[..], &plaintext[..]);
     }
 
+    // Incremental API round-trip
+    #[test]
+    fn test_incremental_encrypt_decrypt() {
+        let key = [0x42u8; 16];
+        let nonce = [0x01u8; 12];
+
+        // Encrypt incrementally
+        let mut ctx = Context::new128(&key, &nonce);
+        ctx.add_data(b"aad1");
+        ctx.add_data(b"aad2");
+        let mut enc_ctx = ctx.to_encryption();
+        let mut ct = [0u8; 11];
+        enc_ctx.encrypt(b"hello", &mut ct[..5]);
+        enc_ctx.encrypt(b" world", &mut ct[5..11]);
+        let tag = enc_ctx.finalize();
+
+        // Decrypt incrementally
+        let mut ctx2 = Context::new128(&key, &nonce);
+        ctx2.add_data(b"aad1");
+        ctx2.add_data(b"aad2");
+        let mut dec_ctx = ctx2.to_decryption();
+        let mut pt = [0u8; 11];
+        dec_ctx.decrypt(&ct[..5], &mut pt[..5]);
+        dec_ctx.decrypt(&ct[5..], &mut pt[5..]);
+        let result = dec_ctx.finalize(&tag);
+        assert_eq!(result, DecryptionResult::Match);
+        assert_eq!(&pt[..], b"hello world");
+    }
+
+    // Incremental matches one-shot
+    #[test]
+    fn test_incremental_matches_oneshot() {
+        let key = [0x99u8; 16];
+        let nonce = [0x11u8; 12];
+        let aad = b"test aad";
+        let plaintext = b"incremental vs oneshot";
+
+        // One-shot
+        let mut ct_oneshot = vec![0u8; plaintext.len()];
+        let mut tag_oneshot = Tag([0u8; 16]);
+        let cipher = AesGcm128::new(&key);
+        cipher.encrypt(&nonce, aad, plaintext, &mut ct_oneshot, &mut tag_oneshot);
+
+        // Incremental
+        let mut ctx = Context::new128(&key, &nonce);
+        ctx.add_data(aad);
+        let mut enc_ctx = ctx.to_encryption();
+        let mut ct_inc = vec![0u8; plaintext.len()];
+        enc_ctx.encrypt(plaintext, &mut ct_inc);
+        let tag_inc = enc_ctx.finalize();
+
+        assert_eq!(
+            ct_oneshot, ct_inc,
+            "Ciphertext should match between one-shot and incremental"
+        );
+        assert_eq!(
+            tag_oneshot, tag_inc,
+            "Tag should match between one-shot and incremental"
+        );
+    }
+
+    // ============================================================
     // AES-256-GCM NIST SP 800-38D Test Vector
 
     // NIST SP 800-38D Test Case 14 (AES-256-GCM): 60-byte plaintext with 20-byte AAD
     #[test]
     fn test_aes256_gcm_with_aad() {
-        let key = [
-            0xfe, 0xff, 0xe9, 0x92, 0x86, 0x65, 0x73, 0x1c, 0x6d, 0x6a, 0x8f, 0x94, 0x67, 0x30,
-            0x83, 0x08, 0xfe, 0xff, 0xe9, 0x92, 0x86, 0x65, 0x73, 0x1c, 0x6d, 0x6a, 0x8f, 0x94,
-            0x67, 0x30, 0x83, 0x08,
-        ];
-        let nonce = [
-            0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88,
-        ];
+        let key = KEY256_TEST_VECTOR;
+        let nonce = NONCE_TEST_VECTOR;
         let pt = [
             0xd9, 0x31, 0x32, 0x25, 0xf8, 0x84, 0x06, 0xe5, 0xa5, 0x59, 0x09, 0xc5, 0xaf, 0xf5,
             0x26, 0x9a, 0x86, 0xa7, 0xa9, 0x53, 0x15, 0x34, 0xf7, 0xda, 0x2e, 0x4c, 0x30, 0x3d,
@@ -531,10 +868,7 @@ mod tests {
             0x0e, 0x24, 0x49, 0xa6, 0xb5, 0x25, 0xb1, 0x6a, 0xed, 0xf5, 0xaa, 0x0d, 0xe6, 0x57,
             0xba, 0x63, 0x7b, 0x39,
         ];
-        let aad = [
-            0xfe, 0xed, 0xfa, 0xce, 0xde, 0xad, 0xbe, 0xef, 0xfe, 0xed, 0xfa, 0xce, 0xde, 0xad,
-            0xbe, 0xef, 0xab, 0xad, 0xda, 0xd2,
-        ];
+        let aad = AAD_TEST_VECTOR;
         let expected_ct = [
             0x52, 0x2d, 0xc1, 0xf0, 0x99, 0x56, 0x7d, 0x07, 0xf4, 0x7f, 0x37, 0xa3, 0x2a, 0x84,
             0x42, 0x7d, 0x64, 0x3a, 0x8c, 0xdc, 0xbf, 0xe5, 0xc0, 0xc9, 0x75, 0x98, 0xa2, 0xbd,
@@ -673,13 +1007,8 @@ mod tests {
     // Verify Test Case 4 tag: 5bc94fbc3221a5db94fae95ae7121a47
     #[test]
     fn test_aes128_gcm_with_aad() {
-        let key = [
-            0xfe, 0xff, 0xe9, 0x92, 0x86, 0x65, 0x73, 0x1c, 0x6d, 0x6a, 0x8f, 0x94, 0x67, 0x30,
-            0x83, 0x08,
-        ];
-        let nonce = [
-            0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88,
-        ];
+        let key = KEY128_TEST_VECTOR;
+        let nonce = NONCE_TEST_VECTOR;
         let pt = [
             0xd9, 0x31, 0x32, 0x25, 0xf8, 0x84, 0x06, 0xe5, 0xa5, 0x59, 0x09, 0xc5, 0xaf, 0xf5,
             0x26, 0x9a, 0x86, 0xa7, 0xa9, 0x53, 0x15, 0x34, 0xf7, 0xda, 0x2e, 0x4c, 0x30, 0x3d,
@@ -687,10 +1016,7 @@ mod tests {
             0x0e, 0x24, 0x49, 0xa6, 0xb5, 0x25, 0xb1, 0x6a, 0xed, 0xf5, 0xaa, 0x0d, 0xe6, 0x57,
             0xba, 0x63, 0x7b, 0x39,
         ];
-        let aad = [
-            0xfe, 0xed, 0xfa, 0xce, 0xde, 0xad, 0xbe, 0xef, 0xfe, 0xed, 0xfa, 0xce, 0xde, 0xad,
-            0xbe, 0xef, 0xab, 0xad, 0xda, 0xd2,
-        ];
+        let aad = AAD_TEST_VECTOR;
         let expected_ct = [
             0x42, 0x83, 0x1e, 0xc2, 0x21, 0x77, 0x74, 0x24, 0x4b, 0x72, 0x21, 0xb7, 0x84, 0xd0,
             0xd4, 0x9c, 0xe3, 0xaa, 0x21, 0x2f, 0x2c, 0x02, 0xa4, 0xe0, 0x35, 0xc1, 0x7e, 0x23,
@@ -719,5 +1045,56 @@ mod tests {
         let result = cipher.decrypt(&nonce_arr, &aad, &ct, &mut recovered, &tag);
         assert_eq!(result, DecryptionResult::Match);
         assert_eq!(&recovered[..], &pt[..]);
+    }
+
+    // ============================================================
+    // Incremental vs one-shot with NIST vectors
+    // ============================================================
+
+    #[test]
+    fn test_incremental_matches_oneshot_nist() {
+        let key = KEY128_TEST_VECTOR;
+        let nonce = NONCE_TEST_VECTOR;
+        let pt = [
+            0xd9, 0x31, 0x32, 0x25, 0xf8, 0x84, 0x06, 0xe5, 0xa5, 0x59, 0x09, 0xc5, 0xaf, 0xf5,
+            0x26, 0x9a, 0x86, 0xa7, 0xa9, 0x53, 0x15, 0x34, 0xf7, 0xda, 0x2e, 0x4c, 0x30, 0x3d,
+            0x8a, 0x31, 0x8a, 0x72, 0x1c, 0x3c, 0x0c, 0x95, 0x95, 0x68, 0x09, 0x53, 0x2f, 0xcf,
+            0x0e, 0x24, 0x49, 0xa6, 0xb5, 0x25, 0xb1, 0x6a, 0xed, 0xf5, 0xaa, 0x0d, 0xe6, 0x57,
+            0xba, 0x63, 0x7b, 0x39,
+        ];
+        let aad = AAD_TEST_VECTOR;
+
+        let key_arr: [u8; 16] = key.try_into().unwrap();
+        let nonce_arr: [u8; 12] = nonce.try_into().unwrap();
+
+        // One-shot encrypt
+        let mut ct_oneshot = vec![0u8; pt.len()];
+        let mut tag_oneshot = Tag([0u8; 16]);
+        let cipher = AesGcm128::new(&key_arr);
+        cipher.encrypt(&nonce_arr, &aad, &pt, &mut ct_oneshot, &mut tag_oneshot);
+
+        // Incremental encrypt (split AAD and plaintext into chunks)
+        let mut ctx = Context::new128(&key_arr, &nonce_arr);
+        ctx.add_data(&aad[..10]);
+        ctx.add_data(&aad[10..]);
+        let mut enc = ctx.to_encryption();
+        let mut ct_incr = vec![0u8; pt.len()];
+        enc.encrypt(&pt[..20], &mut ct_incr[..20]);
+        enc.encrypt(&pt[20..], &mut ct_incr[20..]);
+        let tag_incr = enc.finalize();
+
+        assert_eq!(&ct_oneshot[..], &ct_incr[..]);
+        assert_eq!(tag_oneshot, tag_incr);
+
+        // Incremental decrypt
+        let mut ctx = Context::new128(&key_arr, &nonce_arr);
+        ctx.add_data(&aad);
+        let mut dec = ctx.to_decryption();
+        let mut pt_incr = vec![0u8; pt.len()];
+        dec.decrypt(&ct_oneshot[..30], &mut pt_incr[..30]);
+        dec.decrypt(&ct_oneshot[30..], &mut pt_incr[30..]);
+        let result = dec.finalize(&tag_oneshot);
+        assert_eq!(result, DecryptionResult::Match);
+        assert_eq!(&pt_incr[..], &pt[..]);
     }
 }

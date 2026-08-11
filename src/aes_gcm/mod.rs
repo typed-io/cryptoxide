@@ -1,4 +1,58 @@
 //! AES-GCM authenticated encryption.
+//!
+//! AES-GCM (Galois/Counter Mode) is an authenticated encryption with associated data (AEAD)
+//! cipher defined in [NIST SP 800-38D][1].
+//!
+//! This module provides 2 interfaces:
+//!
+//! * the one shot interface [`AesGcm128`] and [`AesGcm256`]
+//! * the incremental interfaces, using [`Context`], [`ContextEncryption`] and [`ContextDecryption`]
+//!
+//! The incremental interfaces should be used when you are streaming data or
+//! need more control over memory usage, as the one-shot interface expects
+//! one single call with slices parameter.
+//!
+//! # Examples
+//!
+//! Encrypting using the one-shot interface:
+//!
+//! ```
+//! use cryptoxide::aes_gcm::AesGcm256;
+//!
+//! let key = [0x01u8; 32];
+//! let nonce = [0x02u8; 12];
+//! let aad = b"additional data";
+//! let plaintext = b"hello world!";
+//! let mut ciphertext = [0u8; 12];
+//! let mut tag = cryptoxide::aes_gcm::Tag([0u8; 16]);
+//!
+//! let cipher = AesGcm256::new(&key);
+//! cipher.encrypt(&nonce, aad, plaintext, &mut ciphertext, &mut tag);
+//! ```
+//!
+//! Encrypting using the incremental interfaces:
+//!
+//! ```
+//! use cryptoxide::aes_gcm;
+//!
+//! let key = [0x01u8; 16];
+//! let nonce = [0x02u8; 12];
+//!
+//! let mut ctx = aes_gcm::Context::new128(&key, &nonce);
+//!
+//! ctx.add_data(b"authenticated");
+//! ctx.add_data(b"data");
+//!
+//! let mut encrypted = [0u8; 10];
+//! let mut ctx = ctx.to_encryption();
+//!
+//! ctx.encrypt(b"hello", &mut encrypted[0..5]);
+//! ctx.encrypt(b"world", &mut encrypted[5..10]);
+//!
+//! let tag = ctx.finalize();
+//! ```
+//!
+//! [1]: https://csrc.nist.gov/publications/detail/sp/800-38d/final
 
 use crate::{
     aes::{Aes128, Aes256},

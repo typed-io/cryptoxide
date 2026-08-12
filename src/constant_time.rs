@@ -21,6 +21,13 @@
 //!
 //! The general functionality would be a great addition to the rust core library
 //! to have those type of things built-in and crucially more eyeballs.
+//!
+//! On top of those, the module contains constant time implementation of
+//! common data encodings:
+//!
+//! * [`base32`] : Base32 encoding and decoding
+
+pub mod base32;
 
 /// Constant time boolean
 ///
@@ -312,6 +319,23 @@ impl<const N: usize> CtZero for &[u64; N] {
         let mut acc = 0u64;
         for b in self.iter() {
             acc |= b
+        }
+        acc.ct_nonzero()
+    }
+}
+
+impl CtZero for &[u8] {
+    fn ct_zero(self) -> Choice {
+        let mut acc = 0u64;
+        for b in self.iter() {
+            acc |= *b as u64
+        }
+        acc.ct_zero()
+    }
+    fn ct_nonzero(self) -> Choice {
+        let mut acc = 0u64;
+        for b in self.iter() {
+            acc |= *b as u64
         }
         acc.ct_nonzero()
     }

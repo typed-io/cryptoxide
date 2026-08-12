@@ -6,6 +6,7 @@
   The existing SHA512 APIs are unchanged.
 * add blake3 parallel module
 * add AES-GCM one-shot and incremental interface
+* add constant time Base32 (RFC 4648) encoding and decoding in the `constant_time::base32` module.
 
 # 0.6.2
 

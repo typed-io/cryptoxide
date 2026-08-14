@@ -3,8 +3,23 @@
 //! GHASH is defined in NIST SP 800-38D over GF(2^128). It processes 16-byte
 //! blocks of data by XORing each block into the running state and multiplying
 //! by the hash key H.
+//!
+//! The backend is selected at compile time:
+//!
+//! * On aarch64 with the `aes` target feature, the ARMv8 Cryptography
+//!   Extensions (`pmull` carry-less multiply) are used.
+//! * Otherwise, a portable constant-time bit-by-bit implementation is used.
 
+// ARMv8 Cryptography AES Extensions backend.
+#[cfg(all(target_arch = "aarch64", target_feature = "aes"))]
+mod aarch64;
+#[cfg(all(target_arch = "aarch64", target_feature = "aes"))]
+use aarch64 as backend;
+
+// Software backend: portable constant-time implementation. also available for test
+#[cfg(any(not(all(target_arch = "aarch64", target_feature = "aes")), test))]
 mod reference;
+#[cfg(not(all(target_arch = "aarch64", target_feature = "aes")))]
 use reference as backend;
 
 /// Incremental GHASH MAC for AES-GCM.

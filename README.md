@@ -35,7 +35,7 @@ It provides various common algorithms in the following categories :
 * Extendable-output functions (XOF): SHAKE128, SHAKE256
 * Message Authentication Code (MAC): HMAC, Poly1305
 * Symmetric ciphers: Salsa, Chacha
-* Authenticated Encryption (AE): ChachaPoly1305
+* Authenticated Encryption (AE): ChachaPoly1305, AES-GCM
 * Key Derivation Function (KDF): Pbkdf2, HKDF, Scrypt, Argon2
 * Asymmetric DH/Signing: Ed25519, X25519
 * Key Encapsulation Mechanism (KEM): ML-KEM (post-quantum, FIPS 203)

@@ -1152,3 +1152,37 @@ mod tests {
         assert_eq!(&pt_incr[..], &pt[..]);
     }
 }
+
+#[cfg(all(test, feature = "with-bench"))]
+mod bench {
+    use super::*;
+    use test::Bencher;
+
+    fn bench_encrypt(bh: &mut Bencher, size: usize) {
+        let key = [1u8; 16];
+        let nonce = [2u8; 12];
+        let cipher = AesGcm128::new(&key);
+        let input = vec![3u8; size];
+        let mut output = vec![0u8; size];
+        let mut tag = Tag([0u8; 16]);
+        bh.iter(|| {
+            cipher.encrypt(&nonce, &[], &input, &mut output, &mut tag);
+        });
+        bh.bytes = size as u64;
+    }
+
+    #[bench]
+    pub fn aes128_gcm_encrypt_64(bh: &mut Bencher) {
+        bench_encrypt(bh, 64);
+    }
+
+    #[bench]
+    pub fn aes128_gcm_encrypt_1k(bh: &mut Bencher) {
+        bench_encrypt(bh, 1024);
+    }
+
+    #[bench]
+    pub fn aes128_gcm_encrypt_64k(bh: &mut Bencher) {
+        bench_encrypt(bh, 65536);
+    }
+}

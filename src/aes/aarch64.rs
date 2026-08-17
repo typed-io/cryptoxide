@@ -115,6 +115,89 @@ unsafe fn expand_key_decryption<const N: usize>(keys: &[uint8x16_t; N]) -> [uint
     inv
 }
 
+/// Encrypt `B` independent blocks in place, round by round.
+///
+/// `keys` holds the `N` encryption round keys, so the cipher has `N - 1`
+/// rounds. Every round is applied to all `B` blocks before moving to the next
+/// one: the blocks form independent dependency chains, which is what lets the
+/// AES pipeline stay busy.
+#[inline(always)]
+unsafe fn encrypt_rounds<const N: usize, const B: usize>(
+    keys: &[uint8x16_t; N],
+    blocks: &mut [uint8x16_t; B],
+) {
+    // All rounds but the last: AddRoundKey + SubBytes + ShiftRows, then MixColumns.
+    for &key in &keys[..N - 2] {
+        for b in blocks.iter_mut() {
+            *b = vaesmcq_u8(vaeseq_u8(*b, key));
+        }
+    }
+    // Last round: no MixColumns, followed by the final AddRoundKey.
+    for b in blocks.iter_mut() {
+        *b = veorq_u8(vaeseq_u8(*b, keys[N - 2]), keys[N - 1]);
+    }
+}
+
+/// Decrypt `B` independent blocks in place, round by round.
+///
+/// The mirror of [`encrypt_rounds`]: `keys` holds the `N` decryption round
+/// keys and every round is applied to all `B` blocks before moving to the next
+/// one, so the blocks stay independent and keep the AES pipeline busy.
+#[inline(always)]
+unsafe fn decrypt_rounds<const N: usize, const B: usize>(
+    keys: &[uint8x16_t; N],
+    blocks: &mut [uint8x16_t; B],
+) {
+    // All rounds but the last: AddRoundKey + InvShiftRows + InvSubBytes, then InvMixColumns.
+    for &key in &keys[..N - 2] {
+        for b in blocks.iter_mut() {
+            *b = vaesimcq_u8(vaesdq_u8(*b, key));
+        }
+    }
+    // Last round: no InvMixColumns, followed by the final AddRoundKey.
+    for b in blocks.iter_mut() {
+        *b = veorq_u8(vaesdq_u8(*b, keys[N - 2]), keys[N - 1]);
+    }
+}
+
+/// Load `B` blocks into vector registers.
+#[inline(always)]
+unsafe fn load_blocks<const B: usize>(blocks: &[[u8; 16]; B]) -> [uint8x16_t; B] {
+    core::array::from_fn(|i| vld1q_u8(blocks[i].as_ptr()))
+}
+
+/// Store `B` blocks back out of vector registers.
+#[inline(always)]
+unsafe fn store_blocks<const B: usize>(blocks: &[uint8x16_t; B]) -> [[u8; 16]; B] {
+    let mut out = [[0u8; 16]; B];
+    for (out, b) in out.iter_mut().zip(blocks.iter()) {
+        vst1q_u8(out.as_mut_ptr(), *b);
+    }
+    out
+}
+
+/// Encrypt exactly `B` blocks with the `N` given encryption round keys.
+#[inline(always)]
+unsafe fn encrypt_n<const N: usize, const B: usize>(
+    keys: &[uint8x16_t; N],
+    blocks: &[[u8; 16]; B],
+) -> [[u8; 16]; B] {
+    let mut b = load_blocks(blocks);
+    encrypt_rounds(keys, &mut b);
+    store_blocks(&b)
+}
+
+/// Decrypt exactly `B` blocks with the `N` given decryption round keys.
+#[inline(always)]
+unsafe fn decrypt_n<const N: usize, const B: usize>(
+    keys: &[uint8x16_t; N],
+    blocks: &[[u8; 16]; B],
+) -> [[u8; 16]; B] {
+    let mut b = load_blocks(blocks);
+    decrypt_rounds(keys, &mut b);
+    store_blocks(&b)
+}
+
 pub(super) fn key_schedule128(key: &[u8; 16]) -> RoundKeys128 {
     unsafe {
         let enc = expand_key_encryption::<16, 11>(key);

@@ -1,7 +1,9 @@
 //! AES Block Cipher
 //!
 //! AES-128 and AES-256 implementation providing single-block encrypt and
-//! decrypt operations.
+//! decrypt operations, plus a multi-block interface for both, for use by modes
+//! that have several independent blocks at hand (counter-based modes, in
+//! particular).
 //!
 //! The backend is selected at compile time:
 //!
@@ -9,6 +11,12 @@
 //!   Extensions (hardware AES instructions) are used.
 //! * Otherwise, a portable, constant-time software implementation using the
 //!   fixsliced bitslice technique (Adomnicai & Peyrin, 2020) is used.
+//!
+//! # Processing several blocks at once
+//!
+//! Both backends process [`PARALLEL_BLOCKS`] blocks considerably faster
+//! block is deciphered independently, so should use the `encrypt_blocks` and
+//! `decrypt_blocks` methods rather than a loop over the single-block ones.
 //!
 //! # Note on use
 //!
@@ -43,6 +51,13 @@ mod reference;
 #[cfg(not(all(target_arch = "aarch64", target_feature = "aes")))]
 use reference as backend;
 
+/// Number of blocks the `encrypt_blocks` and `decrypt_blocks` methods process
+/// in one call.
+///
+/// This is backend-specific, so write the array type in terms of the constant
+/// (`[[u8; 16]; aes::PARALLEL_BLOCKS]`) to stay portable.
+pub const PARALLEL_BLOCKS: usize = backend::PARALLEL_BLOCKS;
+
 /// AES-128 block cipher with pre-expanded round keys.
 ///
 /// Created from a 128-bit key via [`Aes128::new`]. The key schedule is
@@ -72,9 +87,31 @@ impl Aes128 {
         backend::encrypt128(&self.round_keys, input)
     }
 
+    /// Encrypt [`PARALLEL_BLOCKS`] independent 128-bit blocks in one call.
+    ///
+    /// Much faster than the equivalent loop over [`Aes128::encrypt_block`];
+    /// see the [module documentation](self#processing-several-blocks-at-once).
+    pub fn encrypt_blocks(
+        &self,
+        input: &[[u8; 16]; PARALLEL_BLOCKS],
+    ) -> [[u8; 16]; PARALLEL_BLOCKS] {
+        backend::encrypt128_blocks(&self.round_keys, input)
+    }
+
     /// Decrypt a single 128-bit block.
     pub fn decrypt_block(&self, input: &[u8; 16]) -> [u8; 16] {
         backend::decrypt128(&self.round_keys, input)
+    }
+
+    /// Decrypt [`PARALLEL_BLOCKS`] independent 128-bit blocks in one call.
+    ///
+    /// Much faster than the equivalent loop over [`Aes128::decrypt_block`];
+    /// see the [module documentation](self#processing-several-blocks-at-once).
+    pub fn decrypt_blocks(
+        &self,
+        input: &[[u8; 16]; PARALLEL_BLOCKS],
+    ) -> [[u8; 16]; PARALLEL_BLOCKS] {
+        backend::decrypt128_blocks(&self.round_keys, input)
     }
 }
 
@@ -107,9 +144,25 @@ impl Aes256 {
         backend::encrypt256(&self.round_keys, input)
     }
 
+    /// Encrypt [`PARALLEL_BLOCKS`] independent 128-bit blocks in one call.
+    pub fn encrypt_blocks(
+        &self,
+        input: &[[u8; 16]; PARALLEL_BLOCKS],
+    ) -> [[u8; 16]; PARALLEL_BLOCKS] {
+        backend::encrypt256_blocks(&self.round_keys, input)
+    }
+
     /// Decrypt a single 128-bit block.
     pub fn decrypt_block(&self, input: &[u8; 16]) -> [u8; 16] {
         backend::decrypt256(&self.round_keys, input)
+    }
+
+    /// Decrypt [`PARALLEL_BLOCKS`] independent 128-bit blocks in one call.
+    pub fn decrypt_blocks(
+        &self,
+        input: &[[u8; 16]; PARALLEL_BLOCKS],
+    ) -> [[u8; 16]; PARALLEL_BLOCKS] {
+        backend::decrypt256_blocks(&self.round_keys, input)
     }
 }
 
@@ -193,6 +246,73 @@ mod test {
         assert_eq!(pt, plaintext, "AES-256 zero-key decrypt round-trip failed");
     }
 
+    /// Distinct blocks, so that a backend mixing up its parallel slots shows up.
+    fn distinct_blocks() -> [[u8; 16]; PARALLEL_BLOCKS] {
+        core::array::from_fn(|i| core::array::from_fn(|j| (i * 37 + j * 5 + 1) as u8))
+    }
+
+    // The multi-block interface must agree with the single-block one, block for block
+    #[test]
+    fn test_aes128_encrypt_blocks_matches_encrypt_block() {
+        let cipher = Aes128::new(&[0x2bu8; 16]);
+        let blocks = distinct_blocks();
+        let wide = cipher.encrypt_blocks(&blocks);
+        for (block, wide) in blocks.iter().zip(wide.iter()) {
+            assert_eq!(cipher.encrypt_block(block), *wide);
+        }
+    }
+
+    #[test]
+    fn test_aes256_encrypt_blocks_matches_encrypt_block() {
+        let cipher = Aes256::new(&[0x60u8; 32]);
+        let blocks = distinct_blocks();
+        let wide = cipher.encrypt_blocks(&blocks);
+        for (block, wide) in blocks.iter().zip(wide.iter()) {
+            assert_eq!(cipher.encrypt_block(block), *wide);
+        }
+    }
+
+    #[test]
+    fn test_aes128_decrypt_blocks_matches_decrypt_block() {
+        let cipher = Aes128::new(&[0x2bu8; 16]);
+        let blocks = distinct_blocks();
+        let wide = cipher.decrypt_blocks(&blocks);
+        for (block, wide) in blocks.iter().zip(wide.iter()) {
+            assert_eq!(cipher.decrypt_block(block), *wide);
+        }
+    }
+
+    #[test]
+    fn test_aes256_decrypt_blocks_matches_decrypt_block() {
+        let cipher = Aes256::new(&[0x60u8; 32]);
+        let blocks = distinct_blocks();
+        let wide = cipher.decrypt_blocks(&blocks);
+        for (block, wide) in blocks.iter().zip(wide.iter()) {
+            assert_eq!(cipher.decrypt_block(block), *wide);
+        }
+    }
+
+    // The multi-block interfaces must round-trip against each other
+    #[test]
+    fn test_aes128_blocks_round_trip() {
+        let cipher = Aes128::new(&[0x2bu8; 16]);
+        let blocks = distinct_blocks();
+        assert_eq!(
+            cipher.decrypt_blocks(&cipher.encrypt_blocks(&blocks)),
+            blocks
+        );
+    }
+
+    #[test]
+    fn test_aes256_blocks_round_trip() {
+        let cipher = Aes256::new(&[0x60u8; 32]);
+        let blocks = distinct_blocks();
+        assert_eq!(
+            cipher.decrypt_blocks(&cipher.encrypt_blocks(&blocks)),
+            blocks
+        );
+    }
+
     // Round-trip: encrypt then decrypt, and decrypt then encrypt
     #[test]
     fn test_aes128_round_trip() {
@@ -229,5 +349,80 @@ mod test {
         assert_eq!(recovered, plaintext, "AES-256 round-trip failed");
         let ct2 = cipher.encrypt_block(&recovered);
         assert_eq!(ct2, ct, "AES-256 reverse round-trip failed");
+    }
+}
+
+#[cfg(all(test, feature = "with-bench"))]
+mod bench {
+    use super::*;
+    // `::test`, as the unit test module next door is itself named `test`.
+    use ::test::Bencher;
+
+    #[bench]
+    pub fn aes128_encrypt_block(bh: &mut Bencher) {
+        let cipher = Aes128::new(&[1u8; 16]);
+        let block = [2u8; 16];
+        bh.iter(|| cipher.encrypt_block(&block));
+        bh.bytes = 16;
+    }
+
+    /// Same work per byte as [`aes128_encrypt_block`], but with the blocks
+    /// handed over together.
+    #[bench]
+    pub fn aes128_encrypt_blocks(bh: &mut Bencher) {
+        let cipher = Aes128::new(&[1u8; 16]);
+        let blocks = [[2u8; 16]; PARALLEL_BLOCKS];
+        bh.iter(|| cipher.encrypt_blocks(&blocks));
+        bh.bytes = (16 * PARALLEL_BLOCKS) as u64;
+    }
+
+    #[bench]
+    pub fn aes128_decrypt_block(bh: &mut Bencher) {
+        let cipher = Aes128::new(&[1u8; 16]);
+        let block = [2u8; 16];
+        bh.iter(|| cipher.decrypt_block(&block));
+        bh.bytes = 16;
+    }
+
+    /// Same work per byte as [`aes128_decrypt_block`], but with the blocks
+    /// handed over together.
+    #[bench]
+    pub fn aes128_decrypt_blocks(bh: &mut Bencher) {
+        let cipher = Aes128::new(&[1u8; 16]);
+        let blocks = [[2u8; 16]; PARALLEL_BLOCKS];
+        bh.iter(|| cipher.decrypt_blocks(&blocks));
+        bh.bytes = (16 * PARALLEL_BLOCKS) as u64;
+    }
+
+    #[bench]
+    pub fn aes256_encrypt_block(bh: &mut Bencher) {
+        let cipher = Aes256::new(&[1u8; 32]);
+        let block = [2u8; 16];
+        bh.iter(|| cipher.encrypt_block(&block));
+        bh.bytes = 16;
+    }
+
+    #[bench]
+    pub fn aes256_encrypt_blocks(bh: &mut Bencher) {
+        let cipher = Aes256::new(&[1u8; 32]);
+        let blocks = [[2u8; 16]; PARALLEL_BLOCKS];
+        bh.iter(|| cipher.encrypt_blocks(&blocks));
+        bh.bytes = (16 * PARALLEL_BLOCKS) as u64;
+    }
+
+    #[bench]
+    pub fn aes256_decrypt_block(bh: &mut Bencher) {
+        let cipher = Aes256::new(&[1u8; 32]);
+        let block = [2u8; 16];
+        bh.iter(|| cipher.decrypt_block(&block));
+        bh.bytes = 16;
+    }
+
+    #[bench]
+    pub fn aes256_decrypt_blocks(bh: &mut Bencher) {
+        let cipher = Aes256::new(&[1u8; 32]);
+        let blocks = [[2u8; 16]; PARALLEL_BLOCKS];
+        bh.iter(|| cipher.decrypt_blocks(&blocks));
+        bh.bytes = (16 * PARALLEL_BLOCKS) as u64;
     }
 }

@@ -13,6 +13,14 @@
 use core::arch::aarch64::*;
 use core::mem;
 
+/// Number of encrypt/decrypt blocks processed together
+///
+/// `vaese`/`vaesd` have a several-cycle latency but are pipelined, so
+/// processing independent blocks in lockstep hides that latency.
+///
+/// 8 blocks plus the 11 or 15 round keys fit the 32 NEON registers.
+pub(super) const PARALLEL_BLOCKS: usize = 8;
+
 /// AES-128 round keys: the 11 encryption and 11 decryption round keys, already
 /// in vector form ready to be fed to the AES instructions.
 #[derive(Clone)]
@@ -207,39 +215,25 @@ pub(super) fn key_schedule128(key: &[u8; 16]) -> RoundKeys128 {
 }
 
 pub(super) fn encrypt128(rkeys: &RoundKeys128, block: &[u8; 16]) -> [u8; 16] {
-    unsafe {
-        let mut b = vld1q_u8(block.as_ptr());
-        // Rounds 1..=9: AddRoundKey + SubBytes + ShiftRows, then MixColumns.
-        for &key in &rkeys.enc[..9] {
-            b = vaeseq_u8(b, key);
-            b = vaesmcq_u8(b);
-        }
-        // Round 10: no MixColumns, followed by the final AddRoundKey.
-        b = vaeseq_u8(b, rkeys.enc[9]);
-        b = veorq_u8(b, rkeys.enc[10]);
+    unsafe { encrypt_n(&rkeys.enc, &[*block])[0] }
+}
 
-        let mut out = [0u8; 16];
-        vst1q_u8(out.as_mut_ptr(), b);
-        out
-    }
+pub(super) fn encrypt128_blocks(
+    rkeys: &RoundKeys128,
+    blocks: &[[u8; 16]; PARALLEL_BLOCKS],
+) -> [[u8; 16]; PARALLEL_BLOCKS] {
+    unsafe { encrypt_n(&rkeys.enc, blocks) }
 }
 
 pub(super) fn decrypt128(rkeys: &RoundKeys128, block: &[u8; 16]) -> [u8; 16] {
-    unsafe {
-        let mut b = vld1q_u8(block.as_ptr());
-        // Rounds 1..=9: AddRoundKey + InvShiftRows + InvSubBytes, then InvMixColumns.
-        for &key in &rkeys.dec[..9] {
-            b = vaesdq_u8(b, key);
-            b = vaesimcq_u8(b);
-        }
-        // Round 10: no InvMixColumns, followed by the final AddRoundKey.
-        b = vaesdq_u8(b, rkeys.dec[9]);
-        b = veorq_u8(b, rkeys.dec[10]);
+    unsafe { decrypt_n(&rkeys.dec, &[*block])[0] }
+}
 
-        let mut out = [0u8; 16];
-        vst1q_u8(out.as_mut_ptr(), b);
-        out
-    }
+pub(super) fn decrypt128_blocks(
+    rkeys: &RoundKeys128,
+    blocks: &[[u8; 16]; PARALLEL_BLOCKS],
+) -> [[u8; 16]; PARALLEL_BLOCKS] {
+    unsafe { decrypt_n(&rkeys.dec, blocks) }
 }
 
 pub(super) fn key_schedule256(key: &[u8; 32]) -> RoundKeys256 {
@@ -251,37 +245,23 @@ pub(super) fn key_schedule256(key: &[u8; 32]) -> RoundKeys256 {
 }
 
 pub(super) fn encrypt256(rkeys: &RoundKeys256, block: &[u8; 16]) -> [u8; 16] {
-    unsafe {
-        let mut b = vld1q_u8(block.as_ptr());
-        // Rounds 1..=13: AddRoundKey + SubBytes + ShiftRows, then MixColumns.
-        for &key in &rkeys.enc[..13] {
-            b = vaeseq_u8(b, key);
-            b = vaesmcq_u8(b);
-        }
-        // Round 14: no MixColumns, followed by the final AddRoundKey.
-        b = vaeseq_u8(b, rkeys.enc[13]);
-        b = veorq_u8(b, rkeys.enc[14]);
+    unsafe { encrypt_n(&rkeys.enc, &[*block])[0] }
+}
 
-        let mut out = [0u8; 16];
-        vst1q_u8(out.as_mut_ptr(), b);
-        out
-    }
+pub(super) fn encrypt256_blocks(
+    rkeys: &RoundKeys256,
+    blocks: &[[u8; 16]; PARALLEL_BLOCKS],
+) -> [[u8; 16]; PARALLEL_BLOCKS] {
+    unsafe { encrypt_n(&rkeys.enc, blocks) }
 }
 
 pub(super) fn decrypt256(rkeys: &RoundKeys256, block: &[u8; 16]) -> [u8; 16] {
-    unsafe {
-        let mut b = vld1q_u8(block.as_ptr());
-        // Rounds 1..=13: AddRoundKey + InvShiftRows + InvSubBytes, then InvMixColumns.
-        for &key in &rkeys.dec[..13] {
-            b = vaesdq_u8(b, key);
-            b = vaesimcq_u8(b);
-        }
-        // Round 14: no InvMixColumns, followed by the final AddRoundKey.
-        b = vaesdq_u8(b, rkeys.dec[13]);
-        b = veorq_u8(b, rkeys.dec[14]);
+    unsafe { decrypt_n(&rkeys.dec, &[*block])[0] }
+}
 
-        let mut out = [0u8; 16];
-        vst1q_u8(out.as_mut_ptr(), b);
-        out
-    }
+pub(super) fn decrypt256_blocks(
+    rkeys: &RoundKeys256,
+    blocks: &[[u8; 16]; PARALLEL_BLOCKS],
+) -> [[u8; 16]; PARALLEL_BLOCKS] {
+    unsafe { decrypt_n(&rkeys.dec, blocks) }
 }

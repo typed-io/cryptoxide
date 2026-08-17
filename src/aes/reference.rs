@@ -17,6 +17,11 @@
 
 #![allow(clippy::unreadable_literal)]
 
+/// Number of blocks encrypted / decrypted in parallel
+///
+/// cannot be changed, as the fixsliced state expects 4 blocks
+pub(super) const PARALLEL_BLOCKS: usize = 4;
+
 /// AES-128 fixsliced round keys (11 round keys x 8 u64 registers).
 #[derive(Clone)]
 pub(super) struct RoundKeys128([u64; 88]);
@@ -866,11 +871,19 @@ pub(super) fn key_schedule256(key: &[u8; 32]) -> RoundKeys256 {
 
 /// Encrypt a single block using AES-128 in the fixsliced representation.
 ///
-/// The input block is duplicated into all four slots of the bitsliced state.
-/// After encryption, only the first block is returned.
+/// Prefer [`encrypt128_blocks`] when several blocks are available at once.
 pub(super) fn encrypt128(rkeys: &RoundKeys128, block: &[u8; 16]) -> [u8; 16] {
+    encrypt128_blocks(rkeys, &[*block; PARALLEL_BLOCKS])[0]
+}
+
+/// Encrypt [`PARALLEL_BLOCKS`] blocks using AES-128 in the fixsliced
+/// representation.
+pub(super) fn encrypt128_blocks(
+    rkeys: &RoundKeys128,
+    blocks: &[[u8; 16]; PARALLEL_BLOCKS],
+) -> [[u8; 16]; PARALLEL_BLOCKS] {
     let mut state = [0u64; 8];
-    bitslice(&mut state, block, block, block, block);
+    bitslice(&mut state, &blocks[0], &blocks[1], &blocks[2], &blocks[3]);
 
     add_round_key(&mut state, &rkeys.0[..8]);
 
@@ -905,16 +918,24 @@ pub(super) fn encrypt128(rkeys: &RoundKeys128, block: &[u8; 16]) -> [u8; 16] {
     sub_bytes(&mut state);
     add_round_key(&mut state, &rkeys.0[80..]);
 
-    inv_bitslice(&state)[0]
+    inv_bitslice(&state)
 }
 
-/// Decrypt a single block using AES-128 in the fixsliced representation.
+/// Decrypt a single block using AES-128
 ///
-/// The input block is duplicated into all four slots of the bitsliced state.
-/// After decryption, only the first block is returned.
+/// Prefer [`decrypt128_blocks`] when several blocks are available at once.
 pub(super) fn decrypt128(rkeys: &RoundKeys128, block: &[u8; 16]) -> [u8; 16] {
+    decrypt128_blocks(rkeys, &[*block; PARALLEL_BLOCKS])[0]
+}
+
+/// Decrypt [`PARALLEL_BLOCKS`] blocks using AES-128 in the fixsliced
+/// representation.
+pub(super) fn decrypt128_blocks(
+    rkeys: &RoundKeys128,
+    blocks: &[[u8; 16]; PARALLEL_BLOCKS],
+) -> [[u8; 16]; PARALLEL_BLOCKS] {
     let mut state = [0u64; 8];
-    bitslice(&mut state, block, block, block, block);
+    bitslice(&mut state, &blocks[0], &blocks[1], &blocks[2], &blocks[3]);
 
     add_round_key(&mut state, &rkeys.0[80..]);
     inv_sub_bytes(&mut state);
@@ -949,16 +970,24 @@ pub(super) fn decrypt128(rkeys: &RoundKeys128, block: &[u8; 16]) -> [u8; 16] {
 
     add_round_key(&mut state, &rkeys.0[..8]);
 
-    inv_bitslice(&state)[0]
+    inv_bitslice(&state)
 }
 
 /// Encrypt a single block using AES-256 in the fixsliced representation.
 ///
-/// The input block is duplicated into all four slots of the bitsliced state.
-/// After encryption, only the first block is returned.
+/// Prefer [`encrypt256_blocks`] when several blocks are available at once.
 pub(super) fn encrypt256(rkeys: &RoundKeys256, block: &[u8; 16]) -> [u8; 16] {
+    encrypt256_blocks(rkeys, &[*block; PARALLEL_BLOCKS])[0]
+}
+
+/// Encrypt [`PARALLEL_BLOCKS`] blocks using AES-256 in the fixsliced
+/// representation.
+pub(super) fn encrypt256_blocks(
+    rkeys: &RoundKeys256,
+    blocks: &[[u8; 16]; PARALLEL_BLOCKS],
+) -> [[u8; 16]; PARALLEL_BLOCKS] {
     let mut state = [0u64; 8];
-    bitslice(&mut state, block, block, block, block);
+    bitslice(&mut state, &blocks[0], &blocks[1], &blocks[2], &blocks[3]);
 
     add_round_key(&mut state, &rkeys.0[..8]);
 
@@ -993,16 +1022,24 @@ pub(super) fn encrypt256(rkeys: &RoundKeys256, block: &[u8; 16]) -> [u8; 16] {
     sub_bytes(&mut state);
     add_round_key(&mut state, &rkeys.0[112..]);
 
-    inv_bitslice(&state)[0]
+    inv_bitslice(&state)
 }
 
 /// Decrypt a single block using AES-256 in the fixsliced representation.
 ///
-/// The input block is duplicated into all four slots of the bitsliced state.
-/// After decryption, only the first block is returned.
+/// Prefer [`decrypt256_blocks`] when several blocks are available at once.
 pub(super) fn decrypt256(rkeys: &RoundKeys256, block: &[u8; 16]) -> [u8; 16] {
+    decrypt256_blocks(rkeys, &[*block; PARALLEL_BLOCKS])[0]
+}
+
+/// Decrypt [`PARALLEL_BLOCKS`] blocks using AES-256 in the fixsliced
+/// representation.
+pub(super) fn decrypt256_blocks(
+    rkeys: &RoundKeys256,
+    blocks: &[[u8; 16]; PARALLEL_BLOCKS],
+) -> [[u8; 16]; PARALLEL_BLOCKS] {
     let mut state = [0u64; 8];
-    bitslice(&mut state, block, block, block, block);
+    bitslice(&mut state, &blocks[0], &blocks[1], &blocks[2], &blocks[3]);
 
     add_round_key(&mut state, &rkeys.0[112..]);
     inv_sub_bytes(&mut state);
@@ -1037,5 +1074,5 @@ pub(super) fn decrypt256(rkeys: &RoundKeys256, block: &[u8; 16]) -> [u8; 16] {
 
     add_round_key(&mut state, &rkeys.0[..8]);
 
-    inv_bitslice(&state)[0]
+    inv_bitslice(&state)
 }

@@ -51,6 +51,9 @@ mod reference;
 #[cfg(not(all(target_arch = "aarch64", target_feature = "aes")))]
 use reference as backend;
 
+/// Size of an AES block in bytes.
+pub(crate) const BLOCK_BYTES: usize = 16;
+
 /// Number of blocks the `encrypt_blocks` and `decrypt_blocks` methods process
 /// in one call.
 ///
@@ -93,8 +96,8 @@ impl Aes128 {
     /// see the [module documentation](self#processing-several-blocks-at-once).
     pub fn encrypt_blocks(
         &self,
-        input: &[[u8; 16]; PARALLEL_BLOCKS],
-    ) -> [[u8; 16]; PARALLEL_BLOCKS] {
+        input: &[[u8; BLOCK_BYTES]; PARALLEL_BLOCKS],
+    ) -> [[u8; BLOCK_BYTES]; PARALLEL_BLOCKS] {
         backend::encrypt128_blocks(&self.round_keys, input)
     }
 
@@ -109,8 +112,8 @@ impl Aes128 {
     /// see the [module documentation](self#processing-several-blocks-at-once).
     pub fn decrypt_blocks(
         &self,
-        input: &[[u8; 16]; PARALLEL_BLOCKS],
-    ) -> [[u8; 16]; PARALLEL_BLOCKS] {
+        input: &[[u8; BLOCK_BYTES]; PARALLEL_BLOCKS],
+    ) -> [[u8; BLOCK_BYTES]; PARALLEL_BLOCKS] {
         backend::decrypt128_blocks(&self.round_keys, input)
     }
 }
@@ -140,28 +143,28 @@ impl Aes256 {
     }
 
     /// Encrypt a single 128-bit block.
-    pub fn encrypt_block(&self, input: &[u8; 16]) -> [u8; 16] {
+    pub fn encrypt_block(&self, input: &[u8; BLOCK_BYTES]) -> [u8; BLOCK_BYTES] {
         backend::encrypt256(&self.round_keys, input)
     }
 
     /// Encrypt [`PARALLEL_BLOCKS`] independent 128-bit blocks in one call.
     pub fn encrypt_blocks(
         &self,
-        input: &[[u8; 16]; PARALLEL_BLOCKS],
-    ) -> [[u8; 16]; PARALLEL_BLOCKS] {
+        input: &[[u8; BLOCK_BYTES]; PARALLEL_BLOCKS],
+    ) -> [[u8; BLOCK_BYTES]; PARALLEL_BLOCKS] {
         backend::encrypt256_blocks(&self.round_keys, input)
     }
 
     /// Decrypt a single 128-bit block.
-    pub fn decrypt_block(&self, input: &[u8; 16]) -> [u8; 16] {
+    pub fn decrypt_block(&self, input: &[u8; BLOCK_BYTES]) -> [u8; BLOCK_BYTES] {
         backend::decrypt256(&self.round_keys, input)
     }
 
     /// Decrypt [`PARALLEL_BLOCKS`] independent 128-bit blocks in one call.
     pub fn decrypt_blocks(
         &self,
-        input: &[[u8; 16]; PARALLEL_BLOCKS],
-    ) -> [[u8; 16]; PARALLEL_BLOCKS] {
+        input: &[[u8; BLOCK_BYTES]; PARALLEL_BLOCKS],
+    ) -> [[u8; BLOCK_BYTES]; PARALLEL_BLOCKS] {
         backend::decrypt256_blocks(&self.round_keys, input)
     }
 }
@@ -219,8 +222,8 @@ mod test {
     #[test]
     fn test_aes128_zero_key_zero_plaintext() {
         let key = [0u8; 16];
-        let plaintext = [0u8; 16];
-        let expected_ct: [u8; 16] = [
+        let plaintext = [0u8; BLOCK_BYTES];
+        let expected_ct: [u8; BLOCK_BYTES] = [
             0x66, 0xe9, 0x4b, 0xd4, 0xef, 0x8a, 0x2c, 0x3b, 0x88, 0x4c, 0xfa, 0x59, 0xca, 0x34,
             0x2b, 0x2e,
         ];
@@ -234,8 +237,8 @@ mod test {
     #[test]
     fn test_aes256_zero_key_zero_plaintext() {
         let key = [0u8; 32];
-        let plaintext = [0u8; 16];
-        let expected_ct: [u8; 16] = [
+        let plaintext = [0u8; BLOCK_BYTES];
+        let expected_ct: [u8; BLOCK_BYTES] = [
             0xdc, 0x95, 0xc0, 0x78, 0xa2, 0x40, 0x89, 0x89, 0xad, 0x48, 0xa2, 0x14, 0x92, 0x84,
             0x20, 0x87,
         ];
@@ -247,7 +250,7 @@ mod test {
     }
 
     /// Distinct blocks, so that a backend mixing up its parallel slots shows up.
-    fn distinct_blocks() -> [[u8; 16]; PARALLEL_BLOCKS] {
+    fn distinct_blocks() -> [[u8; BLOCK_BYTES]; PARALLEL_BLOCKS] {
         core::array::from_fn(|i| core::array::from_fn(|j| (i * 37 + j * 5 + 1) as u8))
     }
 
@@ -320,7 +323,7 @@ mod test {
             0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf,
             0x4f, 0x3c,
         ];
-        let plaintext: [u8; 16] = [
+        let plaintext: [u8; BLOCK_BYTES] = [
             0x32, 0x43, 0xf6, 0xa8, 0x88, 0x5a, 0x30, 0x8d, 0x31, 0x31, 0x98, 0xa2, 0xe0, 0x37,
             0x07, 0x34,
         ];
@@ -339,7 +342,7 @@ mod test {
             0x77, 0x81, 0x1f, 0x35, 0x2c, 0x07, 0x3b, 0x61, 0x08, 0xd7, 0x2d, 0x98, 0x10, 0xa3,
             0x09, 0x14, 0xdf, 0xf4,
         ];
-        let plaintext: [u8; 16] = [
+        let plaintext: [u8; BLOCK_BYTES] = [
             0x6b, 0xc1, 0xbe, 0xe2, 0x2e, 0x40, 0x9f, 0x96, 0xe9, 0x3d, 0x7e, 0x11, 0x73, 0x93,
             0x17, 0x2a,
         ];
@@ -361,7 +364,7 @@ mod bench {
     #[bench]
     pub fn aes128_encrypt_block(bh: &mut Bencher) {
         let cipher = Aes128::new(&[1u8; 16]);
-        let block = [2u8; 16];
+        let block = [2u8; BLOCK_BYTES];
         bh.iter(|| cipher.encrypt_block(&block));
         bh.bytes = 16;
     }
@@ -371,7 +374,7 @@ mod bench {
     #[bench]
     pub fn aes128_encrypt_blocks(bh: &mut Bencher) {
         let cipher = Aes128::new(&[1u8; 16]);
-        let blocks = [[2u8; 16]; PARALLEL_BLOCKS];
+        let blocks = [[2u8; BLOCK_BYTES]; PARALLEL_BLOCKS];
         bh.iter(|| cipher.encrypt_blocks(&blocks));
         bh.bytes = (16 * PARALLEL_BLOCKS) as u64;
     }
@@ -379,7 +382,7 @@ mod bench {
     #[bench]
     pub fn aes128_decrypt_block(bh: &mut Bencher) {
         let cipher = Aes128::new(&[1u8; 16]);
-        let block = [2u8; 16];
+        let block = [2u8; BLOCK_BYTES];
         bh.iter(|| cipher.decrypt_block(&block));
         bh.bytes = 16;
     }
@@ -389,7 +392,7 @@ mod bench {
     #[bench]
     pub fn aes128_decrypt_blocks(bh: &mut Bencher) {
         let cipher = Aes128::new(&[1u8; 16]);
-        let blocks = [[2u8; 16]; PARALLEL_BLOCKS];
+        let blocks = [[2u8; BLOCK_BYTES]; PARALLEL_BLOCKS];
         bh.iter(|| cipher.decrypt_blocks(&blocks));
         bh.bytes = (16 * PARALLEL_BLOCKS) as u64;
     }
@@ -397,32 +400,32 @@ mod bench {
     #[bench]
     pub fn aes256_encrypt_block(bh: &mut Bencher) {
         let cipher = Aes256::new(&[1u8; 32]);
-        let block = [2u8; 16];
+        let block = [2u8; BLOCK_BYTES];
         bh.iter(|| cipher.encrypt_block(&block));
-        bh.bytes = 16;
+        bh.bytes = BLOCK_BYTES as u64;
     }
 
     #[bench]
     pub fn aes256_encrypt_blocks(bh: &mut Bencher) {
         let cipher = Aes256::new(&[1u8; 32]);
-        let blocks = [[2u8; 16]; PARALLEL_BLOCKS];
+        let blocks = [[2u8; BLOCK_BYTES]; PARALLEL_BLOCKS];
         bh.iter(|| cipher.encrypt_blocks(&blocks));
-        bh.bytes = (16 * PARALLEL_BLOCKS) as u64;
+        bh.bytes = (BLOCK_BYTES * PARALLEL_BLOCKS) as u64;
     }
 
     #[bench]
     pub fn aes256_decrypt_block(bh: &mut Bencher) {
         let cipher = Aes256::new(&[1u8; 32]);
-        let block = [2u8; 16];
+        let block = [2u8; BLOCK_BYTES];
         bh.iter(|| cipher.decrypt_block(&block));
-        bh.bytes = 16;
+        bh.bytes = BLOCK_BYTES as u64;
     }
 
     #[bench]
     pub fn aes256_decrypt_blocks(bh: &mut Bencher) {
         let cipher = Aes256::new(&[1u8; 32]);
-        let blocks = [[2u8; 16]; PARALLEL_BLOCKS];
+        let blocks = [[2u8; BLOCK_BYTES]; PARALLEL_BLOCKS];
         bh.iter(|| cipher.decrypt_blocks(&blocks));
-        bh.bytes = (16 * PARALLEL_BLOCKS) as u64;
+        bh.bytes = (BLOCK_BYTES * PARALLEL_BLOCKS) as u64;
     }
 }

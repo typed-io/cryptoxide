@@ -144,12 +144,8 @@ pub fn read_u32_be(input: &[u8]) -> u32 {
 #[cfg(any(feature = "chacha", feature = "salsa"))]
 pub fn xor_keystream_mut(buf: &mut [u8], keystream: &[u8]) {
     assert!(buf.len() <= keystream.len());
-
-    // Do one byte at a time, using unsafe to skip bounds checking.
-    let k = keystream.as_ptr();
-    let d = buf.as_mut_ptr();
-    for i in 0isize..buf.len() as isize {
-        unsafe { *d.offset(i) = *d.offset(i) ^ *k.offset(i) };
+    for (d, k) in buf.iter_mut().zip(keystream.iter()) {
+        *d ^= *k
     }
 }
 
@@ -288,5 +284,134 @@ impl<const N: usize> FixedBuffer<N> {
         }
 
         self.zero_until(N - rem);
+    }
+}
+
+#[cfg(all(
+    test,
+    feature = "with-bench",
+    any(feature = "chacha", feature = "salsa")
+))]
+mod bench {
+    use ::test::Bencher;
+
+    /// current implementation: one byte at a time through raw pointers
+    fn xor_unsafe_ptr(buf: &mut [u8], keystream: &[u8]) {
+        assert!(buf.len() <= keystream.len());
+        let k = keystream.as_ptr();
+        let d = buf.as_mut_ptr();
+        for i in 0isize..buf.len() as isize {
+            unsafe { *d.offset(i) = *d.offset(i) ^ *k.offset(i) };
+        }
+    }
+
+    /// safe: plain zip of both iterators
+    fn xor_zip(buf: &mut [u8], keystream: &[u8]) {
+        assert!(buf.len() <= keystream.len());
+        for (d, k) in buf.iter_mut().zip(keystream.iter()) {
+            *d ^= *k
+        }
+    }
+
+    /// safe: truncate the keystream first, so both slices have a length the
+    /// optimiser can prove identical
+    fn xor_zip_trunc(buf: &mut [u8], keystream: &[u8]) {
+        let keystream = &keystream[..buf.len()];
+        for (d, k) in buf.iter_mut().zip(keystream.iter()) {
+            *d ^= *k
+        }
+    }
+
+    /// safe: 8 bytes at a time, tail byte by byte
+    fn xor_chunks8(buf: &mut [u8], keystream: &[u8]) {
+        let keystream = &keystream[..buf.len()];
+        let mut d = buf.chunks_exact_mut(8);
+        let mut k = keystream.chunks_exact(8);
+        for (d, k) in d.by_ref().zip(k.by_ref()) {
+            let dv = u64::from_ne_bytes(<[u8; 8]>::try_from(&*d).unwrap());
+            let kv = u64::from_ne_bytes(<[u8; 8]>::try_from(k).unwrap());
+            d.copy_from_slice(&(dv ^ kv).to_ne_bytes());
+        }
+        for (d, k) in d.into_remainder().iter_mut().zip(k.remainder().iter()) {
+            *d ^= *k
+        }
+    }
+
+    /// safe: 16 bytes at a time, tail byte by byte
+    fn xor_chunks16(buf: &mut [u8], keystream: &[u8]) {
+        let keystream = &keystream[..buf.len()];
+        let mut d = buf.chunks_exact_mut(16);
+        let mut k = keystream.chunks_exact(16);
+        for (d, k) in d.by_ref().zip(k.by_ref()) {
+            for i in 0..16 {
+                d[i] ^= k[i]
+            }
+        }
+        for (d, k) in d.into_remainder().iter_mut().zip(k.remainder().iter()) {
+            *d ^= *k
+        }
+    }
+
+    static KS: [u8; 4096] = [0x5au8; 4096];
+
+    macro_rules! bench_variants {
+        ($($name:ident => $len:expr,)*) => {
+            $(
+            mod $name {
+                use super::*;
+
+                macro_rules! bench_one {
+                    ($bench:ident, $f:ident) => {
+                        #[bench]
+                        fn $bench(bh: &mut Bencher) {
+                            let mut buf = [3u8; $len];
+                            bh.iter(|| {
+                                $f(
+                                    ::test::black_box(&mut buf[..]),
+                                    ::test::black_box(&KS[..]),
+                                );
+                            });
+                            bh.bytes = $len as u64;
+                        }
+                    };
+                }
+
+                bench_one!(unsafe_ptr, xor_unsafe_ptr);
+                bench_one!(safe_zip, xor_zip);
+                bench_one!(safe_zip_trunc, xor_zip_trunc);
+                bench_one!(safe_chunks8, xor_chunks8);
+                bench_one!(safe_chunks16, xor_chunks16);
+            }
+            )*
+        }
+    }
+
+    bench_variants! {
+        len_16 => 16,
+        len_63 => 63,
+        len_64 => 64,
+        len_256 => 256,
+        len_1024 => 1024,
+        len_4096 => 4096,
+    }
+
+    #[test]
+    fn variants_agree() {
+        let ks: [u8; 300] = core::array::from_fn(|i| (i as u8).wrapping_mul(31).wrapping_add(7));
+        for len in [0usize, 1, 7, 8, 15, 16, 17, 63, 64, 255, 256, 300] {
+            let orig: [u8; 300] = core::array::from_fn(|i| (i as u8).wrapping_mul(13));
+            let mut expected = orig;
+            xor_unsafe_ptr(&mut expected[..len], &ks);
+            for f in [
+                xor_zip as fn(&mut [u8], &[u8]),
+                xor_zip_trunc,
+                xor_chunks8,
+                xor_chunks16,
+            ] {
+                let mut got = orig;
+                f(&mut got[..len], &ks);
+                assert_eq!(&got[..], &expected[..], "mismatch at len {}", len);
+            }
+        }
     }
 }

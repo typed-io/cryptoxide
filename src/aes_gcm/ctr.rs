@@ -1,9 +1,22 @@
+//! AES-CTR keystream generation for GCM.
+
+use super::BlockEncryptor;
+use crate::aes::{BLOCK_BYTES, PARALLEL_BLOCKS};
+
+/// XOR a block of keystream into `input`, writing to `output`.
+#[inline(always)]
+fn xor_block(input: &[u8], keystream: &[u8; BLOCK_BYTES], output: &mut [u8]) {
+    for ((output, input), keystream) in output.iter_mut().zip(input).zip(keystream) {
+        *output = *input ^ *keystream;
+    }
+}
+
 /// Build the initial counter block J0 from a 96-bit nonce.
 ///
 /// For a 96-bit IV, J0 is defined as `IV || 0x00000001` (NIST SP 800-38D Section 7.1).
 /// The rightmost 32 bits form a big-endian counter initialized to 1.
-pub(super) fn make_j0(nonce: &[u8; 12]) -> [u8; 16] {
-    let mut j0 = [0u8; 16];
+pub(super) fn make_j0(nonce: &[u8; 12]) -> [u8; BLOCK_BYTES] {
+    let mut j0 = [0u8; BLOCK_BYTES];
     j0[..12].copy_from_slice(nonce);
     j0[15] = 0x01;
     j0
@@ -14,7 +27,7 @@ pub(super) fn make_j0(nonce: &[u8; 12]) -> [u8; 16] {
 /// This implements the `inc32` function from NIST SP 800-38D Section 6.2.
 /// Only the last 4 bytes are modified; the first 12 bytes (nonce portion)
 /// are preserved.
-pub(super) fn inc32(counter: &mut [u8; 16]) {
+pub(super) fn inc32(counter: &mut [u8; BLOCK_BYTES]) {
     let c = u32::from_be_bytes([counter[12], counter[13], counter[14], counter[15]]);
     let c = c.wrapping_add(1);
     let bytes = c.to_be_bytes();
@@ -31,9 +44,9 @@ pub(super) fn inc32(counter: &mut [u8; 16]) {
 /// J0 itself is reserved for tag encryption.
 pub(super) struct Ctr {
     /// Current counter block
-    counter: [u8; 16],
+    counter: [u8; BLOCK_BYTES],
     /// Leftover keystream from the last partial block
-    buffer: [u8; 16],
+    buffer: [u8; BLOCK_BYTES],
     /// Position within the keystream buffer (16 = buffer empty/exhausted)
     buffer_pos: usize,
 }
@@ -43,14 +56,23 @@ impl Ctr {
     ///
     /// The CTR encryption starts at `inc32(J0)` per NIST SP 800-38D.
     /// J0 is reserved for encrypting the final GHASH output to produce the tag.
-    pub(super) fn new(j0: &[u8; 16]) -> Self {
+    pub(super) fn new(j0: &[u8; BLOCK_BYTES]) -> Self {
         let mut counter = *j0;
         inc32(&mut counter);
         Ctr {
             counter,
-            buffer: [0u8; 16],
-            buffer_pos: 16, // empty
+            buffer: [0u8; BLOCK_BYTES],
+            buffer_pos: BLOCK_BYTES, // empty
         }
+    }
+
+    #[inline]
+    fn next_counters(&mut self) -> [[u8; BLOCK_BYTES]; PARALLEL_BLOCKS] {
+        core::array::from_fn(|_| {
+            let counter = self.counter;
+            inc32(&mut self.counter);
+            counter
+        })
     }
 
     /// XOR input with AES-CTR keystream, writing to output.
@@ -59,45 +81,58 @@ impl Ctr {
     /// previous call is consumed first, then full blocks are processed, and
     /// any final partial block's remaining keystream is saved for the next call.
     ///
-    /// The `encrypt_block` closure performs `AES_K(counter_block)` to generate
-    /// each 16-byte keystream block.
-    ///
-    /// CTR mode is symmetric: encryption and decryption are the same XOR operation.
-    pub(super) fn process<F>(&mut self, encrypt_block: F, input: &[u8], output: &mut [u8])
-    where
-        F: Fn(&[u8; 16]) -> [u8; 16],
-    {
+    /// The bulk of the data is handled PARALLEL_BLOCKS blocks at a time.
+    pub(super) fn process<C: BlockEncryptor>(
+        &mut self,
+        cipher: &C,
+        input: &[u8],
+        output: &mut [u8],
+    ) {
         assert_eq!(input.len(), output.len());
-        let mut i = 0;
 
-        // Consume leftover keystream from previous partial block
-        while i < input.len() && self.buffer_pos < 16 {
-            output[i] = input[i] ^ self.buffer[self.buffer_pos];
-            self.buffer_pos += 1;
-            i += 1;
+        // Consume the keystream left over by a previous partial block.
+        let leftover = core::cmp::min(BLOCK_BYTES - self.buffer_pos, input.len());
+        let buffered = &self.buffer[self.buffer_pos..self.buffer_pos + leftover];
+        for ((output, input), keystream) in output.iter_mut().zip(input).zip(buffered) {
+            *output = *input ^ *keystream;
         }
+        self.buffer_pos += leftover;
+        let input = &input[leftover..];
+        let output = &mut output[leftover..];
 
-        // Process full 16-byte blocks
-        while i + 16 <= input.len() {
-            let keystream = encrypt_block(&self.counter);
-            inc32(&mut self.counter);
-            for j in 0..16 {
-                output[i + j] = input[i + j] ^ keystream[j];
+        // Bulk: one cipher call per group of blocks.
+        let mut inputs = input.chunks_exact(BLOCK_BYTES * PARALLEL_BLOCKS);
+        let mut outputs = output.chunks_exact_mut(BLOCK_BYTES * PARALLEL_BLOCKS);
+        for (input, output) in inputs.by_ref().zip(outputs.by_ref()) {
+            let keystream = cipher.encrypt_blocks(&self.next_counters());
+            let blocks = input
+                .chunks_exact(BLOCK_BYTES)
+                .zip(output.chunks_exact_mut(BLOCK_BYTES));
+            for (keystream, (input, output)) in keystream.iter().zip(blocks) {
+                xor_block(input, keystream, output);
             }
-            i += 16;
         }
+        let input = inputs.remainder();
+        let output = outputs.into_remainder();
 
-        // Handle final partial block
-        if i < input.len() {
-            let keystream = encrypt_block(&self.counter);
+        // The 0 to PARALLEL_BLOCKS-1 whole blocks the groups did not cover.
+        let mut inputs = input.chunks_exact(BLOCK_BYTES);
+        let mut outputs = output.chunks_exact_mut(BLOCK_BYTES);
+        for (input, output) in inputs.by_ref().zip(outputs.by_ref()) {
+            let keystream = cipher.encrypt_block(&self.counter);
             inc32(&mut self.counter);
-            let remaining = input.len() - i;
-            for j in 0..remaining {
-                output[i + j] = input[i + j] ^ keystream[j];
-            }
-            // Save remaining keystream for next call
+            xor_block(input, &keystream, output);
+        }
+        let input = inputs.remainder();
+        let output = outputs.into_remainder();
+
+        // Final partial block: keep the unused keystream for the next call.
+        if !input.is_empty() {
+            let keystream = cipher.encrypt_block(&self.counter);
+            inc32(&mut self.counter);
+            xor_block(input, &keystream, output);
             self.buffer = keystream;
-            self.buffer_pos = remaining;
+            self.buffer_pos = input.len();
         }
     }
 }
@@ -130,7 +165,7 @@ mod tests {
 
     #[test]
     fn test_inc32_wrap() {
-        let mut counter = [0u8; 16];
+        let mut counter = [0u8; BLOCK_BYTES];
         counter[12] = 0xff;
         counter[13] = 0xff;
         counter[14] = 0xff;
@@ -147,7 +182,7 @@ mod tests {
 
     #[test]
     fn test_inc32_carry() {
-        let mut counter = [0xaa; 16];
+        let mut counter = [0xaa; BLOCK_BYTES];
         counter[12] = 0x00;
         counter[13] = 0x00;
         counter[14] = 0x00;
@@ -161,17 +196,54 @@ mod tests {
         assert_eq!(&counter[..12], &[0xaa; 12]);
     }
 
+    /// Identity "cipher": the keystream is the counter block itself, which
+    /// makes the counter sequence directly observable in the output.
+    struct Identity;
+
+    impl BlockEncryptor for Identity {
+        fn encrypt_block(&self, block: &[u8; BLOCK_BYTES]) -> [u8; BLOCK_BYTES] {
+            *block
+        }
+        fn encrypt_blocks(
+            &self,
+            blocks: &[[u8; BLOCK_BYTES]; PARALLEL_BLOCKS],
+        ) -> [[u8; BLOCK_BYTES]; PARALLEL_BLOCKS] {
+            *blocks
+        }
+    }
+
     #[test]
     fn test_ctr_process_identity_keystream() {
         // Use identity "encryption" (returns input unchanged) to test CTR structure
-        let j0 = [0u8; 16];
+        let j0 = [0u8; BLOCK_BYTES];
         let mut ctr = Ctr::new(&j0);
         let input = [0x41u8; 32]; // 2 full blocks
         let mut output = [0u8; 32];
         // Counter starts at inc32(j0) = ...0x02, so keystream blocks are the counter values
-        ctr.process(&|block: &[u8; 16]| *block, &input, &mut output);
+        ctr.process(&Identity, &input, &mut output);
         // Just verify it completes without panic and output differs from input
         // (XOR with non-zero counter blocks)
         assert_ne!(&output[..], &input[..]);
+    }
+
+    /// The keystream must not depend on how the data is split across calls:
+    /// the multi-block bulk path, the single-block tail and the buffered
+    /// partial block all have to line up on the same counter sequence.
+    #[test]
+    fn test_ctr_chunking_matches_oneshot() {
+        let j0 = [0x5au8; BLOCK_BYTES];
+        let input: [u8; 293] = core::array::from_fn(|i| ((i * 11 + 5) & 0xff) as u8);
+
+        let mut expected = [0u8; 293];
+        Ctr::new(&j0).process(&Identity, &input, &mut expected);
+
+        for chunk in [1, 3, 15, 16, 17, 31, 33, 63, 64, 65, 127, 292] {
+            let mut ctr = Ctr::new(&j0);
+            let mut got = [0u8; 293];
+            for (input, output) in input.chunks(chunk).zip(got.chunks_mut(chunk)) {
+                ctr.process(&Identity, input, output);
+            }
+            assert_eq!(got, expected, "mismatch with {chunk}-byte chunks");
+        }
     }
 }

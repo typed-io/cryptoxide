@@ -27,18 +27,27 @@ impl GeneratorRaw {
         out
     }
 
+    #[allow(unused)]
+    pub fn fill(&mut self, out: &mut [u8]) {
+        let (chunks, rem) = out.as_chunks_mut::<8>();
+        for chunk in chunks {
+            *chunk = self.next_u64().to_be_bytes();
+        }
+        if !rem.is_empty() {
+            let bytes = self.next_u64().to_be_bytes();
+            rem.copy_from_slice(&bytes[0..rem.len()])
+        }
+    }
+
     pub fn bytes<const N: usize>(&mut self) -> [u8; N] {
         let mut out = [0u8; N];
-        for i in 0..N / 8 {
-            let ofs = i * 8;
-            let bytes = self.next_u64().to_be_bytes();
-            out[ofs..ofs + 8].copy_from_slice(&bytes);
+        let (chunks, rem) = out.as_chunks_mut::<8>();
+        for chunk in chunks {
+            *chunk = self.next_u64().to_be_bytes();
         }
-        if N % 8 > 0 {
-            let ofs = N / 8;
-            let rem = N % 8;
+        if !rem.is_empty() {
             let bytes = self.next_u64().to_be_bytes();
-            out[ofs..ofs + rem].copy_from_slice(&bytes[0..rem]);
+            rem.copy_from_slice(&bytes[0..rem.len()])
         }
         out
     }

@@ -23,20 +23,9 @@ pub(super) fn make_j0(nonce: &[u8; 12]) -> [u8; BLOCK_BYTES] {
     j0
 }
 
-/// Increment the rightmost 32 bits of a 128-bit counter block (big-endian).
-///
-/// This implements the `inc32` function from NIST SP 800-38D Section 6.2.
-/// Only the last 4 bytes are modified; the first 12 bytes (nonce portion)
-/// are preserved.
-pub(super) fn inc32(counter: &mut [u8; BLOCK_BYTES]) {
-    let c = u32::from_be_bytes([counter[12], counter[13], counter[14], counter[15]]);
-    let c = c.wrapping_add(1);
-    let bytes = c.to_be_bytes();
-    counter[12] = bytes[0];
-    counter[13] = bytes[1];
-    counter[14] = bytes[2];
-    counter[15] = bytes[3];
-}
+/// Number of bytes of a counter block held by the nonce, the remaining ones
+/// being the `inc32` counter itself.
+const PREFIX_BYTES: usize = BLOCK_BYTES - 4;
 
 /// AES-CTR counter state for GCM keystream generation.
 ///
@@ -44,8 +33,10 @@ pub(super) fn inc32(counter: &mut [u8; BLOCK_BYTES]) {
 /// from partial block processing. The counter starts at `inc32(J0)` because
 /// J0 itself is reserved for tag encryption.
 pub(super) struct Ctr {
-    /// Current counter block
-    counter: [u8; BLOCK_BYTES],
+    /// The part of the counter block taken from the nonce, which never changes
+    prefix: [u8; PREFIX_BYTES],
+    /// Rightmost 32 bits of the current counter block, as a number
+    counter: u32,
     /// Leftover keystream from the last partial block
     buffer: [u8; BLOCK_BYTES],
     /// Position within the keystream buffer (16 = buffer empty/exhausted)
@@ -58,22 +49,41 @@ impl Ctr {
     /// The CTR encryption starts at `inc32(J0)` per NIST SP 800-38D.
     /// J0 is reserved for encrypting the final GHASH output to produce the tag.
     pub(super) fn new(j0: &[u8; BLOCK_BYTES]) -> Self {
-        let mut counter = *j0;
-        inc32(&mut counter);
+        let (prefix, counter) = j0.split_at(PREFIX_BYTES);
+        let counter = u32::from_be_bytes(counter.try_into().expect("4 bytes of counter"));
         Ctr {
-            counter,
+            prefix: prefix.try_into().expect("12 bytes of prefix"),
+            // `inc32(J0)`: the counter wraps within its 32 bits, per NIST SP 800-38D
+            counter: counter.wrapping_add(1),
             buffer: [0u8; BLOCK_BYTES],
             buffer_pos: BLOCK_BYTES, // empty
         }
     }
 
+    /// Assemble the counter block for the given counter value.
+    #[inline]
+    fn block(&self, counter: u32) -> [u8; BLOCK_BYTES] {
+        let mut block = [0u8; BLOCK_BYTES];
+        block[..PREFIX_BYTES].copy_from_slice(&self.prefix);
+        block[PREFIX_BYTES..].copy_from_slice(&counter.to_be_bytes());
+        block
+    }
+
+    /// The next counter block, advancing the counter by one.
+    #[inline]
+    fn next_counter(&mut self) -> [u8; BLOCK_BYTES] {
+        let block = self.block(self.counter);
+        self.counter = self.counter.wrapping_add(1);
+        block
+    }
+
+    /// The next PARALLEL_BLOCKS counter blocks, advancing the counter by as much.
     #[inline]
     fn next_counters(&mut self) -> [[u8; BLOCK_BYTES]; PARALLEL_BLOCKS] {
-        core::array::from_fn(|_| {
-            let counter = self.counter;
-            inc32(&mut self.counter);
-            counter
-        })
+        let counter = self.counter;
+        let blocks = core::array::from_fn(|i| self.block(counter.wrapping_add(i as u32)));
+        self.counter = counter.wrapping_add(PARALLEL_BLOCKS as u32);
+        blocks
     }
 
     /// XOR input with AES-CTR keystream, writing to output.
@@ -120,8 +130,7 @@ impl Ctr {
         let mut inputs = input.chunks_exact(BLOCK_BYTES);
         let mut outputs = output.chunks_exact_mut(BLOCK_BYTES);
         for (input, output) in inputs.by_ref().zip(outputs.by_ref()) {
-            let keystream = cipher.encrypt_block(&self.counter);
-            inc32(&mut self.counter);
+            let keystream = cipher.encrypt_block(&self.next_counter());
             xor_block(input, &keystream, output);
         }
         let input = inputs.remainder();
@@ -129,8 +138,7 @@ impl Ctr {
 
         // Final partial block: keep the unused keystream for the next call.
         if !input.is_empty() {
-            let keystream = cipher.encrypt_block(&self.counter);
-            inc32(&mut self.counter);
+            let keystream = cipher.encrypt_block(&self.next_counter());
             xor_block(input, &keystream, output);
             self.buffer = keystream;
             self.buffer_pos = input.len();
@@ -166,16 +174,14 @@ impl Ctr {
         // The 0 to PARALLEL_BLOCKS-1 whole blocks the groups did not cover.
         let mut blocks = data.chunks_exact_mut(BLOCK_BYTES);
         for block in blocks.by_ref() {
-            let keystream = cipher.encrypt_block(&self.counter);
-            inc32(&mut self.counter);
+            let keystream = cipher.encrypt_block(&self.next_counter());
             xor_keystream_mut(block, &keystream);
         }
         let data = blocks.into_remainder();
 
         // Final partial block: keep the unused keystream for the next call.
         if !data.is_empty() {
-            let keystream = cipher.encrypt_block(&self.counter);
-            inc32(&mut self.counter);
+            let keystream = cipher.encrypt_block(&self.next_counter());
             xor_keystream_mut(data, &keystream);
             self.buffer = keystream;
             self.buffer_pos = data.len();
@@ -186,6 +192,8 @@ impl Ctr {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
+    use alloc::vec::Vec;
 
     #[test]
     fn test_make_j0() {
@@ -200,46 +208,67 @@ mod tests {
         assert_eq!(j0[15], 0x01);
     }
 
-    #[test]
-    fn test_inc32_basic() {
-        let mut counter = [0u8; 16];
-        counter[15] = 0x01;
-        inc32(&mut counter);
-        assert_eq!(counter[15], 0x02);
-        assert_eq!(counter[14], 0x00);
+    /// A J0 block with every prefix byte set to `prefix` and the given counter.
+    fn j0_with(prefix: u8, counter: u32) -> [u8; BLOCK_BYTES] {
+        let mut j0 = [prefix; BLOCK_BYTES];
+        j0[PREFIX_BYTES..].copy_from_slice(&counter.to_be_bytes());
+        j0
     }
 
-    #[test]
-    fn test_inc32_wrap() {
-        let mut counter = [0u8; BLOCK_BYTES];
-        counter[12] = 0xff;
-        counter[13] = 0xff;
-        counter[14] = 0xff;
-        counter[15] = 0xff;
-        inc32(&mut counter);
-        // Should wrap to 0x00000000
-        assert_eq!(counter[12], 0x00);
-        assert_eq!(counter[13], 0x00);
-        assert_eq!(counter[14], 0x00);
-        assert_eq!(counter[15], 0x00);
-        // Nonce portion unchanged
-        assert_eq!(&counter[..12], &[0u8; 12]);
+    /// The `nblocks` counter blocks a `Ctr` starting at `j0` produces.
+    ///
+    /// Against the identity cipher and an all-zero input, the output is the
+    /// keystream, which is the counter block sequence itself.
+    fn counter_blocks(j0: &[u8; BLOCK_BYTES], nblocks: usize) -> Vec<[u8; BLOCK_BYTES]> {
+        let mut out = vec![0u8; nblocks * BLOCK_BYTES];
+        Ctr::new(j0).process_mut(&Identity, &mut out);
+        out.chunks_exact(BLOCK_BYTES)
+            .map(|b| b.try_into().expect("one block"))
+            .collect()
     }
 
+    /// The counter starts at `inc32(J0)` and goes up by one per block, the
+    /// nonce prefix being carried along untouched.
     #[test]
-    fn test_inc32_carry() {
-        let mut counter = [0xaa; BLOCK_BYTES];
-        counter[12] = 0x00;
-        counter[13] = 0x00;
-        counter[14] = 0x00;
-        counter[15] = 0xff;
-        inc32(&mut counter);
-        assert_eq!(counter[12], 0x00);
-        assert_eq!(counter[13], 0x00);
-        assert_eq!(counter[14], 0x01);
-        assert_eq!(counter[15], 0x00);
-        // Nonce portion should be untouched
-        assert_eq!(&counter[..12], &[0xaa; 12]);
+    fn test_counter_starts_after_j0() {
+        let blocks = counter_blocks(&j0_with(0xaa, 1), 3);
+        assert_eq!(blocks[0], j0_with(0xaa, 2));
+        assert_eq!(blocks[1], j0_with(0xaa, 3));
+        assert_eq!(blocks[2], j0_with(0xaa, 4));
+    }
+
+    /// A carry out of the last byte moves into the next one, and no further.
+    #[test]
+    fn test_counter_carry() {
+        let blocks = counter_blocks(&j0_with(0xaa, 0x0000_00fe), 2);
+        assert_eq!(blocks[0], j0_with(0xaa, 0x0000_00ff));
+        assert_eq!(blocks[1], j0_with(0xaa, 0x0000_0100));
+    }
+
+    /// The counter wraps within its 32 bits, leaving the nonce alone.
+    #[test]
+    fn test_counter_wraps_in_32_bits() {
+        let blocks = counter_blocks(&j0_with(0xaa, 0xffff_fffe), 2);
+        assert_eq!(blocks[0], j0_with(0xaa, 0xffff_ffff));
+        assert_eq!(blocks[1], j0_with(0xaa, 0x0000_0000));
+    }
+
+    /// The bulk path adds an offset to the counter of the whole group at once,
+    /// so the wrap has to be checked at every position within a group too.
+    #[test]
+    fn test_counter_wraps_within_a_group() {
+        for offset in 0..(2 * PARALLEL_BLOCKS as u32) {
+            let start = 0u32.wrapping_sub(offset);
+            let j0 = j0_with(0x5a, start.wrapping_sub(1));
+            let blocks = counter_blocks(&j0, 3 * PARALLEL_BLOCKS);
+            for (i, block) in blocks.iter().enumerate() {
+                assert_eq!(
+                    *block,
+                    j0_with(0x5a, start.wrapping_add(i as u32)),
+                    "block {i} of the run starting at {start:#x}"
+                );
+            }
+        }
     }
 
     /// Identity "cipher": the keystream is the counter block itself, which

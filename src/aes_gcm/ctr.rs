@@ -2,6 +2,7 @@
 
 use super::BlockEncryptor;
 use crate::aes::{BLOCK_BYTES, PARALLEL_BLOCKS};
+use crate::cryptoutil::xor_keystream_mut;
 
 /// XOR a block of keystream into `input`, writing to `output`.
 #[inline(always)]
@@ -133,6 +134,51 @@ impl Ctr {
             xor_block(input, &keystream, output);
             self.buffer = keystream;
             self.buffer_pos = input.len();
+        }
+    }
+
+    /// XOR the AES-CTR keystream into `data`, in place.
+    ///
+    /// Same keystream and same handling of partial blocks across calls as
+    /// [`Ctr::process`], the only difference being that the data is replaced
+    /// instead of written to a separate output.
+    pub(super) fn process_mut<C: BlockEncryptor>(&mut self, cipher: &C, data: &mut [u8]) {
+        // Consume the keystream left over by a previous partial block.
+        let leftover = core::cmp::min(BLOCK_BYTES - self.buffer_pos, data.len());
+        let buffered = &self.buffer[self.buffer_pos..self.buffer_pos + leftover];
+        for (data, keystream) in data.iter_mut().zip(buffered) {
+            *data ^= *keystream;
+        }
+        self.buffer_pos += leftover;
+        let data = &mut data[leftover..];
+
+        // Bulk: one cipher call per group of blocks.
+        let mut groups = data.chunks_exact_mut(BLOCK_BYTES * PARALLEL_BLOCKS);
+        for group in groups.by_ref() {
+            let keystream = cipher.encrypt_blocks(&self.next_counters());
+            let blocks = group.chunks_exact_mut(BLOCK_BYTES);
+            for (keystream, block) in keystream.iter().zip(blocks) {
+                xor_keystream_mut(block, keystream);
+            }
+        }
+        let data = groups.into_remainder();
+
+        // The 0 to PARALLEL_BLOCKS-1 whole blocks the groups did not cover.
+        let mut blocks = data.chunks_exact_mut(BLOCK_BYTES);
+        for block in blocks.by_ref() {
+            let keystream = cipher.encrypt_block(&self.counter);
+            inc32(&mut self.counter);
+            xor_keystream_mut(block, &keystream);
+        }
+        let data = blocks.into_remainder();
+
+        // Final partial block: keep the unused keystream for the next call.
+        if !data.is_empty() {
+            let keystream = cipher.encrypt_block(&self.counter);
+            inc32(&mut self.counter);
+            xor_keystream_mut(data, &keystream);
+            self.buffer = keystream;
+            self.buffer_pos = data.len();
         }
     }
 }

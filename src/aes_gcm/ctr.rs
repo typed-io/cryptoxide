@@ -12,6 +12,36 @@ fn xor_block(input: &[u8], keystream: &[u8; BLOCK_BYTES], output: &mut [u8]) {
     }
 }
 
+/// The keystream of one whole group, as produced by [`Ctr::next_keystream`].
+pub(super) type Keystream = [[u8; BLOCK_BYTES]; PARALLEL_BLOCKS];
+
+/// XOR a whole stitch unit of keystream into `input`, writing to `output`.
+///
+/// Panics unless `input` and `output` are exactly one group long.
+#[inline]
+pub(super) fn xor_group(keystream: &Keystream, input: &[u8], output: &mut [u8]) {
+    debug_assert_eq!(input.len(), BLOCK_BYTES * PARALLEL_BLOCKS);
+    debug_assert_eq!(output.len(), BLOCK_BYTES * PARALLEL_BLOCKS);
+    let blocks = input
+        .chunks_exact(BLOCK_BYTES)
+        .zip(output.chunks_exact_mut(BLOCK_BYTES));
+    for (keystream, (input, output)) in keystream.iter().zip(blocks) {
+        xor_block(input, keystream, output);
+    }
+}
+
+/// XOR a whole stitch unit of keystream into `data`, in place.
+///
+/// Panics unless `data` is exactly one group long.
+#[inline]
+pub(super) fn xor_group_mut(keystream: &Keystream, data: &mut [u8]) {
+    debug_assert_eq!(data.len(), BLOCK_BYTES * PARALLEL_BLOCKS);
+    let blocks = data.chunks_exact_mut(BLOCK_BYTES);
+    for (keystream, block) in keystream.iter().zip(blocks) {
+        xor_keystream_mut(block, keystream);
+    }
+}
+
 /// Build the initial counter block J0 from a 96-bit nonce.
 ///
 /// For a 96-bit IV, J0 is defined as `IV || 0x00000001` (NIST SP 800-38D Section 7.1).
@@ -84,6 +114,30 @@ impl Ctr {
         let blocks = core::array::from_fn(|i| self.block(counter.wrapping_add(i as u32)));
         self.counter = counter.wrapping_add(PARALLEL_BLOCKS as u32);
         blocks
+    }
+
+    /// Number of bytes of keystream left over from the last partial block.
+    ///
+    /// Zero when the next block of keystream starts fresh, which is what the
+    /// group paths below require.
+    #[inline]
+    pub(super) fn pending(&self) -> usize {
+        BLOCK_BYTES - self.buffer_pos
+    }
+
+    /// The keystream for the next whole group of blocks.
+    ///
+    /// Split out from applying it so that the stitched paths can generate the
+    /// keystream of one group while hashing the previous one: the two have no
+    /// dependency on each other, so issuing them together lets the AES and
+    /// carry-less multiplier pipelines overlap instead of taking turns.
+    ///
+    /// Panics if a partial block is left over from a previous call, since the
+    /// group would then not start on a block boundary.
+    #[inline]
+    pub(super) fn next_keystream<C: BlockEncryptor>(&mut self, cipher: &C) -> Keystream {
+        debug_assert_eq!(self.pending(), 0);
+        cipher.encrypt_blocks(&self.next_counters())
     }
 
     /// XOR input with AES-CTR keystream, writing to output.

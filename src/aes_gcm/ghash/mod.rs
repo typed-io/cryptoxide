@@ -85,6 +85,18 @@ impl GHash {
         }
     }
 
+    /// Feed complete blocks into the GHASH computation, bypassing the buffer.
+    ///
+    /// The counterpart of [`GHash::update`] without safety
+    ///
+    /// Panics unless `blocks` is a whole number of blocks and the buffer is
+    /// empty, i.e. all data fed so far ended on a block boundary.
+    pub(super) fn update_blocks(&mut self, blocks: &[u8]) {
+        debug_assert_eq!(blocks.len() % 16, 0);
+        debug_assert_eq!(self.buf_len, 0);
+        self.state.update(&self.key, blocks);
+    }
+
     /// Pad and process any partial block in the buffer.
     ///
     /// If there are buffered bytes, the remaining positions are zero-padded

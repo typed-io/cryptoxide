@@ -9,9 +9,9 @@ use core::arch::aarch64::*;
 /// Number of blocks multiplied per reduction, and hence the number of
 /// precomputed powers of H.
 ///
-/// 4 is a tradeoff between computing too much for small message and not enough
-/// for large messages
-const WIDE: usize = 4;
+/// Originally set to 4, but 8 works better for the benchs, at the expense
+/// of small messages.
+const WIDE: usize = 8;
 
 /// Low half of the GCM reducing polynomial x^128 + x^7 + x^2 + x + 1.
 ///

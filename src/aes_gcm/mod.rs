@@ -81,7 +81,7 @@ use crate::{
 mod ctr;
 mod ghash;
 
-use ctr::{make_j0, Ctr};
+use ctr::{make_j0, xor_group, xor_group_mut, Ctr};
 use ghash::GHash;
 
 /// The block encryption AES-GCM needs: the CTR keystream and the tag.
@@ -122,6 +122,154 @@ impl BlockEncryptor for Aes256 {
     ) -> [[u8; BLOCK_BYTES]; PARALLEL_BLOCKS] {
         Aes256::encrypt_blocks(self, blocks)
     }
+}
+
+/// CTR-encrypt `input` into `output` and GHASH the ciphertext, in one pass.
+fn encrypt_and_hash<C: BlockEncryptor>(
+    cipher: &C,
+    ctr: &mut Ctr,
+    gh: &mut GHash,
+    input: &[u8],
+    output: &mut [u8],
+) {
+    debug_assert_eq!(input.len(), output.len());
+
+    // Finish off any partial block first, so the group loop starts aligned.
+    let head = core::cmp::min(ctr.pending(), input.len());
+    let (input_head, input) = input.split_at(head);
+    let (output_head, output) = output.split_at_mut(head);
+    if head > 0 {
+        ctr.process(cipher, input_head, output_head);
+        gh.update(output_head);
+    }
+
+    // The keystream of each group is generated one iteration ahead of that
+    // group being hashed, so that the two sit next to each other with no
+    // dependency between them.
+    let mut inputs = input.chunks_exact(BLOCK_BYTES * PARALLEL_BLOCKS);
+    let mut outputs = output.chunks_exact_mut(BLOCK_BYTES * PARALLEL_BLOCKS);
+    let mut pairs = inputs.by_ref().zip(outputs.by_ref());
+    if let Some((input, output)) = pairs.next() {
+        let mut hashable = output;
+        xor_group(&ctr.next_keystream(cipher), input, hashable);
+        for (input, output) in pairs.by_ref() {
+            let keystream = ctr.next_keystream(cipher);
+            gh.update_blocks(hashable);
+            xor_group(&keystream, input, output);
+            hashable = output;
+        }
+        gh.update_blocks(hashable);
+    }
+
+    // Whatever is left of a group: back to the general paths.
+    let input = inputs.remainder();
+    let output = outputs.into_remainder();
+    ctr.process(cipher, input, output);
+    gh.update(output);
+}
+
+/// CTR-encrypt `data` in place and GHASH the ciphertext, in one pass.
+///
+/// in-place counterpart of [`encrypt_and_hash`].
+fn encrypt_and_hash_mut<C: BlockEncryptor>(
+    cipher: &C,
+    ctr: &mut Ctr,
+    gh: &mut GHash,
+    data: &mut [u8],
+) {
+    // Finish off any partial block first, so the group loop starts aligned.
+    let head = core::cmp::min(ctr.pending(), data.len());
+    let (data_head, data) = data.split_at_mut(head);
+    if head > 0 {
+        ctr.process_mut(cipher, data_head);
+        gh.update(data_head);
+    }
+
+    // The keystream of each group is generated one iteration ahead of that
+    // group being hashed, so that the two sit next to each other with no
+    // dependency between them.
+    let mut groups = data.chunks_exact_mut(BLOCK_BYTES * PARALLEL_BLOCKS);
+    if let Some(first) = groups.next() {
+        let mut hashable = first;
+        xor_group_mut(&ctr.next_keystream(cipher), hashable);
+        for group in groups.by_ref() {
+            let keystream = ctr.next_keystream(cipher);
+            gh.update_blocks(hashable);
+            xor_group_mut(&keystream, group);
+            hashable = group;
+        }
+        gh.update_blocks(hashable);
+    }
+
+    // Whatever is left of a group: back to the general paths.
+    let data = groups.into_remainder();
+    ctr.process_mut(cipher, data);
+    gh.update(data);
+}
+
+/// GHASH `input` and CTR-decrypt it into `output`, in one pass.
+fn hash_and_decrypt<C: BlockEncryptor>(
+    cipher: &C,
+    ctr: &mut Ctr,
+    gh: &mut GHash,
+    input: &[u8],
+    output: &mut [u8],
+) {
+    debug_assert_eq!(input.len(), output.len());
+
+    // Finish off any partial block first, so the unit loop starts aligned.
+    let head = core::cmp::min(ctr.pending(), input.len());
+    let (input_head, input) = input.split_at(head);
+    let (output_head, output) = output.split_at_mut(head);
+    if head > 0 {
+        gh.update(input_head);
+        ctr.process(cipher, input_head, output_head);
+    }
+
+    let mut inputs = input.chunks_exact(BLOCK_BYTES * PARALLEL_BLOCKS);
+    let mut outputs = output.chunks_exact_mut(BLOCK_BYTES * PARALLEL_BLOCKS);
+    for (input, output) in inputs.by_ref().zip(outputs.by_ref()) {
+        let keystream = ctr.next_keystream(cipher);
+        gh.update_blocks(input);
+        xor_group(&keystream, input, output);
+    }
+
+    // Whatever is left of a unit: back to the general paths.
+    let input = inputs.remainder();
+    let output = outputs.into_remainder();
+    gh.update(input);
+    ctr.process(cipher, input, output);
+}
+
+/// GHASH `data` and CTR-decrypt
+///
+/// The in-place counterpart of [`hash_and_decrypt`]. Each
+/// unit is hashed before it is overwritten with its plaintext.
+fn hash_and_decrypt_mut<C: BlockEncryptor>(
+    cipher: &C,
+    ctr: &mut Ctr,
+    gh: &mut GHash,
+    data: &mut [u8],
+) {
+    // Finish off any partial block first, so the unit loop starts aligned.
+    let head = core::cmp::min(ctr.pending(), data.len());
+    let (data_head, data) = data.split_at_mut(head);
+    if head > 0 {
+        gh.update(data_head);
+        ctr.process_mut(cipher, data_head);
+    }
+
+    let mut units = data.chunks_exact_mut(BLOCK_BYTES * PARALLEL_BLOCKS);
+    for unit in units.by_ref() {
+        let keystream = ctr.next_keystream(cipher);
+        gh.update_blocks(unit);
+        xor_group_mut(&keystream, unit);
+    }
+
+    // Whatever is left of a unit: back to the general paths.
+    let data = units.into_remainder();
+    gh.update(data);
+    ctr.process_mut(cipher, data);
 }
 
 /// AES-GCM authentication tag.
@@ -236,15 +384,13 @@ impl AesGcm128 {
         assert_eq!(input.len(), output.len());
         let j0 = make_j0(nonce);
 
-        // CTR encrypt starting from inc32(J0)
-        let mut ctr = Ctr::new(&j0);
-        ctr.process(&self.cipher, input, output);
-
-        // GHASH over AAD || pad || ciphertext || pad || length block
         let mut gh = GHash::new(&self.h);
         gh.update(aad);
         gh.pad();
-        gh.update(output);
+
+        let mut ctr = Ctr::new(&j0);
+        encrypt_and_hash(&self.cipher, &mut ctr, &mut gh, input, output);
+
         let ghash_out = gh.finalize(aad.len() as u64, output.len() as u64);
 
         // Tag = AES_K(J0) XOR GHASH
@@ -325,15 +471,15 @@ impl AesGcm128 {
     pub fn encrypt_mut(&self, nonce: &[u8; 12], aad: &[u8], data: &mut [u8], tag: &mut Tag) {
         let j0 = make_j0(nonce);
 
-        // CTR encrypt in place starting from inc32(J0)
-        Ctr::new(&j0).process_mut(&self.cipher, data);
-
-        // GHASH over AAD || pad || ciphertext || pad || length block
         let mut gh = GHash::new(&self.h);
         gh.update(aad);
         gh.pad();
-        gh.update(data);
-        let ghash_out = gh.finalize(aad.len() as u64, data.len() as u64);
+
+        let mut ctr = Ctr::new(&j0);
+        let len = data.len();
+        encrypt_and_hash_mut(&self.cipher, &mut ctr, &mut gh, data);
+
+        let ghash_out = gh.finalize(aad.len() as u64, len as u64);
 
         // Tag = AES_K(J0) XOR GHASH
         *tag = compute_tag(&self.cipher, &j0, &ghash_out);
@@ -440,15 +586,13 @@ impl AesGcm256 {
         assert_eq!(input.len(), output.len());
         let j0 = make_j0(nonce);
 
-        // CTR encrypt starting from inc32(J0)
-        let mut ctr = Ctr::new(&j0);
-        ctr.process(&self.cipher, input, output);
-
-        // GHASH over AAD || pad || ciphertext || pad || length block
         let mut gh = GHash::new(&self.h);
         gh.update(aad);
         gh.pad();
-        gh.update(output);
+
+        let mut ctr = Ctr::new(&j0);
+        encrypt_and_hash(&self.cipher, &mut ctr, &mut gh, input, output);
+
         let ghash_out = gh.finalize(aad.len() as u64, output.len() as u64);
 
         // Tag = AES_K(J0) XOR GHASH
@@ -528,15 +672,15 @@ impl AesGcm256 {
     pub fn encrypt_mut(&self, nonce: &[u8; 12], aad: &[u8], data: &mut [u8], tag: &mut Tag) {
         let j0 = make_j0(nonce);
 
-        // CTR encrypt in place starting from inc32(J0)
-        Ctr::new(&j0).process_mut(&self.cipher, data);
-
-        // GHASH over AAD || pad || ciphertext || pad || length block
         let mut gh = GHash::new(&self.h);
         gh.update(aad);
         gh.pad();
-        gh.update(data);
-        let ghash_out = gh.finalize(aad.len() as u64, data.len() as u64);
+
+        let mut ctr = Ctr::new(&j0);
+        let len = data.len();
+        encrypt_and_hash_mut(&self.cipher, &mut ctr, &mut gh, data);
+
+        let ghash_out = gh.finalize(aad.len() as u64, len as u64);
 
         // Tag = AES_K(J0) XOR GHASH
         *tag = compute_tag(&self.cipher, &j0, &ghash_out);
@@ -744,10 +888,8 @@ impl ContextEncryption {
     /// Panics if `input.len() != output.len()`.
     pub fn encrypt(&mut self, input: &[u8], output: &mut [u8]) {
         assert_eq!(input.len(), output.len());
-        self.ctr.process(&self.cipher, input, output);
-        // Feed ciphertext to GHASH
-        self.ghash.update(output);
         self.ct_len += output.len() as u64;
+        encrypt_and_hash(&self.cipher, &mut self.ctr, &mut self.ghash, input, output);
     }
 
     /// Encrypt data in place.
@@ -755,10 +897,8 @@ impl ContextEncryption {
     /// The buffer is encrypted and the resulting ciphertext is fed into
     /// GHASH for authentication. This can be called multiple times.
     pub fn encrypt_mut(&mut self, data: &mut [u8]) {
-        self.ctr.process_mut(&self.cipher, data);
-        // Feed ciphertext to GHASH
-        self.ghash.update(data);
         self.ct_len += data.len() as u64;
+        encrypt_and_hash_mut(&self.cipher, &mut self.ctr, &mut self.ghash, data);
     }
 
     /// Finalize the encryption context and return the authentication tag.
@@ -798,11 +938,8 @@ impl ContextDecryption {
     /// Panics if `input.len() != output.len()`.
     pub fn decrypt(&mut self, input: &[u8], output: &mut [u8]) {
         assert_eq!(input.len(), output.len());
-        // Feed ciphertext to GHASH FIRST (before decryption)
-        self.ghash.update(input);
         self.ct_len += input.len() as u64;
-        // Then CTR decrypt
-        self.ctr.process(&self.cipher, input, output);
+        hash_and_decrypt(&self.cipher, &mut self.ctr, &mut self.ghash, input, output);
     }
 
     /// Decrypt data in place.
@@ -810,11 +947,8 @@ impl ContextDecryption {
     /// The original ciphertext is fed into GHASH before the buffer is
     /// decrypted, so authentication stays computed over the ciphertext.
     pub fn decrypt_mut(&mut self, data: &mut [u8]) {
-        // Feed ciphertext to GHASH FIRST
-        self.ghash.update(data);
         self.ct_len += data.len() as u64;
-        // Then CTR decrypt in place
-        self.ctr.process_mut(&self.cipher, data);
+        hash_and_decrypt_mut(&self.cipher, &mut self.ctr, &mut self.ghash, data);
     }
 
     /// Finalize the decryption context and verify the authentication tag.
@@ -1234,11 +1368,7 @@ mod tests {
         let nonce = [0x68u8; 12];
         let cipher = AesGcm256::new(&key);
 
-        let mut plaintext = [0u8; 8 * 16 + 3];
-        plaintext
-            .iter_mut()
-            .enumerate()
-            .for_each(|(i, b)| *b = (i * 31 + 17) as u8);
+        let plaintext = [1u8; 5 * 8 * 16 + 3];
 
         for len in 0..plaintext.len() {
             let plaintext = &plaintext[..len];
@@ -1257,6 +1387,60 @@ mod tests {
             assert_eq!(result, DecryptionResult::Match, "at {len} bytes");
             assert_eq!(&recovered[..], plaintext, "at {len} bytes");
         }
+    }
+
+    /// The stitched bulk loop, checked against a path that never enters it.
+    ///
+    /// Fed one byte at a time, the incremental API stays on the general
+    /// single-block paths throughout -- every call has a partial block left
+    /// over from the last -- so it is an independent reference for the whole
+    /// group loop, which the NIST vectors are too short to reach.
+    #[test]
+    fn test_bulk_loop_matches_byte_at_a_time() {
+        let key = [0x3cu8; 16];
+        let nonce = [0x4du8; 12];
+        let aad = b"associated data spanning more than a single block";
+        let cipher = AesGcm128::new(&key);
+
+        let plaintext: [u8; 5 * 8 * 16 + 7] = core::array::from_fn(|i| (i * 37 + 11) as u8);
+
+        // One-shot: the whole message goes through the group loop at once.
+        let mut oneshot = plaintext;
+        let mut oneshot_tag = Tag([0u8; 16]);
+        cipher.encrypt_mut(&nonce, aad, &mut oneshot, &mut oneshot_tag);
+
+        // Byte at a time: only ever the general paths.
+        let mut ctx = Context::new128(&key, &nonce);
+        for byte in aad {
+            ctx.add_data(&[*byte]);
+        }
+        let mut ctx = ctx.to_encryption();
+        let mut byte_by_byte = plaintext;
+        for byte in byte_by_byte.iter_mut() {
+            ctx.encrypt_mut(core::slice::from_mut(byte));
+        }
+        let byte_tag = ctx.finalize();
+
+        assert_eq!(byte_by_byte, oneshot, "ciphertext");
+        assert_eq!(byte_tag, oneshot_tag, "tag");
+
+        // And the same for the decryption direction.
+        let mut ctx = Context::new128(&key, &nonce);
+        ctx.add_data(aad);
+        let mut ctx = ctx.to_decryption();
+        let mut recovered = oneshot;
+        for byte in recovered.iter_mut() {
+            ctx.decrypt_mut(core::slice::from_mut(byte));
+        }
+        assert_eq!(ctx.finalize(&oneshot_tag), DecryptionResult::Match);
+        assert_eq!(recovered, plaintext, "byte at a time decryption");
+
+        let mut bulk = oneshot;
+        assert_eq!(
+            cipher.decrypt_mut(&nonce, aad, &mut bulk, &oneshot_tag),
+            DecryptionResult::Match
+        );
+        assert_eq!(bulk, plaintext, "bulk decryption");
     }
 
     // ============================================================

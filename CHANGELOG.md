@@ -1,4 +1,4 @@
-# unreleased
+# 0.6.3
 
 * add support for using an alternative 512 bits hash function with ed25519, through
   the new `_with` suffixed functions of the `ed25519` module (e.g. `signature_with`),

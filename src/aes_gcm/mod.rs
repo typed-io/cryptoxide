@@ -12,6 +12,10 @@
 //! need more control over memory usage, as the one-shot interface expects
 //! one single call with slices parameter.
 //!
+//! Both interfaces also come in an in-place flavour -- `encrypt_mut` and
+//! `decrypt_mut` -- which replaces the data in the buffer given instead of
+//! writing to a second one.
+//!
 //! # Examples
 //!
 //! Encrypting using the one-shot interface:
@@ -28,6 +32,21 @@
 //!
 //! let cipher = AesGcm256::new(&key);
 //! cipher.encrypt(&nonce, aad, plaintext, &mut ciphertext, &mut tag);
+//! ```
+//!
+//! Encrypting in place, without a second buffer:
+//!
+//! ```
+//! use cryptoxide::aes_gcm::{AesGcm256, Tag};
+//!
+//! let key = [0x01u8; 32];
+//! let nonce = [0x02u8; 12];
+//! let aad = b"additional data";
+//! let mut data = *b"hello world!";
+//! let mut tag = Tag([0u8; 16]);
+//!
+//! let cipher = AesGcm256::new(&key);
+//! cipher.encrypt_mut(&nonce, aad, &mut data, &mut tag);
 //! ```
 //!
 //! Encrypting using the incremental interfaces:
@@ -55,15 +74,203 @@
 //! [1]: https://csrc.nist.gov/publications/detail/sp/800-38d/final
 
 use crate::{
-    aes::{Aes128, Aes256},
+    aes::{Aes128, Aes256, BLOCK_BYTES, PARALLEL_BLOCKS},
     constant_time::{Choice, CtEqual},
 };
 
 mod ctr;
 mod ghash;
 
-use ctr::{make_j0, Ctr};
+use ctr::{make_j0, xor_group, xor_group_mut, Ctr};
 use ghash::GHash;
+
+/// The block encryption AES-GCM needs: the CTR keystream and the tag.
+///
+/// Implemented for the concrete ciphers used by the one-shot interfaces and for
+/// the [`Cipher`] enum used by the incremental ones, so that the counter mode
+/// reaches `encrypt_blocks` without a virtual call in either case.
+trait BlockEncryptor {
+    /// Encrypt a single block.
+    fn encrypt_block(&self, block: &[u8; BLOCK_BYTES]) -> [u8; BLOCK_BYTES];
+
+    /// Encrypt [`PARALLEL_BLOCKS`] independent blocks at once.
+    fn encrypt_blocks(
+        &self,
+        blocks: &[[u8; BLOCK_BYTES]; PARALLEL_BLOCKS],
+    ) -> [[u8; BLOCK_BYTES]; PARALLEL_BLOCKS];
+}
+
+impl BlockEncryptor for Aes128 {
+    fn encrypt_block(&self, block: &[u8; BLOCK_BYTES]) -> [u8; BLOCK_BYTES] {
+        Aes128::encrypt_block(self, block)
+    }
+    fn encrypt_blocks(
+        &self,
+        blocks: &[[u8; BLOCK_BYTES]; PARALLEL_BLOCKS],
+    ) -> [[u8; BLOCK_BYTES]; PARALLEL_BLOCKS] {
+        Aes128::encrypt_blocks(self, blocks)
+    }
+}
+
+impl BlockEncryptor for Aes256 {
+    fn encrypt_block(&self, block: &[u8; BLOCK_BYTES]) -> [u8; BLOCK_BYTES] {
+        Aes256::encrypt_block(self, block)
+    }
+    fn encrypt_blocks(
+        &self,
+        blocks: &[[u8; BLOCK_BYTES]; PARALLEL_BLOCKS],
+    ) -> [[u8; BLOCK_BYTES]; PARALLEL_BLOCKS] {
+        Aes256::encrypt_blocks(self, blocks)
+    }
+}
+
+/// CTR-encrypt `input` into `output` and GHASH the ciphertext, in one pass.
+fn encrypt_and_hash<C: BlockEncryptor>(
+    cipher: &C,
+    ctr: &mut Ctr,
+    gh: &mut GHash,
+    input: &[u8],
+    output: &mut [u8],
+) {
+    debug_assert_eq!(input.len(), output.len());
+
+    // Finish off any partial block first, so the group loop starts aligned.
+    let head = core::cmp::min(ctr.pending(), input.len());
+    let (input_head, input) = input.split_at(head);
+    let (output_head, output) = output.split_at_mut(head);
+    if head > 0 {
+        ctr.process(cipher, input_head, output_head);
+        gh.update(output_head);
+    }
+
+    // The keystream of each group is generated one iteration ahead of that
+    // group being hashed, so that the two sit next to each other with no
+    // dependency between them.
+    let mut inputs = input.chunks_exact(BLOCK_BYTES * PARALLEL_BLOCKS);
+    let mut outputs = output.chunks_exact_mut(BLOCK_BYTES * PARALLEL_BLOCKS);
+    let mut pairs = inputs.by_ref().zip(outputs.by_ref());
+    if let Some((input, output)) = pairs.next() {
+        let mut hashable = output;
+        xor_group(&ctr.next_keystream(cipher), input, hashable);
+        for (input, output) in pairs.by_ref() {
+            let keystream = ctr.next_keystream(cipher);
+            gh.update_blocks(hashable);
+            xor_group(&keystream, input, output);
+            hashable = output;
+        }
+        gh.update_blocks(hashable);
+    }
+
+    // Whatever is left of a group: back to the general paths.
+    let input = inputs.remainder();
+    let output = outputs.into_remainder();
+    ctr.process(cipher, input, output);
+    gh.update(output);
+}
+
+/// CTR-encrypt `data` in place and GHASH the ciphertext, in one pass.
+///
+/// in-place counterpart of [`encrypt_and_hash`].
+fn encrypt_and_hash_mut<C: BlockEncryptor>(
+    cipher: &C,
+    ctr: &mut Ctr,
+    gh: &mut GHash,
+    data: &mut [u8],
+) {
+    // Finish off any partial block first, so the group loop starts aligned.
+    let head = core::cmp::min(ctr.pending(), data.len());
+    let (data_head, data) = data.split_at_mut(head);
+    if head > 0 {
+        ctr.process_mut(cipher, data_head);
+        gh.update(data_head);
+    }
+
+    // The keystream of each group is generated one iteration ahead of that
+    // group being hashed, so that the two sit next to each other with no
+    // dependency between them.
+    let mut groups = data.chunks_exact_mut(BLOCK_BYTES * PARALLEL_BLOCKS);
+    if let Some(first) = groups.next() {
+        let mut hashable = first;
+        xor_group_mut(&ctr.next_keystream(cipher), hashable);
+        for group in groups.by_ref() {
+            let keystream = ctr.next_keystream(cipher);
+            gh.update_blocks(hashable);
+            xor_group_mut(&keystream, group);
+            hashable = group;
+        }
+        gh.update_blocks(hashable);
+    }
+
+    // Whatever is left of a group: back to the general paths.
+    let data = groups.into_remainder();
+    ctr.process_mut(cipher, data);
+    gh.update(data);
+}
+
+/// GHASH `input` and CTR-decrypt it into `output`, in one pass.
+fn hash_and_decrypt<C: BlockEncryptor>(
+    cipher: &C,
+    ctr: &mut Ctr,
+    gh: &mut GHash,
+    input: &[u8],
+    output: &mut [u8],
+) {
+    debug_assert_eq!(input.len(), output.len());
+
+    // Finish off any partial block first, so the unit loop starts aligned.
+    let head = core::cmp::min(ctr.pending(), input.len());
+    let (input_head, input) = input.split_at(head);
+    let (output_head, output) = output.split_at_mut(head);
+    if head > 0 {
+        gh.update(input_head);
+        ctr.process(cipher, input_head, output_head);
+    }
+
+    let mut inputs = input.chunks_exact(BLOCK_BYTES * PARALLEL_BLOCKS);
+    let mut outputs = output.chunks_exact_mut(BLOCK_BYTES * PARALLEL_BLOCKS);
+    for (input, output) in inputs.by_ref().zip(outputs.by_ref()) {
+        let keystream = ctr.next_keystream(cipher);
+        gh.update_blocks(input);
+        xor_group(&keystream, input, output);
+    }
+
+    // Whatever is left of a unit: back to the general paths.
+    let input = inputs.remainder();
+    let output = outputs.into_remainder();
+    gh.update(input);
+    ctr.process(cipher, input, output);
+}
+
+/// GHASH `data` and CTR-decrypt
+///
+/// The in-place counterpart of [`hash_and_decrypt`]. Each
+/// unit is hashed before it is overwritten with its plaintext.
+fn hash_and_decrypt_mut<C: BlockEncryptor>(
+    cipher: &C,
+    ctr: &mut Ctr,
+    gh: &mut GHash,
+    data: &mut [u8],
+) {
+    // Finish off any partial block first, so the unit loop starts aligned.
+    let head = core::cmp::min(ctr.pending(), data.len());
+    let (data_head, data) = data.split_at_mut(head);
+    if head > 0 {
+        gh.update(data_head);
+        ctr.process_mut(cipher, data_head);
+    }
+
+    let mut units = data.chunks_exact_mut(BLOCK_BYTES * PARALLEL_BLOCKS);
+    for unit in units.by_ref() {
+        let keystream = ctr.next_keystream(cipher);
+        gh.update_blocks(unit);
+        xor_group_mut(&keystream, unit);
+    }
+
+    // Whatever is left of a unit: back to the general paths.
+    let data = units.into_remainder();
+    gh.update(data);
+    ctr.process_mut(cipher, data);
+}
 
 /// AES-GCM authentication tag.
 ///
@@ -118,11 +325,8 @@ pub enum DecryptionResult {
 /// Compute the authentication tag from GHASH output and J0.
 ///
 /// `tag = AES_K(J0) XOR ghash_output`
-fn compute_tag<F>(encrypt_block: F, j0: &[u8; 16], ghash_out: &[u8; 16]) -> Tag
-where
-    F: FnOnce(&[u8; 16]) -> [u8; 16],
-{
-    let encrypted_j0 = encrypt_block(j0);
+fn compute_tag<C: BlockEncryptor>(cipher: &C, j0: &[u8; BLOCK_BYTES], ghash_out: &[u8; 16]) -> Tag {
+    let encrypted_j0 = cipher.encrypt_block(j0);
     let mut tag_bytes = [0u8; 16];
     for i in 0..16 {
         tag_bytes[i] = encrypted_j0[i] ^ ghash_out[i];
@@ -152,7 +356,7 @@ impl AesGcm128 {
     /// `H = AES_K([0; 16])`.
     pub fn new(key: &[u8; 16]) -> Self {
         let cipher = Aes128::new(key);
-        let h = cipher.encrypt_block(&[0u8; 16]);
+        let h = cipher.encrypt_block(&[0u8; BLOCK_BYTES]);
         AesGcm128 { cipher, h }
     }
 
@@ -180,20 +384,17 @@ impl AesGcm128 {
         assert_eq!(input.len(), output.len());
         let j0 = make_j0(nonce);
 
-        // CTR encrypt starting from inc32(J0)
-        let enc = |block: &[u8; 16]| -> [u8; 16] { self.cipher.encrypt_block(block) };
-        let mut ctr = Ctr::new(&j0);
-        ctr.process(&enc, input, output);
-
-        // GHASH over AAD || pad || ciphertext || pad || length block
         let mut gh = GHash::new(&self.h);
         gh.update(aad);
         gh.pad();
-        gh.update(output);
+
+        let mut ctr = Ctr::new(&j0);
+        encrypt_and_hash(&self.cipher, &mut ctr, &mut gh, input, output);
+
         let ghash_out = gh.finalize(aad.len() as u64, output.len() as u64);
 
         // Tag = AES_K(J0) XOR GHASH
-        *tag = compute_tag(|block| self.cipher.encrypt_block(block), &j0, &ghash_out);
+        *tag = compute_tag(&self.cipher, &j0, &ghash_out);
     }
 
     /// Decrypt ciphertext and verify the authentication tag in a single call.
@@ -232,13 +433,96 @@ impl AesGcm128 {
         gh.pad();
         gh.update(input);
         let ghash_out = gh.finalize(aad.len() as u64, input.len() as u64);
-        let expected = compute_tag(|block| self.cipher.encrypt_block(block), &j0, &ghash_out);
+        let expected = compute_tag(&self.cipher, &j0, &ghash_out);
 
         // Constant-time tag comparison
         if &expected == tag {
             // Tag matches: decrypt
             let mut ctr = Ctr::new(&j0);
-            ctr.process(|block| self.cipher.encrypt_block(block), input, output);
+            ctr.process(&self.cipher, input, output);
+            DecryptionResult::Match
+        } else {
+            DecryptionResult::MisMatch
+        }
+    }
+
+    /// Encrypt data in place, with associated data, in a single call.
+    ///
+    /// Same as [`AesGcm128::encrypt`], except that the plaintext in `data` is
+    /// replaced by the ciphertext instead of being written to a second buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `nonce` - 96-bit nonce (must never be reused with the same key)
+    /// * `aad` - Additional authenticated data (authenticated but not encrypted)
+    /// * `data` - Plaintext to encrypt, overwritten with the ciphertext
+    /// * `tag` - Output authentication tag
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cryptoxide::aes_gcm::{AesGcm128, Tag};
+    ///
+    /// let cipher = AesGcm128::new(&[0x01u8; 16]);
+    /// let mut data = *b"hello world!";
+    /// let mut tag = Tag([0u8; 16]);
+    /// cipher.encrypt_mut(&[0x02u8; 12], b"aad", &mut data, &mut tag);
+    /// ```
+    pub fn encrypt_mut(&self, nonce: &[u8; 12], aad: &[u8], data: &mut [u8], tag: &mut Tag) {
+        let j0 = make_j0(nonce);
+
+        let mut gh = GHash::new(&self.h);
+        gh.update(aad);
+        gh.pad();
+
+        let mut ctr = Ctr::new(&j0);
+        let len = data.len();
+        encrypt_and_hash_mut(&self.cipher, &mut ctr, &mut gh, data);
+
+        let ghash_out = gh.finalize(aad.len() as u64, len as u64);
+
+        // Tag = AES_K(J0) XOR GHASH
+        *tag = compute_tag(&self.cipher, &j0, &ghash_out);
+    }
+
+    /// Decrypt data in place and verify the authentication tag in a single call.
+    ///
+    /// Same as [`AesGcm128::decrypt`], except that the ciphertext in `data` is
+    /// replaced by the plaintext instead of being written to a second buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `nonce` - 96-bit nonce used during encryption
+    /// * `aad` - Additional authenticated data used during encryption
+    /// * `data` - Ciphertext to decrypt, overwritten with the plaintext
+    /// * `tag` - Expected authentication tag
+    ///
+    /// # Returns
+    ///
+    /// [`DecryptionResult::Match`] if the tag is valid, in which case `data`
+    /// holds the plaintext. [`DecryptionResult::MisMatch`] if the tag does not
+    /// match; `data` is then left holding the unmodified ciphertext.
+    #[must_use = "if the result is not checked, the decrypted data is not authenticated"]
+    pub fn decrypt_mut(
+        &self,
+        nonce: &[u8; 12],
+        aad: &[u8],
+        data: &mut [u8],
+        tag: &Tag,
+    ) -> DecryptionResult {
+        let j0 = make_j0(nonce);
+
+        // Compute the expected tag from the ciphertext, before it is replaced
+        let mut gh = GHash::new(&self.h);
+        gh.update(aad);
+        gh.pad();
+        gh.update(data);
+        let ghash_out = gh.finalize(aad.len() as u64, data.len() as u64);
+        let expected = compute_tag(&self.cipher, &j0, &ghash_out);
+
+        // Constant-time tag comparison
+        if &expected == tag {
+            Ctr::new(&j0).process_mut(&self.cipher, data);
             DecryptionResult::Match
         } else {
             DecryptionResult::MisMatch
@@ -302,20 +586,17 @@ impl AesGcm256 {
         assert_eq!(input.len(), output.len());
         let j0 = make_j0(nonce);
 
-        // CTR encrypt starting from inc32(J0)
-        let enc = |block: &[u8; 16]| -> [u8; 16] { self.cipher.encrypt_block(block) };
-        let mut ctr = Ctr::new(&j0);
-        ctr.process(&enc, input, output);
-
-        // GHASH over AAD || pad || ciphertext || pad || length block
         let mut gh = GHash::new(&self.h);
         gh.update(aad);
         gh.pad();
-        gh.update(output);
+
+        let mut ctr = Ctr::new(&j0);
+        encrypt_and_hash(&self.cipher, &mut ctr, &mut gh, input, output);
+
         let ghash_out = gh.finalize(aad.len() as u64, output.len() as u64);
 
         // Tag = AES_K(J0) XOR GHASH
-        *tag = compute_tag(|block| self.cipher.encrypt_block(block), &j0, &ghash_out);
+        *tag = compute_tag(&self.cipher, &j0, &ghash_out);
     }
 
     /// Decrypt ciphertext and verify the authentication tag in a single call.
@@ -354,12 +635,95 @@ impl AesGcm256 {
         gh.pad();
         gh.update(input);
         let ghash_out = gh.finalize(aad.len() as u64, input.len() as u64);
-        let expected = compute_tag(|block| self.cipher.encrypt_block(block), &j0, &ghash_out);
+        let expected = compute_tag(&self.cipher, &j0, &ghash_out);
 
         // Constant-time tag comparison
         if &expected == tag {
             let mut ctr = Ctr::new(&j0);
-            ctr.process(|block| self.cipher.encrypt_block(block), input, output);
+            ctr.process(&self.cipher, input, output);
+            DecryptionResult::Match
+        } else {
+            DecryptionResult::MisMatch
+        }
+    }
+
+    /// Encrypt data in place, with associated data, in a single call.
+    ///
+    /// Same as [`AesGcm256::encrypt`], except that the plaintext in `data` is
+    /// replaced by the ciphertext instead of being written to a second buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `nonce` - 96-bit nonce (must never be reused with the same key)
+    /// * `aad` - Additional authenticated data (authenticated but not encrypted)
+    /// * `data` - Plaintext to encrypt, overwritten with the ciphertext
+    /// * `tag` - Output authentication tag
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cryptoxide::aes_gcm::{AesGcm256, Tag};
+    ///
+    /// let cipher = AesGcm256::new(&[0x01u8; 32]);
+    /// let mut data = *b"hello world!";
+    /// let mut tag = Tag([0u8; 16]);
+    /// cipher.encrypt_mut(&[0x02u8; 12], b"aad", &mut data, &mut tag);
+    /// ```
+    pub fn encrypt_mut(&self, nonce: &[u8; 12], aad: &[u8], data: &mut [u8], tag: &mut Tag) {
+        let j0 = make_j0(nonce);
+
+        let mut gh = GHash::new(&self.h);
+        gh.update(aad);
+        gh.pad();
+
+        let mut ctr = Ctr::new(&j0);
+        let len = data.len();
+        encrypt_and_hash_mut(&self.cipher, &mut ctr, &mut gh, data);
+
+        let ghash_out = gh.finalize(aad.len() as u64, len as u64);
+
+        // Tag = AES_K(J0) XOR GHASH
+        *tag = compute_tag(&self.cipher, &j0, &ghash_out);
+    }
+
+    /// Decrypt data in place and verify the authentication tag in a single call.
+    ///
+    /// Same as [`AesGcm256::decrypt`], except that the ciphertext in `data` is
+    /// replaced by the plaintext instead of being written to a second buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `nonce` - 96-bit nonce used during encryption
+    /// * `aad` - Additional authenticated data used during encryption
+    /// * `data` - Ciphertext to decrypt, overwritten with the plaintext
+    /// * `tag` - Expected authentication tag
+    ///
+    /// # Returns
+    ///
+    /// [`DecryptionResult::Match`] if the tag is valid, in which case `data`
+    /// holds the plaintext. [`DecryptionResult::MisMatch`] if the tag does not
+    /// match; `data` is then left holding the unmodified ciphertext.
+    #[must_use = "if the result is not checked, the decrypted data is not authenticated"]
+    pub fn decrypt_mut(
+        &self,
+        nonce: &[u8; 12],
+        aad: &[u8],
+        data: &mut [u8],
+        tag: &Tag,
+    ) -> DecryptionResult {
+        let j0 = make_j0(nonce);
+
+        // Compute the expected tag from the ciphertext, before it is replaced
+        let mut gh = GHash::new(&self.h);
+        gh.update(aad);
+        gh.pad();
+        gh.update(data);
+        let ghash_out = gh.finalize(aad.len() as u64, data.len() as u64);
+        let expected = compute_tag(&self.cipher, &j0, &ghash_out);
+
+        // Constant-time tag comparison
+        if &expected == tag {
+            Ctr::new(&j0).process_mut(&self.cipher, data);
             DecryptionResult::Match
         } else {
             DecryptionResult::MisMatch
@@ -380,11 +744,21 @@ enum Cipher {
     Aes256(Aes256),
 }
 
-impl Cipher {
-    fn encrypt_block(&self, input: &[u8; 16]) -> [u8; 16] {
+impl BlockEncryptor for Cipher {
+    fn encrypt_block(&self, input: &[u8; BLOCK_BYTES]) -> [u8; BLOCK_BYTES] {
         match self {
             Cipher::Aes128(c) => c.encrypt_block(input),
             Cipher::Aes256(c) => c.encrypt_block(input),
+        }
+    }
+
+    fn encrypt_blocks(
+        &self,
+        blocks: &[[u8; BLOCK_BYTES]; PARALLEL_BLOCKS],
+    ) -> [[u8; BLOCK_BYTES]; PARALLEL_BLOCKS] {
+        match self {
+            Cipher::Aes128(c) => c.encrypt_blocks(blocks),
+            Cipher::Aes256(c) => c.encrypt_blocks(blocks),
         }
     }
 }
@@ -421,7 +795,7 @@ impl Context {
     pub fn new128(key: &[u8; 16], nonce: &[u8; 12]) -> Self {
         let j0 = make_j0(nonce);
         let cipher = Aes128::new(key);
-        let h = cipher.encrypt_block(&[0u8; 16]);
+        let h = cipher.encrypt_block(&[0u8; BLOCK_BYTES]);
         Context {
             ghash: GHash::new(&h),
             ctr: Ctr::new(&j0),
@@ -439,7 +813,7 @@ impl Context {
         Context {
             ghash: GHash::new(&h),
             ctr: Ctr::new(&j0),
-            cipher: Cipher::Aes256(Aes256::new(key)),
+            cipher: Cipher::Aes256(cipher),
             j0,
             aad_len: 0,
         }
@@ -514,11 +888,8 @@ impl ContextEncryption {
     /// Panics if `input.len() != output.len()`.
     pub fn encrypt(&mut self, input: &[u8], output: &mut [u8]) {
         assert_eq!(input.len(), output.len());
-        let enc = |block: &[u8; 16]| -> [u8; 16] { self.cipher.encrypt_block(block) };
-        self.ctr.process(&enc, input, output);
-        // Feed ciphertext to GHASH
-        self.ghash.update(output);
         self.ct_len += output.len() as u64;
+        encrypt_and_hash(&self.cipher, &mut self.ctr, &mut self.ghash, input, output);
     }
 
     /// Encrypt data in place.
@@ -526,27 +897,8 @@ impl ContextEncryption {
     /// The buffer is encrypted and the resulting ciphertext is fed into
     /// GHASH for authentication. This can be called multiple times.
     pub fn encrypt_mut(&mut self, data: &mut [u8]) {
-        let enc = |block: &[u8; 16]| -> [u8; 16] { self.cipher.encrypt_block(block) };
-        // We need a temporary buffer for in-place operation since CTR process
-        // requires separate input and output. Process block by block.
-        let len = data.len();
-        let mut tmp = [0u8; 16];
-        let mut offset = 0;
-        while offset + 16 <= len {
-            let chunk = &data[offset..offset + 16];
-            self.ctr.process(&enc, chunk, &mut tmp);
-            data[offset..offset + 16].copy_from_slice(&tmp);
-            offset += 16;
-        }
-        if offset < len {
-            let remaining = len - offset;
-            self.ctr
-                .process(&enc, &data[offset..len], &mut tmp[..remaining]);
-            data[offset..len].copy_from_slice(&tmp[..remaining]);
-        }
-        // Feed ciphertext to GHASH
-        self.ghash.update(data);
-        self.ct_len += len as u64;
+        self.ct_len += data.len() as u64;
+        encrypt_and_hash_mut(&self.cipher, &mut self.ctr, &mut self.ghash, data);
     }
 
     /// Finalize the encryption context and return the authentication tag.
@@ -556,11 +908,7 @@ impl ContextEncryption {
     #[must_use]
     pub fn finalize(self) -> Tag {
         let ghash_out = self.ghash.finalize(self.aad_len, self.ct_len);
-        compute_tag(
-            |block| self.cipher.encrypt_block(block),
-            &self.j0,
-            &ghash_out,
-        )
+        compute_tag(&self.cipher, &self.j0, &ghash_out)
     }
 }
 
@@ -590,40 +938,17 @@ impl ContextDecryption {
     /// Panics if `input.len() != output.len()`.
     pub fn decrypt(&mut self, input: &[u8], output: &mut [u8]) {
         assert_eq!(input.len(), output.len());
-        // Feed ciphertext to GHASH FIRST (before decryption)
-        self.ghash.update(input);
         self.ct_len += input.len() as u64;
-        // Then CTR decrypt
-        let enc = |block: &[u8; 16]| -> [u8; 16] { self.cipher.encrypt_block(block) };
-        self.ctr.process(&enc, input, output);
+        hash_and_decrypt(&self.cipher, &mut self.ctr, &mut self.ghash, input, output);
     }
 
     /// Decrypt data in place.
     ///
-    /// The original ciphertext is fed into GHASH before being decrypted.
-    /// A copy of the ciphertext is made internally to preserve the
-    /// authentication input.
+    /// The original ciphertext is fed into GHASH before the buffer is
+    /// decrypted, so authentication stays computed over the ciphertext.
     pub fn decrypt_mut(&mut self, data: &mut [u8]) {
-        // Feed ciphertext to GHASH FIRST
-        self.ghash.update(data);
         self.ct_len += data.len() as u64;
-        // Then CTR decrypt in place
-        let enc = |block: &[u8; 16]| -> [u8; 16] { self.cipher.encrypt_block(block) };
-        let len = data.len();
-        let mut tmp = [0u8; 16];
-        let mut offset = 0;
-        while offset + 16 <= len {
-            let chunk = &data[offset..offset + 16];
-            self.ctr.process(&enc, chunk, &mut tmp);
-            data[offset..offset + 16].copy_from_slice(&tmp);
-            offset += 16;
-        }
-        if offset < len {
-            let remaining = len - offset;
-            self.ctr
-                .process(&enc, &data[offset..len], &mut tmp[..remaining]);
-            data[offset..len].copy_from_slice(&tmp[..remaining]);
-        }
+        hash_and_decrypt_mut(&self.cipher, &mut self.ctr, &mut self.ghash, data);
     }
 
     /// Finalize the decryption context and verify the authentication tag.
@@ -634,11 +959,7 @@ impl ContextDecryption {
     #[must_use = "if the result is not checked, the encrypted data is not authenticated"]
     pub fn finalize(self, expected_tag: &Tag) -> DecryptionResult {
         let ghash_out = self.ghash.finalize(self.aad_len, self.ct_len);
-        let computed = compute_tag(
-            |block| self.cipher.encrypt_block(block),
-            &self.j0,
-            &ghash_out,
-        );
+        let computed = compute_tag(&self.cipher, &self.j0, &ghash_out);
         if &computed == expected_tag {
             DecryptionResult::Match
         } else {
@@ -905,6 +1226,221 @@ mod tests {
             tag_oneshot, tag_inc,
             "Tag should match between one-shot and incremental"
         );
+    }
+
+    /// The in-place interface must agree with the copying one, whatever the
+    /// chunking: `process_mut` goes through a fixed-size stack buffer, so the
+    /// chunk boundaries it introduces must not shift the keystream.
+    #[test]
+    fn test_in_place_matches_oneshot() {
+        let key = [0x77u8; 16];
+        let nonce = [0x33u8; 12];
+        let aad = b"in place aad";
+        let plaintext: [u8; 293] = core::array::from_fn(|i| ((i * 13 + 7) & 0xff) as u8);
+
+        // Reference: one-shot encrypt into a separate output buffer.
+        let cipher = AesGcm128::new(&key);
+        let mut expected_ct = [0u8; 293];
+        let mut expected_tag = Tag([0u8; 16]);
+        cipher.encrypt(&nonce, aad, &plaintext, &mut expected_ct, &mut expected_tag);
+
+        for chunk in [1, 15, 16, 17, 63, 64, 65, 293] {
+            let mut ctx = Context::new128(&key, &nonce);
+            ctx.add_data(aad);
+            let mut enc = ctx.to_encryption();
+            let mut data = plaintext;
+            for part in data.chunks_mut(chunk) {
+                enc.encrypt_mut(part);
+            }
+            let tag = enc.finalize();
+            assert_eq!(data, expected_ct, "ciphertext, {chunk}-byte chunks");
+            assert_eq!(tag, expected_tag, "tag, {chunk}-byte chunks");
+
+            // And decrypting it in place gives the plaintext back.
+            let mut ctx = Context::new128(&key, &nonce);
+            ctx.add_data(aad);
+            let mut dec = ctx.to_decryption();
+            for part in data.chunks_mut(chunk) {
+                dec.decrypt_mut(part);
+            }
+            assert_eq!(dec.finalize(&tag), DecryptionResult::Match);
+            assert_eq!(data, plaintext, "plaintext, {chunk}-byte chunks");
+        }
+    }
+
+    /// Every message length across the multi-block, single-block and partial
+    /// paths of the counter mode has to round-trip and to match the incremental
+    /// interface byte for byte.
+    /// The one-shot in-place API must agree byte for byte with the
+    /// separate-buffer one, for both key sizes and across every length class.
+    #[test]
+    fn test_oneshot_in_place_matches_oneshot() {
+        let nonce = [0x44u8; 12];
+        let aad = b"one shot in place aad";
+        let plaintext: [u8; 300] = core::array::from_fn(|i| ((i * 17 + 3) & 0xff) as u8);
+
+        let cipher128 = AesGcm128::new(&[0x88u8; 16]);
+        let cipher256 = AesGcm256::new(&[0x99u8; 32]);
+
+        for len in [0, 1, 15, 16, 17, 31, 32, 33, 255, 256, 257, 300] {
+            let plaintext = &plaintext[..len];
+
+            let mut expected_ct = [0u8; 300];
+            let expected_ct = &mut expected_ct[..len];
+            let mut expected_tag = Tag([0u8; 16]);
+
+            // AES-128
+            cipher128.encrypt(&nonce, aad, plaintext, expected_ct, &mut expected_tag);
+
+            let mut data = [0u8; 300];
+            let data = &mut data[..len];
+            data.copy_from_slice(plaintext);
+            let mut tag = Tag([0u8; 16]);
+            cipher128.encrypt_mut(&nonce, aad, data, &mut tag);
+            assert_eq!(data, expected_ct, "aes128 ciphertext, {len} bytes");
+            assert_eq!(tag, expected_tag, "aes128 tag, {len} bytes");
+
+            assert_eq!(
+                cipher128.decrypt_mut(&nonce, aad, data, &tag),
+                DecryptionResult::Match,
+                "aes128 tag check, {len} bytes"
+            );
+            assert_eq!(data, plaintext, "aes128 plaintext, {len} bytes");
+
+            // AES-256
+            cipher256.encrypt(&nonce, aad, plaintext, expected_ct, &mut expected_tag);
+
+            data.copy_from_slice(plaintext);
+            cipher256.encrypt_mut(&nonce, aad, data, &mut tag);
+            assert_eq!(data, expected_ct, "aes256 ciphertext, {len} bytes");
+            assert_eq!(tag, expected_tag, "aes256 tag, {len} bytes");
+
+            assert_eq!(
+                cipher256.decrypt_mut(&nonce, aad, data, &tag),
+                DecryptionResult::Match,
+                "aes256 tag check, {len} bytes"
+            );
+            assert_eq!(data, plaintext, "aes256 plaintext, {len} bytes");
+        }
+    }
+
+    /// A failed tag check must leave the caller's buffer untouched, so that a
+    /// forgery does not hand back a buffer full of garbage plaintext.
+    #[test]
+    fn test_oneshot_in_place_mismatch_leaves_data() {
+        let key = [0x21u8; 16];
+        let nonce = [0x22u8; 12];
+        let aad = b"aad";
+        let cipher = AesGcm128::new(&key);
+
+        let mut data = *b"a message long enough to span blocks";
+        let mut tag = Tag([0u8; 16]);
+        cipher.encrypt_mut(&nonce, aad, &mut data, &mut tag);
+        let ciphertext = data;
+
+        // Tampered tag
+        let mut bad_tag = tag.clone();
+        bad_tag.0[0] ^= 1;
+        assert_eq!(
+            cipher.decrypt_mut(&nonce, aad, &mut data, &bad_tag),
+            DecryptionResult::MisMatch
+        );
+        assert_eq!(data, ciphertext, "buffer modified on tag mismatch");
+
+        // Tampered AAD
+        assert_eq!(
+            cipher.decrypt_mut(&nonce, b"other aad", &mut data, &tag),
+            DecryptionResult::MisMatch
+        );
+        assert_eq!(data, ciphertext, "buffer modified on aad mismatch");
+
+        // And the untouched ciphertext still decrypts with the right tag
+        assert_eq!(
+            cipher.decrypt_mut(&nonce, aad, &mut data, &tag),
+            DecryptionResult::Match
+        );
+        assert_eq!(&data, b"a message long enough to span blocks");
+    }
+
+    #[test]
+    fn test_all_lengths_round_trip() {
+        let key = [0x24u8; 32];
+        let nonce = [0x68u8; 12];
+        let cipher = AesGcm256::new(&key);
+
+        let plaintext = [1u8; 5 * 8 * 16 + 3];
+
+        for len in 0..plaintext.len() {
+            let plaintext = &plaintext[..len];
+            let mut ct = vec![0u8; len];
+            let mut tag = Tag([0u8; 16]);
+            cipher.encrypt(&nonce, &[], plaintext, &mut ct, &mut tag);
+
+            let mut ctx = Context::new256(&key, &nonce).to_encryption();
+            let mut ct_incr = vec![0u8; len];
+            ctx.encrypt(plaintext, &mut ct_incr);
+            assert_eq!(ct, ct_incr, "incremental ciphertext at {len} bytes");
+            assert_eq!(ctx.finalize(), tag, "incremental tag at {len} bytes");
+
+            let mut recovered = vec![0u8; len];
+            let result = cipher.decrypt(&nonce, &[], &ct, &mut recovered, &tag);
+            assert_eq!(result, DecryptionResult::Match, "at {len} bytes");
+            assert_eq!(&recovered[..], plaintext, "at {len} bytes");
+        }
+    }
+
+    /// The stitched bulk loop, checked against a path that never enters it.
+    ///
+    /// Fed one byte at a time, the incremental API stays on the general
+    /// single-block paths throughout -- every call has a partial block left
+    /// over from the last -- so it is an independent reference for the whole
+    /// group loop, which the NIST vectors are too short to reach.
+    #[test]
+    fn test_bulk_loop_matches_byte_at_a_time() {
+        let key = [0x3cu8; 16];
+        let nonce = [0x4du8; 12];
+        let aad = b"associated data spanning more than a single block";
+        let cipher = AesGcm128::new(&key);
+
+        let plaintext: [u8; 5 * 8 * 16 + 7] = core::array::from_fn(|i| (i * 37 + 11) as u8);
+
+        // One-shot: the whole message goes through the group loop at once.
+        let mut oneshot = plaintext;
+        let mut oneshot_tag = Tag([0u8; 16]);
+        cipher.encrypt_mut(&nonce, aad, &mut oneshot, &mut oneshot_tag);
+
+        // Byte at a time: only ever the general paths.
+        let mut ctx = Context::new128(&key, &nonce);
+        for byte in aad {
+            ctx.add_data(&[*byte]);
+        }
+        let mut ctx = ctx.to_encryption();
+        let mut byte_by_byte = plaintext;
+        for byte in byte_by_byte.iter_mut() {
+            ctx.encrypt_mut(core::slice::from_mut(byte));
+        }
+        let byte_tag = ctx.finalize();
+
+        assert_eq!(byte_by_byte, oneshot, "ciphertext");
+        assert_eq!(byte_tag, oneshot_tag, "tag");
+
+        // And the same for the decryption direction.
+        let mut ctx = Context::new128(&key, &nonce);
+        ctx.add_data(aad);
+        let mut ctx = ctx.to_decryption();
+        let mut recovered = oneshot;
+        for byte in recovered.iter_mut() {
+            ctx.decrypt_mut(core::slice::from_mut(byte));
+        }
+        assert_eq!(ctx.finalize(&oneshot_tag), DecryptionResult::Match);
+        assert_eq!(recovered, plaintext, "byte at a time decryption");
+
+        let mut bulk = oneshot;
+        assert_eq!(
+            cipher.decrypt_mut(&nonce, aad, &mut bulk, &oneshot_tag),
+            DecryptionResult::Match
+        );
+        assert_eq!(bulk, plaintext, "bulk decryption");
     }
 
     // ============================================================
@@ -1177,6 +1713,11 @@ mod bench {
     }
 
     #[bench]
+    pub fn aes128_gcm_encrypt_256(bh: &mut Bencher) {
+        bench_encrypt(bh, 256);
+    }
+
+    #[bench]
     pub fn aes128_gcm_encrypt_1k(bh: &mut Bencher) {
         bench_encrypt(bh, 1024);
     }
@@ -1184,5 +1725,37 @@ mod bench {
     #[bench]
     pub fn aes128_gcm_encrypt_64k(bh: &mut Bencher) {
         bench_encrypt(bh, 65536);
+    }
+
+    fn bench_encrypt_mut(bh: &mut Bencher, size: usize) {
+        let key = [1u8; 16];
+        let nonce = [2u8; 12];
+        let cipher = AesGcm128::new(&key);
+        let mut data = vec![3u8; size];
+        let mut tag = Tag([0u8; 16]);
+        bh.iter(|| {
+            cipher.encrypt_mut(&nonce, &[], &mut data, &mut tag);
+        });
+        bh.bytes = size as u64;
+    }
+
+    #[bench]
+    pub fn aes128_gcm_encrypt_mut_64(bh: &mut Bencher) {
+        bench_encrypt_mut(bh, 64);
+    }
+
+    #[bench]
+    pub fn aes128_gcm_encrypt_mut_256(bh: &mut Bencher) {
+        bench_encrypt_mut(bh, 256);
+    }
+
+    #[bench]
+    pub fn aes128_gcm_encrypt_mut_1k(bh: &mut Bencher) {
+        bench_encrypt_mut(bh, 1024);
+    }
+
+    #[bench]
+    pub fn aes128_gcm_encrypt_mut_64k(bh: &mut Bencher) {
+        bench_encrypt_mut(bh, 65536);
     }
 }

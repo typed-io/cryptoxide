@@ -4,3 +4,4 @@
 //! [1]: <https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.204.pdf>
 
 mod group;
+mod poly;

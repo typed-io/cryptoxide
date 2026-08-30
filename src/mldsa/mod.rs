@@ -8,6 +8,9 @@ use crate::hashing::{sha256, sha512, shake128, shake256};
 mod group;
 mod poly;
 
+#[cfg(test)]
+mod testvectors;
+
 /// The hash function of `HashML-DSA`, the pre hash variant of ML-DSA
 ///
 /// FIPS 204 section 5.4 signs `H(M)` in place of `M`, with the identity of `H`

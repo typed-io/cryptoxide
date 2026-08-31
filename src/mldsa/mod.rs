@@ -66,3 +66,85 @@ impl PreHash {
         }
     }
 }
+
+/// Define the keys, signature and entry point of one parameter set
+macro_rules! mldsa_impl {
+    (
+        $set:expr,
+        $vk:ident, $sk:ident, $sigt:ident, $keypair:ident,
+        $k:literal, $l:literal, $eta:literal, $eta_bits:literal, $tau:literal,
+        $gamma1:literal, $gamma1_bits:literal, $gamma2:literal, $w1_bits:literal,
+        $omega:literal, $ctilde:literal,
+        $vk_len:literal, $sk_len:literal, $sig_len:literal
+    ) => {};
+}
+
+mldsa_impl!(
+    "ML-DSA-44",
+    VerifyingKey44,
+    SigningKey44,
+    Signature44,
+    keypair44,
+    // k, l, eta, bitlen(2 eta), tau
+    4,
+    4,
+    2,
+    3,
+    39,
+    // gamma1, 1 + bitlen(gamma1 - 1), gamma2, bitlen((q-1)/(2 gamma2) - 1)
+    131072,
+    18,
+    95232,
+    6,
+    // omega, lambda / 4
+    80,
+    32,
+    // verifying key, signing key and signature lengths
+    1312,
+    2560,
+    2420
+);
+
+mldsa_impl!(
+    "ML-DSA-65",
+    VerifyingKey65,
+    SigningKey65,
+    Signature65,
+    keypair65,
+    6,
+    5,
+    4,
+    4,
+    49,
+    524288,
+    20,
+    261888,
+    4,
+    55,
+    48,
+    1952,
+    4032,
+    3309
+);
+
+mldsa_impl!(
+    "ML-DSA-87",
+    VerifyingKey87,
+    SigningKey87,
+    Signature87,
+    keypair87,
+    8,
+    7,
+    2,
+    3,
+    60,
+    524288,
+    20,
+    261888,
+    4,
+    75,
+    64,
+    2592,
+    4896,
+    4627
+);

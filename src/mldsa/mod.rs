@@ -3,13 +3,21 @@
 //!
 //! [1]: <https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.204.pdf>
 
+use crate::hashing::shake::Shake256;
 use crate::hashing::{sha256, sha512, shake128, shake256};
 
+use encoding::{pk_encode, sk_encode};
+use poly::{rej_bounded_poly, rej_ntt_poly, Poly};
+
+mod encoding;
 mod group;
 mod poly;
 
 #[cfg(test)]
 mod testvectors;
+
+/// Length in bytes of the seed taken by key generation, for every parameter set
+pub const SEED_LENGTH: usize = 32;
 
 /// The hash function of `HashML-DSA`, the pre hash variant of ML-DSA
 ///
@@ -67,6 +75,67 @@ impl PreHash {
     }
 }
 
+/// Accumulate `sum_j A[i][j] v[j]` over the row `i` of the matrix `A` that
+/// `ExpandA` (FIPS 204 Algorithm 32) derives from `rho`
+///
+/// The matrix is the largest object of the scheme, so it is never materialised
+/// and each row is expanded where it is used. Signing pays for that on every
+/// rejection round, which is the price of a working set that does not grow with
+/// `k l`.
+fn matrix_row_mul<const L: usize>(rho: &[u8; 32], i: usize, v: &[Poly; L]) -> Poly {
+    let mut acc = Poly::ZERO;
+    for (j, vj) in v.iter().enumerate() {
+        acc.mul_acc(&rej_ntt_poly(rho, j as u8, i as u8), vj);
+    }
+    acc
+}
+
+/// ML-DSA.KeyGen_internal (FIPS 204 Algorithm 6)
+fn keygen<const K: usize, const L: usize, const ETA: u32, const ETA_BITS: usize>(
+    xi: &[u8; SEED_LENGTH],
+    pk: &mut [u8],
+    sk: &mut [u8],
+) {
+    // the dimensions of the parameter set are mixed into the seed, so that two
+    // of them never derive anything from the same expanded seed
+    //
+    // seed is layout as : rho (32 bytes) | rho_prime (64 bytes) | k_seed (32 bytes)
+    let seeds: [u8; 128] = Shake256::new()
+        .update(xi)
+        .update(&[K as u8, L as u8])
+        .finalize();
+    let rho = <&[u8; 32]>::try_from(&seeds[0..32]).unwrap();
+    let rho_prime = <&[u8; 64]>::try_from(&seeds[32..96]).unwrap();
+    let k_seed = <&[u8; 32]>::try_from(&seeds[96..128]).unwrap();
+
+    let s1: [Poly; L] = core::array::from_fn(|i| rej_bounded_poly::<ETA>(rho_prime, i as u16));
+    let s2: [Poly; K] =
+        core::array::from_fn(|i| rej_bounded_poly::<ETA>(rho_prime, (L + i) as u16));
+
+    let mut s1_hat = s1;
+    for p in s1_hat.iter_mut() {
+        p.ntt();
+    }
+
+    // t = A s1 + s2, of which the public key keeps only the high bits: dropping
+    // the low ones is what makes a public key smaller than t, and the hints of
+    // a signature are what let a verifier work without them
+    let mut t1 = [Poly::ZERO; K];
+    let mut t0 = [Poly::ZERO; K];
+    for (i, s2i) in s2.iter().enumerate() {
+        let mut t = matrix_row_mul(rho, i, &s1_hat);
+        t.inv_ntt();
+        t.add_mut(s2i);
+        (t1[i], t0[i]) = t.power2round();
+    }
+
+    pk_encode::<K>(rho, &t1, pk);
+    // tr binds every signature to the public key, and is kept in the signing
+    // key so that signing does not have to recompute the public key
+    let tr: [u8; 64] = Shake256::new().update(pk).finalize();
+    sk_encode::<K, L, ETA_BITS>(rho, k_seed, &tr, &s1, &s2, &t0, ETA, sk);
+}
+
 /// Number of bits needed to represent `x`, the `bitlen` of FIPS 204
 const fn bitlen(x: u32) -> usize {
     (u32::BITS - x.leading_zeros()) as usize
@@ -105,6 +174,17 @@ macro_rules! mldsa_impl {
         #[doc = concat!($set, " signature")]
         #[derive(Clone)]
         pub struct $sigt([u8; $sig_len]);
+
+        #[doc = concat!("Generate an ", $set, " key pair from the seed `xi`")]
+        ///
+        /// `xi` must be 32 independent, freshly generated random bytes; see the
+        /// [module documentation](crate::mldsa#randomness).
+        pub fn $keypair(xi: &[u8; SEED_LENGTH]) -> ($vk, $sk) {
+            let mut vk = [0u8; $vk_len];
+            let mut sk = [0u8; $sk_len];
+            keygen::<$k, $l, $eta, $eta_bits>(xi, &mut vk, &mut sk);
+            ($vk(vk), $sk(sk))
+        }
 
         impl From<[u8; $vk_len]> for $vk {
             fn from(bytes: [u8; $vk_len]) -> Self {

@@ -67,6 +67,11 @@ impl PreHash {
     }
 }
 
+/// Number of bits needed to represent `x`, the `bitlen` of FIPS 204
+const fn bitlen(x: u32) -> usize {
+    (u32::BITS - x.leading_zeros()) as usize
+}
+
 /// Define the keys, signature and entry point of one parameter set
 macro_rules! mldsa_impl {
     (
@@ -76,7 +81,79 @@ macro_rules! mldsa_impl {
         $gamma1:literal, $gamma1_bits:literal, $gamma2:literal, $w1_bits:literal,
         $omega:literal, $ctilde:literal,
         $vk_len:literal, $sk_len:literal, $sig_len:literal
-    ) => {};
+    ) => {
+        // check the literals against the formulas of FIPS 204 section 4 to make the expected invariant holds
+        const _: () = {
+            assert!($eta == 2 || $eta == 4);
+            assert!($eta_bits == bitlen(2 * $eta));
+            assert!($gamma1_bits == bitlen(2 * $gamma1 - 1));
+            assert!($w1_bits == bitlen((group::Q - 1) / (2 * $gamma2) - 1));
+            assert!((group::Q - 1) % (2 * $gamma2) == 0);
+            assert!($vk_len == 32 + 32 * 10 * $k);
+            assert!($sk_len == 128 + 32 * ($eta_bits * ($k + $l) + group::D * $k));
+            assert!($sig_len == $ctilde + 32 * $gamma1_bits * $l + $omega + $k);
+        };
+
+        #[doc = concat!($set, " verifying key, the public half of a key pair")]
+        #[derive(Clone)]
+        pub struct $vk([u8; $vk_len]);
+
+        #[doc = concat!($set, " signing key, the secret half of a key pair")]
+        #[derive(Clone)]
+        pub struct $sk([u8; $sk_len]);
+
+        #[doc = concat!($set, " signature")]
+        #[derive(Clone)]
+        pub struct $sigt([u8; $sig_len]);
+
+        impl From<[u8; $vk_len]> for $vk {
+            fn from(bytes: [u8; $vk_len]) -> Self {
+                $vk(bytes)
+            }
+        }
+
+        impl From<[u8; $sig_len]> for $sigt {
+            fn from(bytes: [u8; $sig_len]) -> Self {
+                $sigt(bytes)
+            }
+        }
+
+        impl AsRef<[u8; $vk_len]> for $vk {
+            fn as_ref(&self) -> &[u8; $vk_len] {
+                &self.0
+            }
+        }
+
+        impl AsRef<[u8]> for $vk {
+            fn as_ref(&self) -> &[u8] {
+                &self.0[..]
+            }
+        }
+
+        impl AsRef<[u8; $sk_len]> for $sk {
+            fn as_ref(&self) -> &[u8; $sk_len] {
+                &self.0
+            }
+        }
+
+        impl AsRef<[u8]> for $sk {
+            fn as_ref(&self) -> &[u8] {
+                &self.0[..]
+            }
+        }
+
+        impl AsRef<[u8; $sig_len]> for $sigt {
+            fn as_ref(&self) -> &[u8; $sig_len] {
+                &self.0
+            }
+        }
+
+        impl AsRef<[u8]> for $sigt {
+            fn as_ref(&self) -> &[u8] {
+                &self.0[..]
+            }
+        }
+    };
 }
 
 mldsa_impl!(

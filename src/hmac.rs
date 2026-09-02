@@ -151,7 +151,13 @@ pub trait Algorithm {
 algorithm_impl!(Sha1, sha1, Context);
 
 #[cfg(feature = "sha2")]
+algorithm_impl!(Sha224, sha2, Context224);
+
+#[cfg(feature = "sha2")]
 algorithm_impl!(Sha256, sha2, Context256);
+
+#[cfg(feature = "sha2")]
+algorithm_impl!(Sha384, sha2, Context384);
 
 #[cfg(feature = "sha2")]
 algorithm_impl!(Sha512, sha2, Context512);

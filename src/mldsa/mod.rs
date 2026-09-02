@@ -21,6 +21,8 @@
 
 use crate::hashing::shake::Shake256;
 use crate::hashing::{sha256, sha512, shake128, shake256};
+use crate::mldsa::encoding::{sig_encode, sk_decode, SigningKeyErrorInvalidRange};
+use crate::mldsa::poly::{expand_mask_poly, sample_in_ball, Hint};
 
 use encoding::{pk_encode, sk_encode};
 use poly::{rej_bounded_poly, rej_ntt_poly, Poly};
@@ -34,6 +36,18 @@ mod testvectors;
 
 /// Length in bytes of the seed taken by key generation, for every parameter set
 pub const SEED_LENGTH: usize = 32;
+
+/// Length in bytes of the extra randomness taken by signing, for every parameter set
+pub const RANDOMIZER_LENGTH: usize = 32;
+
+/// Longest context string a signature can be bound to
+pub const MAX_CONTEXT_LENGTH: usize = 255;
+
+/// Widest `w1` encoding of any parameter set, the 6 bits of ML-DSA-44
+const MAX_W1_BITS: usize = 6;
+
+/// Longest commitment hash of any parameter set, the `lambda / 4` of ML-DSA-87
+const MAX_CTILDE: usize = 64;
 
 /// The hash function of `HashML-DSA`, the pre hash variant of ML-DSA
 ///
@@ -152,6 +166,199 @@ fn keygen<const K: usize, const L: usize, const ETA: u32, const ETA_BITS: usize>
     sk_encode::<K, L, ETA_BITS>(rho, k_seed, &tr, &s1, &s2, &t0, ETA, sk);
 }
 
+/// ML-DSA.Sign_internal (FIPS 204 Algorithm 7)
+fn sign_internal<
+    const K: usize,
+    const L: usize,
+    const ETA: u32,
+    const ETA_BITS: usize,
+    const TAU: usize,
+    const GAMMA1: u32,
+    const GAMMA1_BITS: usize,
+    const GAMMA2: u32,
+    const W1_BITS: usize,
+    const OMEGA: usize,
+    const CTILDE: usize,
+>(
+    sk: &[u8],
+    m_prime: &[&[u8]],
+    rnd: &[u8; RANDOMIZER_LENGTH],
+    sig: &mut [u8],
+) -> Result<(), SigningKeyErrorInvalidRange> {
+    let parts = sk_decode::<K, L, ETA_BITS>(sk, ETA)?;
+    // the largest a coefficient of `c s` can be, for `s` bounded by eta
+    let beta = TAU as u32 * ETA;
+
+    let mut s1_hat = parts.s1;
+    let mut s2_hat = parts.s2;
+    let mut t0_hat = parts.t0;
+    for p in s1_hat
+        .iter_mut()
+        .chain(s2_hat.iter_mut())
+        .chain(t0_hat.iter_mut())
+    {
+        p.ntt();
+    }
+
+    // mu binds the message to the public key, through the tr the signing key
+    // carries
+    let mut hasher = Shake256::new().update(&parts.tr);
+    for piece in m_prime {
+        hasher.update_mut(piece);
+    }
+    let mu: [u8; 64] = hasher.finalize();
+
+    // the mask is derived from the secret K, the caller's rnd and mu. With a
+    // fresh rnd this is the hedged variant, with zeros the deterministic one;
+    // either way two different messages never share a mask.
+    let rho_prime2: [u8; 64] = Shake256::new()
+        .update(&parts.k_seed)
+        .update(rnd)
+        .update(&mu)
+        .finalize();
+
+    let mut kappa: u16 = 0;
+    loop {
+        let y: [Poly; L] = core::array::from_fn(|i| {
+            expand_mask_poly::<GAMMA1, GAMMA1_BITS>(&rho_prime2, kappa + i as u16)
+        });
+
+        // w = A y. Its high bits are the commitment: they are all the verifier
+        // will be able to recompute, and they are what the challenge hashes.
+        let mut w = [Poly::ZERO; K];
+        let mut commit = Shake256::new().update(&mu);
+        {
+            let mut y_hat = y;
+            for p in y_hat.iter_mut() {
+                p.ntt();
+            }
+            let mut w1_packed = [0u8; 32 * MAX_W1_BITS];
+            let w1_packed = &mut w1_packed[..32 * W1_BITS];
+            for (i, wi) in w.iter_mut().enumerate() {
+                *wi = matrix_row_mul(&parts.rho, i, &y_hat);
+                wi.inv_ntt();
+                // w1Encode (Algorithm 28), streamed row by row into the hash
+                wi.high_bits::<GAMMA2>().simple_pack::<W1_BITS>(w1_packed);
+                commit.update_mut(w1_packed);
+            }
+        }
+
+        let mut c_tilde = [0u8; MAX_CTILDE];
+        let c_tilde = &mut c_tilde[..CTILDE];
+        commit.finalize_at(c_tilde);
+
+        let mut c = sample_in_ball::<TAU>(c_tilde);
+        c.ntt();
+
+        // z = y + c s1 is the response. The mask has to hide c s1 completely,
+        // so a z that came out too large is thrown away rather than published:
+        // its distribution would otherwise depend on s1.
+        let mut z = [Poly::ZERO; L];
+        let mut retry = false;
+        for ((zi, yi), s1i) in z.iter_mut().zip(y.iter()).zip(s1_hat.iter()) {
+            zi.mul_acc(&c, s1i);
+            zi.inv_ntt();
+            zi.add_mut(yi);
+            retry |= zi.norm() >= GAMMA1 - beta;
+        }
+
+        // w - c s2 has to keep the high bits of w, up to the one step a hint can
+        // describe, or the verifier could not recompute the commitment
+        for (wi, s2i) in w.iter_mut().zip(s2_hat.iter()) {
+            let mut cs2 = Poly::ZERO;
+            cs2.mul_acc(&c, s2i);
+            cs2.inv_ntt();
+            wi.sub_mut(&cs2);
+            retry |= wi.low_bits_norm::<GAMMA2>() >= GAMMA2 - beta;
+        }
+
+        if !retry {
+            let mut hint = [Hint::ZERO; K];
+            let mut ones = 0;
+            for (hi, (wi, t0i)) in hint.iter_mut().zip(w.iter().zip(t0_hat.iter())) {
+                let mut ct0 = Poly::ZERO;
+                ct0.mul_acc(&c, t0i);
+                ct0.inv_ntt();
+                retry |= ct0.norm() >= GAMMA2;
+                // the verifier reaches w - c s2 + c t0, since the public key
+                // dropped t0; the hint says where that lands in another interval
+                let mut approx = *wi;
+                approx.add_mut(&ct0);
+                *hi = Poly::make_hint::<GAMMA2>(&approx, wi);
+                ones += hi.count();
+            }
+            // a hint too large would not fit its encoding, which reserves room
+            // for omega positions in total
+            if !retry && ones <= OMEGA as u32 {
+                sig_encode::<K, L, GAMMA1_BITS, OMEGA>(c_tilde, &z, &hint, GAMMA1, sig);
+                return Ok(());
+            }
+        }
+
+        kappa += L as u16;
+    }
+}
+
+/// Recompute the public `t1` of a signing key, by redoing the `t = A s1 + s2`
+/// of key generation and rounding it the same way
+fn public_from_secret<const K: usize, const L: usize, const ETA_BITS: usize>(
+    sk: &[u8],
+    eta: u32,
+    pk: &mut [u8],
+) {
+    let parts = sk_decode::<K, L, ETA_BITS>(sk, eta)
+        .expect("a signing key is checked when it is deserialised");
+
+    let mut s1_hat = parts.s1;
+    for p in s1_hat.iter_mut() {
+        p.ntt();
+    }
+
+    let mut t1 = [Poly::ZERO; K];
+    for (i, (t1i, s2i)) in t1.iter_mut().zip(parts.s2.iter()).enumerate() {
+        let mut t = matrix_row_mul(&parts.rho, i, &s1_hat);
+        t.inv_ntt();
+        t.add_mut(s2i);
+        (*t1i, _) = t.power2round();
+    }
+
+    pk_encode::<K>(&parts.rho, &t1, pk);
+}
+
+/// Potential Error that can happens during signing operation
+#[derive(Clone, Copy, Debug)]
+pub enum SigningError {
+    /// Invalid Context Length. only support up to [`MAX_CONTEXT_LENGTH`] bytes
+    InvalidContextLength,
+    /// Signing Key has invalid range
+    SigningKeyInvalidRange,
+}
+
+/// Build the message representative `M'` and hand its pieces to `f`
+///
+/// `M'` is the concatenation of a domain separator, the length prefixed context
+/// string and the message, in the pure case, or the digest and its object
+/// identifier in the pre hashed one. It is passed along as its pieces so that a
+/// large message never has to be copied into a buffer of its own.
+fn message_representative<T>(
+    prehash: Option<PreHash>,
+    message: &[u8],
+    context: &[u8],
+    f: impl FnOnce(&[&[u8]]) -> Result<T, SigningError>,
+) -> Result<T, SigningError> {
+    if context.len() > MAX_CONTEXT_LENGTH {
+        return Err(SigningError::InvalidContextLength);
+    }
+    match prehash {
+        None => f(&[&[0u8, context.len() as u8], context, message]),
+        Some(ph) => {
+            let mut buf = [0u8; PreHash::MAX_DIGEST];
+            let digest = ph.hash(message, &mut buf);
+            f(&[&[1u8, context.len() as u8], context, &ph.oid(), digest])
+        }
+    }
+}
+
 /// Number of bits needed to represent `x`, the `bitlen` of FIPS 204
 const fn bitlen(x: u32) -> usize {
     (u32::BITS - x.leading_zeros()) as usize
@@ -200,6 +407,119 @@ macro_rules! mldsa_impl {
             let mut sk = [0u8; $sk_len];
             keygen::<$k, $l, $eta, $eta_bits>(xi, &mut vk, &mut sk);
             ($vk(vk), $sk(sk))
+        }
+
+        impl $sk {
+            /// Length in bytes of the serialised key
+            pub const LENGTH: usize = $sk_len;
+
+            /// Deserialise a signing key, checking the range that FIPS 204
+            /// requires of the `s1` and `s2` it encodes
+            ///
+            /// The `tr` that the key carries is not cross checked against the
+            /// vectors it accompanies, which FIPS 204 does not ask for either:
+            /// a key whose `tr` does not belong to it simply signs nothing that
+            /// its own verifying key accepts.
+            pub fn from_bytes(bytes: [u8; $sk_len]) -> Result<Self, SigningKeyErrorInvalidRange> {
+                sk_decode::<$k, $l, $eta_bits>(&bytes, $eta)?;
+                Ok($sk(bytes))
+            }
+
+            /// The verifying key of the same key pair
+            ///
+            /// A signing key carries only the hash of its verifying key, so
+            /// this recomputes `t` from the secret vectors and costs about as
+            /// much as key generation. Keep the key returned by
+            #[doc = concat!("[`", stringify!($keypair), "`] instead when there is one to keep.")]
+            pub fn verifying_key(&self) -> $vk {
+                let mut vk = [0u8; $vk_len];
+                public_from_secret::<$k, $l, $eta_bits>(&self.0, $eta, &mut vk);
+                $vk(vk)
+            }
+
+            #[doc = concat!("Sign `message` with this ", $set, " key, hedging with `rnd`")]
+            ///
+            /// `rnd` must be 32 freshly generated random bytes, and does not
+            /// have to be kept secret; see the
+            /// [module documentation](crate::mldsa#randomness). `context` is
+            /// bound into the signature and must be at most
+            /// [`MAX_CONTEXT_LENGTH`] bytes, which is the only way this can
+            /// fail.
+            pub fn sign(
+                &self,
+                message: &[u8],
+                context: &[u8],
+                rnd: &[u8; RANDOMIZER_LENGTH],
+            ) -> Result<$sigt, SigningError> {
+                self.sign_with(None, message, context, rnd)
+            }
+
+            #[doc = concat!("Sign `message` with this ", $set, " key, without any randomness")]
+            ///
+            /// This is the deterministic variant of FIPS 204: the same message
+            /// and context always give the same signature. Prefer
+            /// [`sign`](Self::sign) where fresh randomness is available.
+            pub fn sign_deterministic(
+                &self,
+                message: &[u8],
+                context: &[u8],
+            ) -> Result<$sigt, SigningError> {
+                self.sign_with(None, message, context, &[0u8; RANDOMIZER_LENGTH])
+            }
+
+            /// Sign a digest of `message` rather than the message itself,
+            /// hedging with `rnd`
+            ///
+            /// This is `HashML-DSA` (FIPS 204 section 5.4); the signature it
+            /// produces is not interchangeable with the one
+            /// [`sign`](Self::sign) makes over the same message.
+            pub fn sign_prehash(
+                &self,
+                prehash: PreHash,
+                message: &[u8],
+                context: &[u8],
+                rnd: &[u8; RANDOMIZER_LENGTH],
+            ) -> Result<$sigt, SigningError> {
+                self.sign_with(Some(prehash), message, context, rnd)
+            }
+
+            /// Sign a digest of `message` rather than the message itself,
+            /// without any randomness
+            pub fn sign_prehash_deterministic(
+                &self,
+                prehash: PreHash,
+                message: &[u8],
+                context: &[u8],
+            ) -> Result<$sigt, SigningError> {
+                self.sign_with(Some(prehash), message, context, &[0u8; RANDOMIZER_LENGTH])
+            }
+
+            fn sign_with(
+                &self,
+                prehash: Option<PreHash>,
+                message: &[u8],
+                context: &[u8],
+                rnd: &[u8; RANDOMIZER_LENGTH],
+            ) -> Result<$sigt, SigningError> {
+                let mut sig = [0u8; $sig_len];
+                message_representative(prehash, message, context, |m| {
+                    sign_internal::<
+                        $k,
+                        $l,
+                        $eta,
+                        $eta_bits,
+                        $tau,
+                        $gamma1,
+                        $gamma1_bits,
+                        $gamma2,
+                        $w1_bits,
+                        $omega,
+                        $ctilde,
+                    >(&self.0, m, rnd, &mut sig)
+                    .map_err(|_: SigningKeyErrorInvalidRange| SigningError::SigningKeyInvalidRange)
+                })?;
+                Ok($sigt(sig))
+            }
         }
 
         impl From<[u8; $vk_len]> for $vk {

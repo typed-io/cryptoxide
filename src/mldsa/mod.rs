@@ -321,3 +321,9 @@ mldsa_impl!(
     4896,
     4627
 );
+
+#[cfg(test)]
+mod tests;
+
+#[cfg(all(test, feature = "with-bench"))]
+mod bench {}

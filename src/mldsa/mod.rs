@@ -1,6 +1,22 @@
 //! ML-DSA, the Module-Lattice-Based Digital Signature Algorithm standardised in
 //! [FIPS 204][1]
 //!
+//! ML-DSA is a assymetric cryptographic signature algorithm that is currently
+//! post quantum secure. The security assumption is based on the Module Learning With
+//! Error problem and finding short vectors.
+//!
+//! Three parameter sets are standardised, in increasing order of security and
+//! cost, and each of them has its own keys, signature and entry point, named
+//! with a `44`, `65` or `87` suffix.
+//!
+//! Table 2. [FIPS 204][1]:
+//!
+//! | Parameter set | Verifying key | Signing key | Signature   |
+//! | ------------- | ------------- | ----------- | ----------- |
+//! | ML-DSA-44     | 1312 bytes    | 2560 bytes  | 2420 bytes  |
+//! | ML-DSA-65     | 1952 bytes    | 4032 bytes  | 3309 bytes  |
+//! | ML-DSA-87     | 2592 bytes    | 4896 bytes  | 4627 bytes  |
+//!
 //! [1]: <https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.204.pdf>
 
 use crate::hashing::shake::Shake256;

@@ -41,7 +41,8 @@ default = [
     "curve25519",
     "ed25519",
     "x25519",
-    "mlkem"
+    "mlkem",
+    "mldsa"
 ]
 aes = []
 aes-gcm = ["aes"]
@@ -68,6 +69,8 @@ ed25519 = ["curve25519"]
 x25519 = ["curve25519"]
 
 mlkem = ["sha3"]
+# the pre hash variant of ML-DSA signs SHA-2 digests as well as SHA-3 ones
+mldsa = ["sha3", "sha2"]
 
 with-bench = []
 force-32bits = []

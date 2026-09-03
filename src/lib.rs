@@ -23,6 +23,7 @@
 //! * Argon2 support
 //! * SHA-3 support
 //! * ML-KEM support
+//! * ML-DSA support
 //!
 //! As with everything cryptographic implementations, please make sure it suits your security requirements,
 //! and review and audit before using.
@@ -101,6 +102,9 @@ pub mod kdf;
 
 #[cfg(feature = "mlkem")]
 pub mod mlkem;
+
+#[cfg(feature = "mldsa")]
+pub mod mldsa;
 
 #[cfg(feature = "hmac")]
 pub mod hmac;

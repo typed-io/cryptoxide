@@ -1,6 +1,9 @@
-# 0.6.4
+# 0.6.5
 
 * add support for HMAC-SHA224 and HMAC-SHA384
+
+# 0.6.4
+
 * add ML-DSA (FIPS 204) in the `mldsa` module, with the three standard parameters set and some standardly defined hash methods
 
 # 0.6.3

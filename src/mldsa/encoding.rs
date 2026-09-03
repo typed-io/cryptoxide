@@ -30,6 +30,23 @@ pub(super) fn pk_encode<const K: usize>(rho: &[u8; 32], t1: &[Poly; K], pk: &mut
     }
 }
 
+/// FIPS 204 Algorithm 23 `pkDecode`
+///
+/// Every 10 bits value is a coefficient that key generation could have
+/// produced, so a public key of the right length is always well formed.
+pub(super) fn pk_decode<const K: usize>(pk: &[u8]) -> (&[u8; 32], [Poly; K]) {
+    assert_eq!(pk.len(), 32 + K * T1_ENCODED);
+
+    let (rho, t1) = pk.split_at(32);
+    let rho = <&[u8; 32]>::try_from(rho).unwrap();
+    (
+        rho,
+        core::array::from_fn(|i| {
+            Poly::simple_unpack::<T1_BITS>(&t1[i * T1_ENCODED..(i + 1) * T1_ENCODED])
+        }),
+    )
+}
+
 /// FIPS 204 Algorithm 24 `skEncode`
 #[allow(clippy::too_many_arguments)]
 pub(super) fn sk_encode<const K: usize, const L: usize, const ETA_BITS: usize>(
@@ -153,6 +170,33 @@ pub(super) fn sig_encode<
     hint_pack::<K, OMEGA>(h, out_h);
 }
 
+/// FIPS 204 Algorithm 27 `sigDecode`, without the commitment hash that the
+/// caller slices off the front itself
+///
+/// Returns `None` for the malformed hint encodings that the specification maps
+/// to the failure of `HintBitUnpack`. The range of `z` is not checked here: the
+/// verifier folds that into its own norm check.
+pub(super) fn sig_decode<
+    const K: usize,
+    const L: usize,
+    const GAMMA1_BITS: usize,
+    const OMEGA: usize,
+>(
+    sig: &[u8],
+    c_tilde_len: usize,
+    gamma1: u32,
+) -> Option<([Poly; L], [Hint; K])> {
+    let z_len = 32 * GAMMA1_BITS;
+    assert_eq!(sig.len(), c_tilde_len + L * z_len + OMEGA + K);
+
+    let (in_z, in_h) = sig[c_tilde_len..].split_at(L * z_len);
+    let z = core::array::from_fn(|i| {
+        Poly::signed_unpack::<GAMMA1_BITS>(&in_z[i * z_len..(i + 1) * z_len], gamma1 as i32)
+    });
+    let h = hint_unpack::<K, OMEGA>(in_h)?;
+    Some((z, h))
+}
+
 /// FIPS 204 Algorithm 20 `HintBitPack`
 ///
 /// The hint is written as the sorted positions of its set bits, followed by one
@@ -171,4 +215,35 @@ fn hint_pack<const K: usize, const OMEGA: usize>(h: &[Hint; K], out: &mut [u8]) 
         }
         out[OMEGA + i] = index as u8;
     }
+}
+
+/// FIPS 204 Algorithm 21 `HintBitUnpack`
+///
+/// A hint has exactly one encoding, and this rejects every byte string that is
+/// not one: a running total that goes backwards or past `OMEGA`, positions that
+/// do not strictly increase within a polynomial, or a non zero byte in the
+/// padding left over after the last position.
+fn hint_unpack<const K: usize, const OMEGA: usize>(y: &[u8]) -> Option<[Hint; K]> {
+    assert_eq!(y.len(), OMEGA + K);
+
+    let mut h = [Hint::ZERO; K];
+    let mut index = 0usize;
+    for (i, hi) in h.iter_mut().enumerate() {
+        let end = y[OMEGA + i] as usize;
+        if end < index || end > OMEGA {
+            return None;
+        }
+        let first = index;
+        while index < end {
+            if index > first && y[index - 1] >= y[index] {
+                return None;
+            }
+            hi.set(y[index] as usize);
+            index += 1;
+        }
+    }
+    if y[index..OMEGA].iter().any(|b| *b != 0) {
+        return None;
+    }
+    Some(h)
 }

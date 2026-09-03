@@ -19,9 +19,12 @@
 //!
 //! [1]: <https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.204.pdf>
 
+use crate::constant_time::CtEqual;
 use crate::hashing::shake::Shake256;
 use crate::hashing::{sha256, sha512, shake128, shake256};
-use crate::mldsa::encoding::{sig_encode, sk_decode, SigningKeyErrorInvalidRange};
+use crate::mldsa::encoding::{
+    pk_decode, sig_decode, sig_encode, sk_decode, SigningKeyErrorInvalidRange,
+};
 use crate::mldsa::poly::{expand_mask_poly, sample_in_ball, Hint};
 
 use encoding::{pk_encode, sk_encode};
@@ -299,6 +302,81 @@ fn sign_internal<
     }
 }
 
+/// ML-DSA.Verify_internal (FIPS 204 Algorithm 8)
+fn verify_internal<
+    const K: usize,
+    const L: usize,
+    const ETA: u32,
+    const TAU: usize,
+    const GAMMA1: u32,
+    const GAMMA1_BITS: usize,
+    const GAMMA2: u32,
+    const W1_BITS: usize,
+    const OMEGA: usize,
+    const CTILDE: usize,
+>(
+    pk: &[u8],
+    m_prime: &[&[u8]],
+    sig: &[u8],
+) -> bool {
+    let beta = TAU as u32 * ETA;
+
+    let Some((z, hint)) = sig_decode::<K, L, GAMMA1_BITS, OMEGA>(sig, CTILDE, GAMMA1) else {
+        // the hint did not have the one encoding the specification gives it
+        return false;
+    };
+    let c_tilde = &sig[..CTILDE];
+
+    // only a signer holding s1 can answer with a short z; a forger that picked
+    // z freely would be caught here
+    if z.iter().any(|p| p.norm() >= GAMMA1 - beta) {
+        return false;
+    }
+
+    let (rho, t1) = pk_decode::<K>(pk);
+
+    let tr: [u8; 64] = Shake256::new().update(pk).finalize();
+    let mut hasher = Shake256::new().update(&tr);
+    for piece in m_prime {
+        hasher.update_mut(piece);
+    }
+    let mu: [u8; 64] = hasher.finalize();
+
+    let mut c = sample_in_ball::<TAU>(c_tilde);
+    c.ntt();
+
+    let mut z_hat = z;
+    for p in z_hat.iter_mut() {
+        p.ntt();
+    }
+
+    // A z - c t1 2^d equals w - c s2 + c t0, ie. w up to the low bits the
+    // public key does not carry; the hints put the high bits back where the
+    // signer saw them
+    let mut commit = Shake256::new().update(&mu);
+    let mut w1_packed = [0u8; 32 * MAX_W1_BITS];
+    let w1_packed = &mut w1_packed[..32 * W1_BITS];
+    for (i, (t1i, hi)) in t1.iter().zip(hint.iter()).enumerate() {
+        let mut approx = matrix_row_mul(rho, i, &z_hat);
+        let mut ct1 = t1i.scale_2d();
+        ct1.ntt();
+        let mut prod = Poly::ZERO;
+        prod.mul_acc(&c, &ct1);
+        approx.sub_mut(&prod);
+        approx.inv_ntt();
+        approx
+            .use_hint::<GAMMA2>(hi)
+            .simple_pack::<W1_BITS>(w1_packed);
+        commit.update_mut(w1_packed);
+    }
+
+    let mut expected = [0u8; MAX_CTILDE];
+    let expected = &mut expected[..CTILDE];
+    commit.finalize_at(expected);
+
+    c_tilde.ct_eq(&expected[..]).is_true()
+}
+
 /// Recompute the public `t1` of a signing key, by redoing the `t = A s1 + s2`
 /// of key generation and rounding it the same way
 fn public_from_secret<const K: usize, const L: usize, const ETA_BITS: usize>(
@@ -326,7 +404,7 @@ fn public_from_secret<const K: usize, const L: usize, const ETA_BITS: usize>(
 }
 
 /// Potential Error that can happens during signing operation
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SigningError {
     /// Invalid Context Length. only support up to [`MAX_CONTEXT_LENGTH`] bytes
     InvalidContextLength,
@@ -520,6 +598,101 @@ macro_rules! mldsa_impl {
                 })?;
                 Ok($sigt(sig))
             }
+
+            /// Raw bytes array for the signing key
+            pub fn bytes(&self) -> &[u8; $sk_len] {
+                &self.0
+            }
+        }
+
+        impl $vk {
+            /// Length in bytes of the serialised key
+            pub const LENGTH: usize = $vk_len;
+
+            /// Deserialise a verifying key
+            ///
+            /// Verifying Key doesn't need a particular structure, any bytes encoding
+            /// lead to a valid verifying key.
+            pub fn from_bytes(bytes: [u8; $vk_len]) -> Self {
+                $vk(bytes)
+            }
+
+            #[doc = concat!("Verify an ", $set, " signature over `message`")]
+            ///
+            /// `context` must be the one the signature was made with, and the
+            /// signature must have been made by
+            #[doc = concat!("[`", stringify!($sk), "::sign`] rather than by one of the")]
+            /// pre hash methods, or this returns false.
+            pub fn verify(&self, message: &[u8], context: &[u8], signature: &$sigt) -> bool {
+                self.verify_with(None, message, context, signature)
+            }
+
+            #[doc = concat!("Verify a signature made by [`", stringify!($sk), "::sign_prehash`]")]
+            ///
+            /// `prehash` must be the hash function the signer used: a signature
+            /// over a digest of one function is not accepted as one over the
+            /// digest of another.
+            pub fn verify_prehash(
+                &self,
+                prehash: PreHash,
+                message: &[u8],
+                context: &[u8],
+                signature: &$sigt,
+            ) -> bool {
+                self.verify_with(Some(prehash), message, context, signature)
+            }
+
+            fn verify_with(
+                &self,
+                prehash: Option<PreHash>,
+                message: &[u8],
+                context: &[u8],
+                signature: &$sigt,
+            ) -> bool {
+                message_representative(prehash, message, context, |m| {
+                    Ok(verify_internal::<
+                        $k,
+                        $l,
+                        $eta,
+                        $tau,
+                        $gamma1,
+                        $gamma1_bits,
+                        $gamma2,
+                        $w1_bits,
+                        $omega,
+                        $ctilde,
+                    >(&self.0, m, &signature.0))
+                })
+                .unwrap_or(false)
+            }
+
+            /// Raw bytes array for the verifying key
+            pub fn bytes(&self) -> &[u8; $vk_len] {
+                &self.0
+            }
+        }
+
+        impl $sigt {
+            /// Length in bytes of the serialised signature
+            pub const LENGTH: usize = $sig_len;
+
+            /// Deserialise a signature
+            ///
+            /// Only the length is checked here. If the hints are malformed
+            /// it will be decided during verification.
+            ///
+            /// Ideally we would distinguish bytes from signature but it leads
+            /// to some difficulties related to const generics; it might
+            /// be re-evaluated later providing a validating signature object in
+            /// the future.
+            pub fn from_bytes(bytes: [u8; $sig_len]) -> Self {
+                $sigt(bytes)
+            }
+
+            /// Raw bytes array for the signature
+            pub fn bytes(&self) -> &[u8; $sig_len] {
+                &self.0
+            }
         }
 
         impl From<[u8; $vk_len]> for $vk {
@@ -534,33 +707,15 @@ macro_rules! mldsa_impl {
             }
         }
 
-        impl AsRef<[u8; $vk_len]> for $vk {
-            fn as_ref(&self) -> &[u8; $vk_len] {
-                &self.0
-            }
-        }
-
         impl AsRef<[u8]> for $vk {
             fn as_ref(&self) -> &[u8] {
                 &self.0[..]
             }
         }
 
-        impl AsRef<[u8; $sk_len]> for $sk {
-            fn as_ref(&self) -> &[u8; $sk_len] {
-                &self.0
-            }
-        }
-
         impl AsRef<[u8]> for $sk {
             fn as_ref(&self) -> &[u8] {
                 &self.0[..]
-            }
-        }
-
-        impl AsRef<[u8; $sig_len]> for $sigt {
-            fn as_ref(&self) -> &[u8; $sig_len] {
-                &self.0
             }
         }
 

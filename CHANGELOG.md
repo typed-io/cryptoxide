@@ -1,3 +1,8 @@
+# 0.6.4
+
+* add support for HMAC-SHA224 and HMAC-SHA384
+* add ML-DSA (FIPS 204) in the `mldsa` module, with the three standard parameters set and some standardly defined hash methods
+
 # 0.6.3
 
 * add support for using an alternative 512 bits hash function with ed25519, through

@@ -17,18 +17,47 @@
 //! | ML-DSA-65     | 1952 bytes    | 4032 bytes  | 3309 bytes  |
 //! | ML-DSA-87     | 2592 bytes    | 4896 bytes  | 4627 bytes  |
 //!
+//! # Example
+//!
+//! ```
+//! use cryptoxide::mldsa;
+//!
+//! // the signer generates a key pair and publishes its verifying key
+//! # let seed = [0u8; 32]; // must be random !
+//! let (vk, sk) = mldsa::keypair65(&seed);
+//!
+//! // signing is hedged with fresh randomness, and takes a context string that
+//! // separates one use of a key from another
+//! # let rnd = [1u8; 32]; // for real use must be proper random
+//! let signature = sk.sign(b"message", b"my protocol v1", &rnd).unwrap();
+//!
+//! assert!(vk.verify(b"message", b"my protocol v1", &signature));
+//! assert!(!vk.verify(b"other message", b"my protocol v1", &signature));
+//! ```
+//!
+//! # Context strings
+//!
+//! Every signing and verifying call takes a context string of up to 255 bytes,
+//! which is bound into the signature. Two protocols that use the same key with
+//! different contexts cannot have a signature of one accepted by the other.
+//! Pass `b""` for the empty context if there is nothing to separate.
+//!
+//! # Pre hashing
+//!
+//! The `sign_prehash` and `verify_prehash` methods implement `HashML-DSA`
+//! (FIPS 204 section 5.4), which signs a digest of the message rather than the
+//! message itself.
+//!
 //! [1]: <https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.204.pdf>
 
 use crate::constant_time::CtEqual;
 use crate::hashing::shake::Shake256;
 use crate::hashing::{sha256, sha512, shake128, shake256};
-use crate::mldsa::encoding::{
-    pk_decode, sig_decode, sig_encode, sk_decode, SigningKeyErrorInvalidRange,
-};
-use crate::mldsa::poly::{expand_mask_poly, sample_in_ball, Hint};
 
-use encoding::{pk_encode, sk_encode};
-use poly::{rej_bounded_poly, rej_ntt_poly, Poly};
+use encoding::{
+    pk_decode, pk_encode, sig_decode, sig_encode, sk_decode, sk_encode, SigningKeyErrorInvalidRange,
+};
+use poly::{expand_mask_poly, rej_bounded_poly, rej_ntt_poly, sample_in_ball, Hint, Poly};
 
 mod encoding;
 mod group;
@@ -801,4 +830,32 @@ mldsa_impl!(
 mod tests;
 
 #[cfg(all(test, feature = "with-bench"))]
-mod bench {}
+mod bench {
+    use test::Bencher;
+
+    macro_rules! bench_parameter_set {
+        ($keypair:ident, $b_keypair:ident, $b_sign:ident, $b_verify:ident) => {
+            #[bench]
+            pub fn $b_keypair(bh: &mut Bencher) {
+                bh.iter(|| super::$keypair(&[1u8; 32]));
+            }
+
+            #[bench]
+            pub fn $b_sign(bh: &mut Bencher) {
+                let (_, sk) = super::$keypair(&[1u8; 32]);
+                bh.iter(|| sk.sign(b"message", b"", &[2u8; 32]).unwrap());
+            }
+
+            #[bench]
+            pub fn $b_verify(bh: &mut Bencher) {
+                let (vk, sk) = super::$keypair(&[1u8; 32]);
+                let sig = sk.sign(b"message", b"", &[2u8; 32]).unwrap();
+                bh.iter(|| assert!(vk.verify(b"message", b"", &sig)));
+            }
+        };
+    }
+
+    bench_parameter_set!(keypair44, keypair_44, sign_44, verify_44);
+    bench_parameter_set!(keypair65, keypair_65, sign_65, verify_65);
+    bench_parameter_set!(keypair87, keypair_87, sign_87, verify_87);
+}

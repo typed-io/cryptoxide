@@ -36,7 +36,7 @@
 //! // chunk1 ++ chunk2 is the same as squeezing 64 bytes at once
 //! ```
 
-use super::sha3::{Engine, B};
+use super::sha3::{keccak_f_x2, Engine, B};
 
 macro_rules! shake_impl {
     ($C:ident, $context:ident, $reader:ident, $capacity2:literal, $security:literal, $doc:expr) => {
@@ -165,10 +165,108 @@ macro_rules! shake_impl {
 shake_impl!(Shake128, Context128, Reader128, 16, 128, "SHAKE128");
 shake_impl!(Shake256, Context256, Reader256, 32, 256, "SHAKE256");
 
+/// Two independent SHAKE sponges of rate `RATE`, permuted together
+///
+/// On a backend that permutes two states as cheaply as one, this halves the
+/// cost of the many independent short XOF streams that the lattice schemes
+/// sample from; on every other backend it is exactly two sponges run in turn.
+///
+/// Only the shape those samplers need is offered: each sponge absorbs a single
+/// input shorter than the rate, and then squeezes whole blocks. `RATE` must be
+/// a multiple of 8 and no larger than the 200 byte state, which both
+/// [`Shake128::BLOCK_BYTES`] and [`Shake256::BLOCK_BYTES`] are.
+pub(crate) struct Xof2<const RATE: usize> {
+    states: [[u64; 25]; 2],
+}
+
+/// The two sponges of a [`Xof2`], as its `squeeze` writes them out
+pub(crate) type Block2<const RATE: usize> = [[u8; RATE]; 2];
+
+impl<const RATE: usize> Xof2<RATE> {
+    /// Absorb one input per sponge, each shorter than `RATE` bytes
+    pub(crate) fn new(inputs: [&[u8]; 2]) -> Self {
+        let mut states = [[0u64; 25]; 2];
+        for (state, input) in states.iter_mut().zip(inputs.iter()) {
+            assert!(input.len() < RATE);
+            // the whole absorb phase is this one padded block, so it can be
+            // built and read into the (still zero) state rather than xored in
+            let mut block = [0u8; RATE];
+            block[..input.len()].copy_from_slice(input);
+            // SHAKE domain separation 1111 followed by the 1 of pad10*1, then
+            // the closing 1, which lands in the same byte for a full block
+            block[input.len()] = 0x1f;
+            block[RATE - 1] |= 0x80;
+            for (lane, chunk) in state.iter_mut().zip(block.chunks_exact(8)) {
+                *lane = u64::from_le_bytes(chunk.try_into().unwrap());
+            }
+        }
+        Self { states }
+    }
+
+    /// Squeeze the next `RATE` bytes out of each of the two sponges
+    pub(crate) fn squeeze(&mut self, out: &mut Block2<RATE>) {
+        keccak_f_x2(&mut self.states);
+        for (o, state) in out.iter_mut().zip(self.states.iter()) {
+            for (chunk, lane) in o.chunks_exact_mut(8).zip(state.iter()) {
+                chunk.copy_from_slice(&lane.to_le_bytes());
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::tests::{test_hashing, Test};
     use super::*;
+
+    /// The two batched sponges must each produce the ordinary XOF stream
+    #[test]
+    fn xof2_matches_single() {
+        // three blocks of the wider of the two rates
+        const MAX: usize = 3 * Shake128::BLOCK_BYTES;
+
+        fn check<const RATE: usize>(a: &[u8], b: &[u8], single: impl Fn(&[u8], &mut [u8])) {
+            let mut xof = Xof2::<RATE>::new([a, b]);
+            let mut block = [[0u8; RATE]; 2];
+            let mut got = [[0u8; MAX]; 2];
+            for i in 0..3 {
+                xof.squeeze(&mut block);
+                for (g, s) in got.iter_mut().zip(block.iter()) {
+                    g[i * RATE..][..RATE].copy_from_slice(s);
+                }
+            }
+
+            let n = 3 * RATE;
+            for (input, got) in [a, b].iter().zip(got.iter()) {
+                let mut want = [0u8; MAX];
+                single(input, &mut want[..n]);
+                assert_eq!(got[..n], want[..n]);
+            }
+        }
+
+        // the empty input, a short one, and one filling the block but for a
+        // byte, where the pad and the domain separation share the last byte
+        let long128 = [0x5au8; Shake128::BLOCK_BYTES - 1];
+        let long256 = [0xa5u8; Shake256::BLOCK_BYTES - 1];
+        for (a, b) in [
+            (&b""[..], &b"x"[..]),
+            (&b"abc"[..], &b"The quick brown fox"[..]),
+            (&long128[..], &b""[..]),
+        ] {
+            check::<{ Shake128::BLOCK_BYTES }>(a, b, |i, o| {
+                Shake128::new().update(i).finalize_at(o)
+            });
+        }
+        for (a, b) in [
+            (&b""[..], &b"x"[..]),
+            (&b"abc"[..], &b"The quick brown fox"[..]),
+            (&long256[..], &b""[..]),
+        ] {
+            check::<{ Shake256::BLOCK_BYTES }>(a, b, |i, o| {
+                Shake256::new().update(i).finalize_at(o)
+            });
+        }
+    }
 
     // Drive the fixed-length test harness at a fixed 32-byte output. The
     // harness exercises one-shot, byte-by-byte and chunked updates, plus reset

@@ -2,11 +2,15 @@
 //! (`eor3`, `rax1`, `xar`, `bcax`), gated on the `sha3` target feature.
 //!
 //! Each of the 25 state lanes is held in a `uint64x2_t`. Every operation used
-//! (EOR3 / RAX1 / XAR / BCAX / EOR) is element-wise, so both 64-bit elements of
-//! every vector stay identical throughout: the backend effectively runs the
-//! scalar Keccak algorithm redundantly in both elements and reads element 0
-//! back at the end. The win comes purely from the fused instructions (3-way
-//! XOR, XOR+rotate, bit-clear+XOR), not from packing two lanes per register.
+//! (EOR3 / RAX1 / XAR / BCAX / EOR) is element-wise, so the two 64-bit elements
+//! of the register file carry two entirely independent sponges: [`permute_x2`]
+//! runs both at once for the price of one, and [`keccak_f`], which has only one
+//! state to offer, duplicates it into both elements and reads element 0 back.
+//!
+//! The win over the portable backend comes from the fused instructions (3-way
+//! XOR, XOR+rotate, bit-clear+XOR); the win of `permute_x2` over two
+//! [`keccak_f`] calls comes from the second element, which a single sponge
+//! leaves computing a redundant copy of the first.
 //!
 //! The step order matches the portable `reference` backend:
 //!   * Theta computes the column parities `c[x]` (two `eor3` each) and the

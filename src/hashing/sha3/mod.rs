@@ -31,6 +31,8 @@ use crate::cryptoutil::zero;
 
 mod keccakf;
 
+pub(super) use keccakf::keccak_f_x2;
+
 pub(super) const B: usize = 200;
 
 /// Engine for Keccak implementation where
@@ -505,6 +507,15 @@ mod bench {
             keccakf::keccak_f(&mut state);
         });
         bh.bytes = super::B as u64;
+    }
+
+    #[bench]
+    pub fn keccak_f_x2(bh: &mut Bencher) {
+        let mut states = [[0u64; 25]; 2];
+        bh.iter(|| {
+            super::keccak_f_x2(&mut states);
+        });
+        bh.bytes = 2 * super::B as u64;
     }
 
     #[bench]

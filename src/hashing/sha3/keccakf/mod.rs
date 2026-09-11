@@ -50,3 +50,20 @@ pub(super) fn keccak_f(state: &mut [u8; super::B]) {
     #[allow(unreachable_code)]
     reference::keccak_f(state)
 }
+
+/// Apply the Keccak-f[1600] permutation to two independent sponge states.
+///
+/// The aarch64 crypto extension backend holds a state lane in each 64-bit
+/// element of a vector register, so it permutes the two states for the price of
+/// the one it would otherwise duplicate; every other backend has nothing to
+/// share and just permutes them in turn.
+pub(crate) fn keccak_f_x2(states: &mut [[u64; 25]; 2]) {
+    #[cfg(all(target_arch = "aarch64", target_feature = "sha3"))]
+    {
+        return aarch64::permute_x2(states);
+    }
+    #[allow(unreachable_code)]
+    for s in states.iter_mut() {
+        reference::permute(s);
+    }
+}

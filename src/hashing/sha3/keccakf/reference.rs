@@ -14,13 +14,11 @@ const PIL: [usize; 24] = [
 ];
 const M5: [usize; 10] = [0, 1, 2, 3, 4, 0, 1, 2, 3, 4];
 
+/// Apply the permutation to the 25 lanes of a sponge state.
 #[allow(clippy::needless_range_loop)]
-pub(super) fn keccak_f(state: &mut [u8; super::super::B]) {
-    let mut s: [u64; 25] = [0; 25];
+pub(super) fn permute(s: &mut [u64; 25]) {
     let mut t: [u64; 1] = [0; 1];
     let mut c: [u64; 5] = [0; 5];
-
-    read_u64v_le(&mut s, state);
 
     for round in 0..NROUNDS {
         // Theta
@@ -55,6 +53,11 @@ pub(super) fn keccak_f(state: &mut [u8; super::super::B]) {
         // Iota
         s[0] ^= RC[round];
     }
+}
 
+pub(super) fn keccak_f(state: &mut [u8; super::super::B]) {
+    let mut s: [u64; 25] = [0; 25];
+    read_u64v_le(&mut s, state);
+    permute(&mut s);
     write_u64v_le(state, &s);
 }

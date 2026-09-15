@@ -11,8 +11,10 @@
 #
 # Backends covered:
 #   * aarch64: NEON ChaCha/Salsa, SHA-2 (sha2/sha3 ext.), AES (crypto ext.)
-#   * x86-64:  SSE2 ChaCha, SSE4.1/AVX SHA-256, AVX/AVX2 BLAKE2
-#   * software: reference AES, reference ChaCha/Salsa/SHA-2/BLAKE2
+#   * x86-64:  SSE2 ChaCha, SSE4.1/AVX SHA-256, AVX/AVX2 BLAKE2,
+#              AES-NI AES, PCLMULQDQ GHASH
+#   * software: reference AES, reference ChaCha/Salsa/SHA-2/BLAKE2,
+#              reference GHASH
 #   * 32-bit software arithmetic: poly1305 donna32
 #   * 32-bit ARM (target_arch=arm): all reference backends, with poly1305
 #     donna32 selected from target_arch alone (no force-32bits) -- plus a
@@ -135,6 +137,18 @@ else
             run "x86-64 $cpu (build-only)" "-C target-cpu=$cpu" build --target "$TARGET_X86_64"
         fi
     done
+
+    # AES-NI AES + PCLMULQDQ GHASH (Westmere and later). The features are
+    # spelled out because the LLVM westmere/haswell CPU models do not imply
+    # `aes` in cfg(target_feature), so `target-cpu=` alone would not select the
+    # backend there. Rosetta 2 implements both instruction sets.
+    if [ $X86_RUN -eq 1 ]; then
+        run "x86-64 aesni+pclmul (run)" \
+            "-C target-feature=+aes,+pclmulqdq,+ssse3" test --target "$TARGET_X86_64"
+    else
+        run "x86-64 aesni+pclmul (build-only)" \
+            "-C target-feature=+aes,+pclmulqdq,+ssse3" build --target "$TARGET_X86_64"
+    fi
 
     # Reference backends on x86-64 (no SSE2 -> reference ChaCha/Salsa).
     # NOTE: disabling the baseline SSE2 feature emits an ABI phase-out warning.

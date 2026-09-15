@@ -1,3 +1,7 @@
+# Unreleased
+
+* aes/aes-gcm: add x86/x86-64 optimise backend: AES-NI for the `aes` module and PCLMULQDQ for the GHASH authentication
+
 # 0.6.5
 
 * add support for HMAC-SHA224 and HMAC-SHA384

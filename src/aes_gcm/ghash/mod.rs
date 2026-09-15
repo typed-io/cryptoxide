@@ -6,9 +6,25 @@
 //!
 //! The backend is selected at compile time:
 //!
+//! * On x86/x86-64 with the `pclmulqdq` and `ssse3` target features, the
+//!   PCLMULQDQ carry-less multiply instructions are used.
 //! * On aarch64 with the `aes` target feature, the ARMv8 Cryptography
 //!   Extensions (`pmull` carry-less multiply) are used.
 //! * Otherwise, a portable constant-time bit-by-bit implementation is used.
+
+// x86 PCLMULQDQ backend.
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    target_feature = "pclmulqdq",
+    target_feature = "ssse3"
+))]
+mod pclmul;
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    target_feature = "pclmulqdq",
+    target_feature = "ssse3"
+))]
+use pclmul as backend;
 
 // ARMv8 Cryptography AES Extensions backend.
 #[cfg(all(target_arch = "aarch64", target_feature = "aes"))]
@@ -17,9 +33,26 @@ mod aarch64;
 use aarch64 as backend;
 
 // Software backend: portable constant-time implementation. also available for test
-#[cfg(any(not(all(target_arch = "aarch64", target_feature = "aes")), test))]
+#[cfg(any(
+    not(any(
+        all(target_arch = "aarch64", target_feature = "aes"),
+        all(
+            any(target_arch = "x86", target_arch = "x86_64"),
+            target_feature = "pclmulqdq",
+            target_feature = "ssse3"
+        ),
+    )),
+    test,
+))]
 mod reference;
-#[cfg(not(all(target_arch = "aarch64", target_feature = "aes")))]
+#[cfg(not(any(
+    all(target_arch = "aarch64", target_feature = "aes"),
+    all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "pclmulqdq",
+        target_feature = "ssse3"
+    ),
+)))]
 use reference as backend;
 
 /// Incremental GHASH MAC for AES-GCM.

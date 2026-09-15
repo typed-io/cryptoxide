@@ -7,6 +7,8 @@
 //!
 //! The backend is selected at compile time:
 //!
+//! * On x86/x86-64 with the `aes` target feature, the AES-NI hardware
+//!   instructions are used.
 //! * On aarch64 with the `aes` target feature, the ARMv8 Cryptography
 //!   Extensions (hardware AES instructions) are used.
 //! * Otherwise, a portable, constant-time software implementation using the
@@ -39,6 +41,18 @@
 //! assert_eq!(plaintext, recovered);
 //! ```
 
+// Hardware backend: x86 AES-NI.
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    target_feature = "aes"
+))]
+mod aesni;
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    target_feature = "aes"
+))]
+use aesni as backend;
+
 // Hardware backend: ARMv8 Cryptography Extensions.
 #[cfg(all(target_arch = "aarch64", target_feature = "aes"))]
 mod aarch64;
@@ -46,9 +60,21 @@ mod aarch64;
 use aarch64 as backend;
 
 // Software backend: portable constant-time fixslice implementation.
-#[cfg(not(all(target_arch = "aarch64", target_feature = "aes")))]
+#[cfg(not(any(
+    all(target_arch = "aarch64", target_feature = "aes"),
+    all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "aes"
+    ),
+)))]
 mod reference;
-#[cfg(not(all(target_arch = "aarch64", target_feature = "aes")))]
+#[cfg(not(any(
+    all(target_arch = "aarch64", target_feature = "aes"),
+    all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "aes"
+    ),
+)))]
 use reference as backend;
 
 /// Size of an AES block in bytes.

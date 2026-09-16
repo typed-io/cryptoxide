@@ -1,3 +1,5 @@
+//! SHA256 message schedule of 8 blocks at a time using AVX2.
+
 #[cfg(target_arch = "x86")]
 use core::arch::x86::*;
 
@@ -59,10 +61,33 @@ macro_rules! SCHEDULE_ROUND {
     };
 }
 
-macro_rules! SCHEDULE_ROUND_INC {
-    ($schedule: ident, $i:expr, $w1:expr, $w2:expr, $w3:expr, $w4:expr) => {
-        SCHEDULE_ROUND!($schedule, $i, $w1, $w2, $w3, $w4);
-        $i += 1;
+/// The 16 schedule rounds `$base .. $base+16`.
+///
+/// After 16 rounds every one of the 16 live message words has been updated
+/// exactly once and the rotation is back at its starting position, so the
+/// groups simply chain. Keeping `$base` a constant is what lets the compiler
+/// see that the whole schedule buffer is written before it is read
+macro_rules! SCHEDULE_ROUNDS_16 {
+    ($schedule:ident, $base:expr,
+     $w0:ident, $w1:ident, $w2:ident, $w3:ident, $w4:ident, $w5:ident, $w6:ident, $w7:ident,
+     $w8:ident, $w9:ident, $w10:ident, $w11:ident, $w12:ident, $w13:ident, $w14:ident,
+     $w15:ident) => {
+        SCHEDULE_ROUND!($schedule, $base + 0, $w1, $w14, $w0, $w9);
+        SCHEDULE_ROUND!($schedule, $base + 1, $w2, $w15, $w1, $w10);
+        SCHEDULE_ROUND!($schedule, $base + 2, $w3, $w0, $w2, $w11);
+        SCHEDULE_ROUND!($schedule, $base + 3, $w4, $w1, $w3, $w12);
+        SCHEDULE_ROUND!($schedule, $base + 4, $w5, $w2, $w4, $w13);
+        SCHEDULE_ROUND!($schedule, $base + 5, $w6, $w3, $w5, $w14);
+        SCHEDULE_ROUND!($schedule, $base + 6, $w7, $w4, $w6, $w15);
+        SCHEDULE_ROUND!($schedule, $base + 7, $w8, $w5, $w7, $w0);
+        SCHEDULE_ROUND!($schedule, $base + 8, $w9, $w6, $w8, $w1);
+        SCHEDULE_ROUND!($schedule, $base + 9, $w10, $w7, $w9, $w2);
+        SCHEDULE_ROUND!($schedule, $base + 10, $w11, $w8, $w10, $w3);
+        SCHEDULE_ROUND!($schedule, $base + 11, $w12, $w9, $w11, $w4);
+        SCHEDULE_ROUND!($schedule, $base + 12, $w13, $w10, $w12, $w5);
+        SCHEDULE_ROUND!($schedule, $base + 13, $w14, $w11, $w13, $w6);
+        SCHEDULE_ROUND!($schedule, $base + 14, $w15, $w12, $w14, $w7);
+        SCHEDULE_ROUND!($schedule, $base + 15, $w0, $w13, $w15, $w8);
     };
 }
 
@@ -110,56 +135,45 @@ pub unsafe fn message_schedule_8ways(schedule: &mut [__m256i; 64], message: &[u8
     w13 = _mm256_shuffle_epi8(w13, bswap_mask);
     w14 = _mm256_shuffle_epi8(w14, bswap_mask);
     w15 = _mm256_shuffle_epi8(w15, bswap_mask);
-    let mut i = 0;
-    while i < 32 {
-        SCHEDULE_ROUND_INC!(schedule, i, w1, w14, w0, w9);
-        SCHEDULE_ROUND_INC!(schedule, i, w2, w15, w1, w10);
-        SCHEDULE_ROUND_INC!(schedule, i, w3, w0, w2, w11);
-        SCHEDULE_ROUND_INC!(schedule, i, w4, w1, w3, w12);
-        SCHEDULE_ROUND_INC!(schedule, i, w5, w2, w4, w13);
-        SCHEDULE_ROUND_INC!(schedule, i, w6, w3, w5, w14);
-        SCHEDULE_ROUND_INC!(schedule, i, w7, w4, w6, w15);
-        SCHEDULE_ROUND_INC!(schedule, i, w8, w5, w7, w0);
-        SCHEDULE_ROUND_INC!(schedule, i, w9, w6, w8, w1);
-        SCHEDULE_ROUND_INC!(schedule, i, w10, w7, w9, w2);
-        SCHEDULE_ROUND_INC!(schedule, i, w11, w8, w10, w3);
-        SCHEDULE_ROUND_INC!(schedule, i, w12, w9, w11, w4);
-        SCHEDULE_ROUND_INC!(schedule, i, w13, w10, w12, w5);
-        SCHEDULE_ROUND_INC!(schedule, i, w14, w11, w13, w6);
-        SCHEDULE_ROUND_INC!(schedule, i, w15, w12, w14, w7);
-        SCHEDULE_ROUND_INC!(schedule, i, w0, w13, w15, w8);
-    }
-    SCHEDULE_ROUND_INC!(schedule, i, w1, w14, w0, w9);
+    SCHEDULE_ROUNDS_16!(
+        schedule, 0, w0, w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11, w12, w13, w14, w15
+    );
+    SCHEDULE_ROUNDS_16!(
+        schedule, 16, w0, w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11, w12, w13, w14, w15
+    );
+    // the last 16 rounds interleave the update of the live message words
+    // with the final 16 schedule entries they produce
+    SCHEDULE_ROUND!(schedule, 32, w1, w14, w0, w9);
     schedule[48] = _mm256_add_epi32(w0, _mm256_set1_epi32(K32[48] as i32));
-    SCHEDULE_ROUND_INC!(schedule, i, w2, w15, w1, w10);
+    SCHEDULE_ROUND!(schedule, 33, w2, w15, w1, w10);
     schedule[49] = _mm256_add_epi32(w1, _mm256_set1_epi32(K32[49] as i32));
-    SCHEDULE_ROUND_INC!(schedule, i, w3, w0, w2, w11);
+    SCHEDULE_ROUND!(schedule, 34, w3, w0, w2, w11);
     schedule[50] = _mm256_add_epi32(w2, _mm256_set1_epi32(K32[50] as i32));
-    SCHEDULE_ROUND_INC!(schedule, i, w4, w1, w3, w12);
+    SCHEDULE_ROUND!(schedule, 35, w4, w1, w3, w12);
     schedule[51] = _mm256_add_epi32(w3, _mm256_set1_epi32(K32[51] as i32));
-    SCHEDULE_ROUND_INC!(schedule, i, w5, w2, w4, w13);
+    SCHEDULE_ROUND!(schedule, 36, w5, w2, w4, w13);
     schedule[52] = _mm256_add_epi32(w4, _mm256_set1_epi32(K32[52] as i32));
-    SCHEDULE_ROUND_INC!(schedule, i, w6, w3, w5, w14);
+    SCHEDULE_ROUND!(schedule, 37, w6, w3, w5, w14);
     schedule[53] = _mm256_add_epi32(w5, _mm256_set1_epi32(K32[53] as i32));
-    SCHEDULE_ROUND_INC!(schedule, i, w7, w4, w6, w15);
+    SCHEDULE_ROUND!(schedule, 38, w7, w4, w6, w15);
     schedule[54] = _mm256_add_epi32(w6, _mm256_set1_epi32(K32[54] as i32));
-    SCHEDULE_ROUND_INC!(schedule, i, w8, w5, w7, w0);
+    SCHEDULE_ROUND!(schedule, 39, w8, w5, w7, w0);
     schedule[55] = _mm256_add_epi32(w7, _mm256_set1_epi32(K32[55] as i32));
-    SCHEDULE_ROUND_INC!(schedule, i, w9, w6, w8, w1);
+    SCHEDULE_ROUND!(schedule, 40, w9, w6, w8, w1);
     schedule[56] = _mm256_add_epi32(w8, _mm256_set1_epi32(K32[56] as i32));
-    SCHEDULE_ROUND_INC!(schedule, i, w10, w7, w9, w2);
+    SCHEDULE_ROUND!(schedule, 41, w10, w7, w9, w2);
     schedule[57] = _mm256_add_epi32(w9, _mm256_set1_epi32(K32[57] as i32));
-    SCHEDULE_ROUND_INC!(schedule, i, w11, w8, w10, w3);
+    SCHEDULE_ROUND!(schedule, 42, w11, w8, w10, w3);
     schedule[58] = _mm256_add_epi32(w10, _mm256_set1_epi32(K32[58] as i32));
-    SCHEDULE_ROUND_INC!(schedule, i, w12, w9, w11, w4);
+    SCHEDULE_ROUND!(schedule, 43, w12, w9, w11, w4);
     schedule[59] = _mm256_add_epi32(w11, _mm256_set1_epi32(K32[59] as i32));
-    SCHEDULE_ROUND_INC!(schedule, i, w13, w10, w12, w5);
+    SCHEDULE_ROUND!(schedule, 44, w13, w10, w12, w5);
     schedule[60] = _mm256_add_epi32(w12, _mm256_set1_epi32(K32[60] as i32));
-    SCHEDULE_ROUND_INC!(schedule, i, w14, w11, w13, w6);
+    SCHEDULE_ROUND!(schedule, 45, w14, w11, w13, w6);
     schedule[61] = _mm256_add_epi32(w13, _mm256_set1_epi32(K32[61] as i32));
-    SCHEDULE_ROUND_INC!(schedule, i, w15, w12, w14, w7);
+    SCHEDULE_ROUND!(schedule, 46, w15, w12, w14, w7);
     schedule[62] = _mm256_add_epi32(w14, _mm256_set1_epi32(K32[62] as i32));
-    SCHEDULE_ROUND!(schedule, i, w0, w13, w15, w8);
+    SCHEDULE_ROUND!(schedule, 47, w0, w13, w15, w8);
     schedule[63] = _mm256_add_epi32(w15, _mm256_set1_epi32(K32[63] as i32));
 }
 
@@ -227,9 +241,14 @@ unsafe fn compress_8ways(state: &mut [u32; 8], schedule: &[__m256i; 64]) {
 
 pub(crate) fn digest_block(state: &mut [u32; 8], mut block: &[u8]) {
     unsafe {
+        // this initialisation never runs: `message_schedule_8ways` writes all 64
+        // entries through constant indices, so the compiler drops it as dead.
+        // Keep it that way -- indexing the buffer with a running counter instead
+        // turns it into a 2kb `memset` on every call to this function, which
+        // includes every single-block update and every finalize
         let mut schedule = [_mm256_set1_epi32(0); 64];
         while block.len() >= 512 {
-            message_schedule_8ways(&mut schedule, &block);
+            message_schedule_8ways(&mut schedule, block);
             compress_8ways(state, &schedule);
             block = &block[512..]
         }

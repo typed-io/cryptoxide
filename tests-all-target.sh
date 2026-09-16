@@ -11,7 +11,7 @@
 #
 # Backends covered:
 #   * aarch64: NEON ChaCha/Salsa, SHA-2 (sha2/sha3 ext.), AES (crypto ext.)
-#   * x86-64:  SSE2 ChaCha, SSE4.1/AVX SHA-256, AVX/AVX2 BLAKE2,
+#   * x86-64:  SSE2 ChaCha, SHA-NI/SSE4.1/AVX2 SHA-256, AVX/AVX2 BLAKE2,
 #              AES-NI AES, PCLMULQDQ GHASH
 #   * software: reference AES, reference ChaCha/Salsa/SHA-2/BLAKE2,
 #              reference GHASH
@@ -121,8 +121,8 @@ else
     # backends:
     #   core2        SSE2/SSSE3   -> SSE2 ChaCha; reference SHA-2/BLAKE2
     #   nehalem      +SSE4.1      -> SSE4.1 SHA-256
-    #   sandybridge  +AVX         -> AVX SHA-256, AVX BLAKE2
-    #   broadwell    +AVX2        -> AVX2 BLAKE2
+    #   sandybridge  +AVX         -> AVX BLAKE2 (SHA-256 stays on SSE4.1)
+    #   broadwell    +AVX2        -> AVX2 SHA-256, AVX2 BLAKE2
     for cpu in core2 nehalem sandybridge broadwell; do
         # Rosetta 2 does not implement AVX/AVX2, so those variants SIGILL under
         # emulation -> only build (never run) them on Apple Silicon.
@@ -137,6 +137,24 @@ else
             run "x86-64 $cpu (build-only)" "-C target-cpu=$cpu" build --target "$TARGET_X86_64"
         fi
     done
+
+    # SHA-NI SHA-256 (AMD Zen and later, Intel Goldmont/Ice Lake and later).
+    # `sha` is not implied by any `target-cpu=` model
+    SHA_NI=0
+    if [ "$OS" = "Darwin" ]; then
+        if sysctl -n machdep.cpu.leaf7_features 2>/dev/null | grep -qw SHA; then
+            SHA_NI=1
+        fi
+    elif grep -qw sha_ni /proc/cpuinfo 2>/dev/null; then
+        SHA_NI=1
+    fi
+    if [ $X86_RUN -eq 1 ] && [ $SHA_NI -eq 1 ]; then
+        run "x86-64 sha-ni (run)" "-C target-feature=+sha,+sse4.1" \
+            test --target "$TARGET_X86_64"
+    else
+        run "x86-64 sha-ni (build-only)" "-C target-feature=+sha,+sse4.1" \
+            build --target "$TARGET_X86_64"
+    fi
 
     # AES-NI AES + PCLMULQDQ GHASH (Westmere and later). The features are
     # spelled out because the LLVM westmere/haswell CPU models do not imply

@@ -1,8 +1,9 @@
 //! Polynomials of `R_q = Z_q[X]/(X^256 + 1)`, along with the sampling and
 //! serialisation routines that ML-DSA defines on them
 
-use super::group::{self, add, center, from_centered, low_bits, mul, sub, Zq, D, INV256, Q, ZETAS};
-use crate::hashing::shake::{Shake128, Shake256};
+use super::group::{self, add, center, from_centered, low_bits, mul, sub, Zq, D, Q};
+use super::ntt;
+use crate::hashing::shake::{Block2, Shake128, Shake256, Xof2};
 
 /// Number of coefficients of a polynomial of `R_q`
 pub(super) const N: usize = 256;
@@ -56,63 +57,14 @@ impl Poly {
         }
     }
 
-    /// FIPS 204 Algorithm 41 `NTT`: in place number theoretic transform
-    ///
-    /// Maps `R_q` to `T_q`, in which the multiplication of two polynomials
-    /// becomes a coefficient wise product.
-    pub(super) fn ntt(&mut self) {
-        let f = &mut self.0;
-        let mut i = 1;
-        let mut len = 128;
-        while len >= 1 {
-            let mut start = 0;
-            while start < N {
-                let zeta = ZETAS[i];
-                i += 1;
-                for j in start..start + len {
-                    let t = mul(zeta, f[j + len]);
-                    f[j + len] = sub(f[j], t);
-                    f[j] = add(f[j], t);
-                }
-                start += 2 * len;
-            }
-            len >>= 1;
-        }
-    }
-
-    /// FIPS 204 Algorithm 42 `NTT^-1`: in place inverse of [`Poly::ntt`]
-    pub(super) fn inv_ntt(&mut self) {
-        let f = &mut self.0;
-        let mut i = 255;
-        let mut len = 1;
-        while len < N {
-            let mut start = 0;
-            while start < N {
-                let zeta = ZETAS[i];
-                i -= 1;
-                for j in start..start + len {
-                    let t = f[j];
-                    f[j] = add(t, f[j + len]);
-                    f[j + len] = mul(zeta, sub(f[j + len], t));
-                }
-                start += 2 * len;
-            }
-            len <<= 1;
-        }
-        for c in f.iter_mut() {
-            *c = mul(*c, INV256);
-        }
-    }
-
-    /// FIPS 204 Algorithm 45 `MultiplyNTT`: add the product of `a` and `b`,
-    /// both in `T_q`, to `self`
-    ///
-    /// Accumulating rather than returning the product keeps the matrix by
-    /// vector products down to a single temporary polynomial.
-    pub(super) fn mul_acc(&mut self, a: &Poly, b: &Poly) {
-        for (s, (x, y)) in self.0.iter_mut().zip(a.0.iter().zip(b.0.iter())) {
-            *s = add(*s, mul(*x, *y));
-        }
+    /// FIPS 204 Algorithm 41 `NTT`: the image of the polynomial in `T_q`, in
+    /// which the multiplication of two polynomials becomes a coefficient wise
+    /// product
+    pub(super) fn ntt(&self) -> PolyNtt {
+        // canonical representatives are already the |c| <= q that ntt wants
+        let mut f = core::array::from_fn(|i| self.0[i] as i32);
+        ntt::ntt(&mut f);
+        PolyNtt(f)
     }
 
     /// The infinity norm of the polynomial: the largest `|c mod± q|`
@@ -202,25 +154,85 @@ impl Poly {
     }
 }
 
+/// An element of `T_q`, the image of a polynomial under [`Poly::ntt`]
+///
+/// The representation is the loosely reduced signed one of [`ntt`], so unlike
+/// a [`Poly`] this carries no canonical coefficients and offers no arithmetic
+/// of its own: the only thing to do with one is to multiply it into a
+/// [`PolyAcc`].
+#[derive(Clone, Copy)]
+pub(super) struct PolyNtt([i32; N]);
+
+impl PolyNtt {
+    pub(super) const ZERO: Self = PolyNtt([0; N]);
+
+    /// An element of `T_q` given directly by its canonical coefficients, the
+    /// way `RejNTTPoly` samples the matrix
+    fn from_canonical(f: [Zq; N]) -> Self {
+        PolyNtt(core::array::from_fn(|i| f[i] as i32))
+    }
+}
+
+/// A sum of coefficient wise products of elements of `T_q`
+///
+/// Kept apart from [`PolyNtt`] because the products carry a factor `R^-1` that
+/// only [`PolyAcc::inv_ntt`] knows to take back out; the two types make it
+/// impossible to transform back something that never went through a product,
+/// which is the one place the Montgomery domain of [`ntt`] shows through.
+#[derive(Clone, Copy)]
+pub(super) struct PolyAcc([i32; N]);
+
+impl PolyAcc {
+    pub(super) const ZERO: Self = PolyAcc([0; N]);
+
+    /// FIPS 204 Algorithm 45 `MultiplyNTT`: add the coefficient wise product
+    /// of `a` and `b` to the accumulator
+    ///
+    /// Accumulating rather than returning the product keeps the matrix by
+    /// vector products down to a single temporary polynomial.
+    pub(super) fn mul_acc(&mut self, a: &PolyNtt, b: &PolyNtt) {
+        ntt::mul_acc(&mut self.0, &a.0, &b.0);
+    }
+
+    pub(super) fn sub_mut(&mut self, rhs: &PolyAcc) {
+        for (a, b) in self.0.iter_mut().zip(rhs.0.iter()) {
+            *a -= *b;
+        }
+    }
+
+    /// FIPS 204 Algorithm 42 `NTT^-1`: back to `R_q`, with canonical
+    /// coefficients again
+    pub(super) fn inv_ntt(&self) -> Poly {
+        let mut f = self.0;
+        ntt::inv_ntt(&mut f);
+        Poly(ntt::canonical(&f))
+    }
+}
+
 /// Concatenate the 256 coefficients as `BITS` bits little endian integers
 ///
-/// The accumulator never holds more than `7 + BITS` bits, which the widest
-/// encoding of any parameter set keeps well inside a `u32`.
+/// The bits are moved a 32 bits word at a time rather than a byte at a time,
+/// which the widths of ML-DSA make exact: `256 BITS` is a whole number of
+/// words, so the coefficients fill `out` with nothing left over to flush, and
+/// a `u64` accumulator holding under 32 bits always has room for one more
+/// coefficient.
 fn pack<const BITS: usize>(f: &[u32; N], out: &mut [u8]) {
     assert_eq!(out.len(), 32 * BITS);
+    debug_assert!(BITS <= 32);
     // a coefficient wider than its encoding would silently corrupt the next
     // one; every caller is bounded by the parameter set it comes from
     debug_assert!(f.iter().all(|c| c >> BITS == 0));
-    let mut acc = 0u32;
+    let mut words = out.chunks_exact_mut(4);
+    let mut acc = 0u64;
     let mut bits = 0;
-    let mut o = out.iter_mut();
     for c in f.iter() {
-        acc |= *c << bits;
+        acc |= (*c as u64) << bits;
         bits += BITS;
-        while bits >= 8 {
-            *o.next().unwrap() = acc as u8;
-            acc >>= 8;
-            bits -= 8;
+        if bits >= 32 {
+            let word = words.next().unwrap();
+            word.copy_from_slice(&(acc as u32).to_le_bytes());
+            acc >>= 32;
+            bits -= 32;
         }
     }
 }
@@ -228,16 +240,19 @@ fn pack<const BITS: usize>(f: &[u32; N], out: &mut [u8]) {
 /// Split `32 * BITS` bytes back into 256 `BITS` bits little endian integers
 fn unpack<const BITS: usize>(input: &[u8]) -> [u32; N] {
     assert_eq!(input.len(), 32 * BITS);
+    debug_assert!(BITS <= 32);
+    let mask = (1u64 << BITS) - 1;
+    let mut words = input.chunks_exact(4);
     let mut f = [0u32; N];
-    let mut acc = 0u32;
+    let mut acc = 0u64;
     let mut bits = 0;
-    let mut i = input.iter();
     for c in f.iter_mut() {
-        while bits < BITS {
-            acc |= (*i.next().unwrap() as u32) << bits;
-            bits += 8;
+        if bits < BITS {
+            let word = u32::from_le_bytes(words.next().unwrap().try_into().unwrap());
+            acc |= (word as u64) << bits;
+            bits += 32;
         }
-        *c = acc & ((1 << BITS) - 1);
+        *c = (acc & mask) as u32;
         acc >>= BITS;
         bits -= BITS;
     }
@@ -249,7 +264,7 @@ fn unpack<const BITS: usize>(input: &[u8]) -> [u32; N] {
 ///
 /// The rejection sampling loop makes the running time depend on the public
 /// seed rho and on the matrix position, both of which are public.
-pub(super) fn rej_ntt_poly(rho: &[u8; 32], s: u8, r: u8) -> Poly {
+pub(super) fn rej_ntt_poly(rho: &[u8; 32], s: u8, r: u8) -> PolyNtt {
     let mut xof = Shake128::new().update(rho).update(&[s, r]).finalize_xof();
     // squeeze whole blocks, each holding a round number of 3 bytes groups
     let mut buf = [0u8; Shake128::BLOCK_BYTES];
@@ -271,7 +286,7 @@ pub(super) fn rej_ntt_poly(rho: &[u8; 32], s: u8, r: u8) -> Poly {
             }
         }
     }
-    Poly(f)
+    PolyNtt::from_canonical(f)
 }
 
 /// FIPS 204 Algorithm 15 `CoefFromHalfByte`
@@ -288,6 +303,45 @@ const fn coef_from_half_byte<const ETA: u32>(b: u8) -> Option<Zq> {
     } else {
         None
     }
+}
+
+/// [`rej_ntt_poly`] for two matrix positions at once
+///
+/// The two rejection loops are independent and only share the permutations of
+/// the batched sponge, so the pair costs as many of those as the longer of the
+/// two would have on its own.
+pub(super) fn rej_ntt_poly_x2(rho: &[u8; 32], sr: [(u8, u8); 2]) -> [PolyNtt; 2] {
+    let seeds: [[u8; 34]; 2] = core::array::from_fn(|k| {
+        let mut seed = [0u8; 34];
+        seed[..32].copy_from_slice(rho);
+        seed[32] = sr[k].0;
+        seed[33] = sr[k].1;
+        seed
+    });
+    let mut xof = Xof2::<{ Shake128::BLOCK_BYTES }>::new([&seeds[0], &seeds[1]]);
+    let mut buf: Block2<{ Shake128::BLOCK_BYTES }> = [[0u8; Shake128::BLOCK_BYTES]; 2];
+
+    let mut f = [[0u32; N]; 2];
+    let mut j = [0usize; 2];
+    while j[0] < N || j[1] < N {
+        xof.squeeze(&mut buf);
+        for (fk, (jk, bufk)) in f.iter_mut().zip(j.iter_mut().zip(buf.iter())) {
+            if *jk == N {
+                continue;
+            }
+            for c in bufk.chunks_exact(3) {
+                let z = (c[0] as u32) | ((c[1] as u32) << 8) | (((c[2] & 0x7f) as u32) << 16);
+                if z < Q {
+                    fk[*jk] = z;
+                    *jk += 1;
+                    if *jk == N {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    [PolyNtt::from_canonical(f[0]), PolyNtt::from_canonical(f[1])]
 }
 
 /// FIPS 204 Algorithm 31 `RejBoundedPoly`, seeded the way `ExpandS`
@@ -317,6 +371,42 @@ pub(super) fn rej_bounded_poly<const ETA: u32>(rho: &[u8; 64], nonce: u16) -> Po
         }
     }
     Poly(f)
+}
+
+/// [`rej_bounded_poly`] for two nonces at once, sharing the permutations of a
+/// batched sponge
+pub(super) fn rej_bounded_poly_x2<const ETA: u32>(rho: &[u8; 64], nonces: [u16; 2]) -> [Poly; 2] {
+    let seeds: [[u8; 66]; 2] = core::array::from_fn(|k| {
+        let mut seed = [0u8; 66];
+        seed[..64].copy_from_slice(rho);
+        seed[64..].copy_from_slice(&nonces[k].to_le_bytes());
+        seed
+    });
+    let mut xof = Xof2::<{ Shake256::BLOCK_BYTES }>::new([&seeds[0], &seeds[1]]);
+    let mut buf: Block2<{ Shake256::BLOCK_BYTES }> = [[0u8; Shake256::BLOCK_BYTES]; 2];
+
+    let mut f = [[0u32; N]; 2];
+    let mut j = [0usize; 2];
+    while j[0] < N || j[1] < N {
+        xof.squeeze(&mut buf);
+        for (fk, (jk, bufk)) in f.iter_mut().zip(j.iter_mut().zip(buf.iter())) {
+            if *jk == N {
+                continue;
+            }
+            'lane: for b in bufk.iter() {
+                for half in [*b & 0xf, *b >> 4] {
+                    if let Some(v) = coef_from_half_byte::<ETA>(half) {
+                        fk[*jk] = v;
+                        *jk += 1;
+                        if *jk == N {
+                            break 'lane;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    [Poly(f[0]), Poly(f[1])]
 }
 
 /// FIPS 204 Algorithm 29 `SampleInBall`: expand the commitment hash into a
@@ -376,6 +466,42 @@ pub(super) fn expand_mask_poly<const GAMMA1: u32, const GAMMA1_BITS: usize>(
     Poly::signed_unpack::<GAMMA1_BITS>(buf, GAMMA1 as i32)
 }
 
+/// [`expand_mask_poly`] for two nonces at once, sharing the permutations of a
+/// batched sponge
+///
+/// The output length is fixed here, so unlike the rejection samplers this pair
+/// always costs exactly half of what the two would separately.
+pub(super) fn expand_mask_poly_x2<const GAMMA1: u32, const GAMMA1_BITS: usize>(
+    rho: &[u8; 64],
+    nonces: [u16; 2],
+) -> [Poly; 2] {
+    const RATE: usize = Shake256::BLOCK_BYTES;
+    /// whole blocks needed to cover the widest encoding
+    const BLOCKS: usize = (32 * MAX_GAMMA1_BITS + RATE - 1) / RATE;
+
+    let seeds: [[u8; 66]; 2] = core::array::from_fn(|k| {
+        let mut seed = [0u8; 66];
+        seed[..64].copy_from_slice(rho);
+        seed[64..].copy_from_slice(&nonces[k].to_le_bytes());
+        seed
+    });
+    let mut xof = Xof2::<RATE>::new([&seeds[0], &seeds[1]]);
+    let mut buf: Block2<RATE> = [[0u8; RATE]; 2];
+
+    let mut out = [[0u8; BLOCKS * RATE]; 2];
+    let wanted = 32 * GAMMA1_BITS;
+    let mut got = 0;
+    while got < wanted {
+        xof.squeeze(&mut buf);
+        for (o, b) in out.iter_mut().zip(buf.iter()) {
+            o[got..][..RATE].copy_from_slice(b);
+        }
+        got += RATE;
+    }
+
+    core::array::from_fn(|k| Poly::signed_unpack::<GAMMA1_BITS>(&out[k][..wanted], GAMMA1 as i32))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -406,27 +532,57 @@ mod tests {
         Poly(r)
     }
 
+    /// Multiplying by the constant 1 has to come back out as it went in, which
+    /// exercises the whole `ntt` / `mul_acc` / `inv_ntt` chain as an identity
     #[test]
     fn ntt_roundtrip() {
+        let mut one = Poly::ZERO;
+        one.0[0] = 1;
+        let one = one.ntt();
+
         for p in GeneratorOf::new(0, 8, next_poly) {
-            let mut q = p;
-            q.ntt();
-            q.inv_ntt();
-            assert_eq!(p.0, q.0);
+            let mut acc = PolyAcc::ZERO;
+            acc.mul_acc(&p.ntt(), &one);
+            assert_eq!(acc.inv_ntt().0, p.0);
         }
     }
 
     #[test]
     fn ntt_multiplication() {
         for (a, b) in GeneratorOf2::new(0, 8, next_poly) {
-            let (mut na, mut nb) = (a, b);
-            na.ntt();
-            nb.ntt();
-            let mut prod = Poly::ZERO;
-            prod.mul_acc(&na, &nb);
-            prod.inv_ntt();
+            let mut prod = PolyAcc::ZERO;
+            prod.mul_acc(&a.ntt(), &b.ntt());
 
-            assert_eq!(prod.0, schoolbook(&a, &b).0);
+            assert_eq!(prod.inv_ntt().0, schoolbook(&a, &b).0);
+        }
+    }
+
+    /// The accumulator has to survive as many products as the widest parameter
+    /// set piles into it, which is the `l` of ML-DSA-87, and the subtraction
+    /// that verification does on top
+    #[test]
+    fn ntt_accumulation() {
+        let mut generator = GeneratorRaw::new(9);
+        for _ in 0..8 {
+            let terms: [(Poly, Poly); 7] =
+                core::array::from_fn(|_| (next_poly(&mut generator), next_poly(&mut generator)));
+            let (x, y) = (next_poly(&mut generator), next_poly(&mut generator));
+
+            let mut acc = PolyAcc::ZERO;
+            for (a, b) in terms.iter() {
+                acc.mul_acc(&a.ntt(), &b.ntt());
+            }
+            let mut neg = PolyAcc::ZERO;
+            neg.mul_acc(&x.ntt(), &y.ntt());
+            acc.sub_mut(&neg);
+
+            let mut want = Poly::ZERO;
+            for (a, b) in terms.iter() {
+                want.add_mut(&schoolbook(a, b));
+            }
+            want.sub_mut(&schoolbook(&x, &y));
+
+            assert_eq!(acc.inv_ntt().0, want.0);
         }
     }
 
@@ -519,7 +675,7 @@ mod tests {
             let rho = generator.bytes::<32>();
             let [s, r] = generator.bytes::<2>();
             let p = rej_ntt_poly(&rho, s, r);
-            assert!(p.0.iter().all(|c| *c < Q));
+            assert!(p.0.iter().all(|c| *c >= 0 && (*c as u32) < Q));
             assert!(p.0.iter().any(|c| *c != 0));
         }
     }
@@ -533,6 +689,45 @@ mod tests {
             assert!(p.0.iter().all(|c| group::norm(*c) <= 131072));
             let p = expand_mask_poly::<524288, 20>(&rho, i);
             assert!(p.0.iter().all(|c| group::norm(*c) <= 524288));
+        }
+    }
+
+    /// Every batched sampler must produce exactly what the single one does
+    #[test]
+    fn batched_sampling_agrees() {
+        let mut generator = GeneratorRaw::new(8);
+        for _ in 0..4 {
+            let rho = generator.bytes::<32>();
+            let [s0, r0, s1, r1] = generator.bytes::<4>();
+            let sr = [(s0 % 8, r0 % 8), (s1 % 8, r1 % 8)];
+            let got = rej_ntt_poly_x2(&rho, sr);
+            for (g, (s, r)) in got.iter().zip(sr.iter()) {
+                assert_eq!(g.0, rej_ntt_poly(&rho, *s, *r).0);
+            }
+
+            let rho = generator.bytes::<64>();
+            let nonces = [
+                u16::from(generator.bytes::<1>()[0]),
+                u16::from(generator.bytes::<1>()[0]) + 256,
+            ];
+            for (g, n) in rej_bounded_poly_x2::<2>(&rho, nonces).iter().zip(nonces) {
+                assert_eq!(g.0, rej_bounded_poly::<2>(&rho, n).0);
+            }
+            for (g, n) in rej_bounded_poly_x2::<4>(&rho, nonces).iter().zip(nonces) {
+                assert_eq!(g.0, rej_bounded_poly::<4>(&rho, n).0);
+            }
+            for (g, n) in expand_mask_poly_x2::<131072, 18>(&rho, nonces)
+                .iter()
+                .zip(nonces)
+            {
+                assert_eq!(g.0, expand_mask_poly::<131072, 18>(&rho, n).0);
+            }
+            for (g, n) in expand_mask_poly_x2::<524288, 20>(&rho, nonces)
+                .iter()
+                .zip(nonces)
+            {
+                assert_eq!(g.0, expand_mask_poly::<524288, 20>(&rho, n).0);
+            }
         }
     }
 

@@ -57,10 +57,14 @@ use crate::hashing::{sha256, sha512, shake128, shake256};
 use encoding::{
     pk_decode, pk_encode, sig_decode, sig_encode, sk_decode, sk_encode, SigningKeyErrorInvalidRange,
 };
-use poly::{expand_mask_poly, rej_bounded_poly, rej_ntt_poly, sample_in_ball, Hint, Poly};
+use poly::{
+    expand_mask_poly, expand_mask_poly_x2, rej_bounded_poly, rej_bounded_poly_x2, rej_ntt_poly,
+    rej_ntt_poly_x2, sample_in_ball, Hint, Poly, PolyAcc, PolyNtt,
+};
 
 mod encoding;
 mod group;
+mod ntt;
 mod poly;
 
 #[cfg(test)]
@@ -140,14 +144,56 @@ impl PreHash {
 /// Accumulate `sum_j A[i][j] v[j]` over the row `i` of the matrix `A` that
 /// `ExpandA` (FIPS 204 Algorithm 32) derives from `rho`
 ///
-/// The matrix is the largest object of the scheme, so it is never materialised
-/// and each row is expanded where it is used. Signing pays for that on every
-/// rejection round, which is the price of a working set that does not grow with
-/// `k l`.
-fn matrix_row_mul<const L: usize>(rho: &[u8; 32], i: usize, v: &[Poly; L]) -> Poly {
-    let mut acc = Poly::ZERO;
-    for (j, vj) in v.iter().enumerate() {
-        acc.mul_acc(&rej_ntt_poly(rho, j as u8, i as u8), vj);
+/// The matrix is the largest object of the scheme, so where a row is needed
+/// only once it is expanded where it is used rather than materialised. Key
+/// generation and verification both walk `A` exactly once, so they pay nothing
+/// for that; signing, which walks it again on every rejection round, keeps a
+/// copy instead (see [`expand_a`]).
+fn matrix_row_mul<const L: usize>(rho: &[u8; 32], i: usize, v: &[PolyNtt; L]) -> PolyAcc {
+    let mut acc = PolyAcc::ZERO;
+    // two entries at a time, since a pair of sponges permutes as cheaply as one
+    let mut j = 0;
+    while j + 1 < L {
+        let a = rej_ntt_poly_x2(rho, [(j as u8, i as u8), ((j + 1) as u8, i as u8)]);
+        acc.mul_acc(&a[0], &v[j]);
+        acc.mul_acc(&a[1], &v[j + 1]);
+        j += 2;
+    }
+    if j < L {
+        acc.mul_acc(&rej_ntt_poly(rho, j as u8, i as u8), &v[j]);
+    }
+    acc
+}
+
+/// `ExpandA` (FIPS 204 Algorithm 32) in full: the `k` by `l` matrix `A`, in `T_q`
+///
+/// Signing needs the whole matrix once per rejection round, of which there are
+/// 4.25 on average, and expanding one entry costs five SHAKE128 blocks. Holding
+/// the matrix trades `1024 k l` bytes of stack, 16 KB at ML-DSA-44 up to 57 KB
+/// at ML-DSA-87, against re-deriving it 3.25 times over.
+fn expand_a<const K: usize, const L: usize>(rho: &[u8; 32]) -> [[PolyNtt; L]; K] {
+    let mut a = [[PolyNtt::ZERO; L]; K];
+    let pos = |n: usize| ((n % L) as u8, (n / L) as u8);
+    // k l is even for every parameter set, so the whole matrix pairs up
+    let mut n = 0;
+    while n + 1 < K * L {
+        let [p, q] = rej_ntt_poly_x2(rho, [pos(n), pos(n + 1)]);
+        a[n / L][n % L] = p;
+        a[(n + 1) / L][(n + 1) % L] = q;
+        n += 2;
+    }
+    if n < K * L {
+        let (j, i) = pos(n);
+        a[n / L][n % L] = rej_ntt_poly(rho, j, i);
+    }
+    a
+}
+
+/// Accumulate `sum_j A[i][j] v[j]` over a row of an already expanded `A`
+fn row_mul<const L: usize>(row: &[PolyNtt; L], v: &[PolyNtt; L]) -> PolyAcc {
+    let mut acc = PolyAcc::ZERO;
+    for (aij, vj) in row.iter().zip(v.iter()) {
+        acc.mul_acc(aij, vj);
     }
     acc
 }
@@ -170,14 +216,31 @@ fn keygen<const K: usize, const L: usize, const ETA: u32, const ETA_BITS: usize>
     let rho_prime = <&[u8; 64]>::try_from(&seeds[32..96]).unwrap();
     let k_seed = <&[u8; 32]>::try_from(&seeds[96..128]).unwrap();
 
-    let s1: [Poly; L] = core::array::from_fn(|i| rej_bounded_poly::<ETA>(rho_prime, i as u16));
-    let s2: [Poly; K] =
-        core::array::from_fn(|i| rej_bounded_poly::<ETA>(rho_prime, (L + i) as u16));
-
-    let mut s1_hat = s1;
-    for p in s1_hat.iter_mut() {
-        p.ntt();
+    // ExpandS (Algorithm 33): s1 and s2 are one run of l + k nonces, sampled
+    // two at a time so that each pair shares its sponge permutations
+    let mut s1 = [Poly::ZERO; L];
+    let mut s2 = [Poly::ZERO; K];
+    {
+        let mut put = |n: usize, p: Poly| {
+            if n < L {
+                s1[n] = p;
+            } else {
+                s2[n - L] = p;
+            }
+        };
+        let mut n = 0;
+        while n + 1 < L + K {
+            let [p, q] = rej_bounded_poly_x2::<ETA>(rho_prime, [n as u16, (n + 1) as u16]);
+            put(n, p);
+            put(n + 1, q);
+            n += 2;
+        }
+        if n < L + K {
+            put(n, rej_bounded_poly::<ETA>(rho_prime, n as u16));
+        }
     }
+
+    let s1_hat: [PolyNtt; L] = core::array::from_fn(|i| s1[i].ntt());
 
     // t = A s1 + s2, of which the public key keeps only the high bits: dropping
     // the low ones is what makes a public key smaller than t, and the hints of
@@ -185,8 +248,7 @@ fn keygen<const K: usize, const L: usize, const ETA: u32, const ETA_BITS: usize>
     let mut t1 = [Poly::ZERO; K];
     let mut t0 = [Poly::ZERO; K];
     for (i, s2i) in s2.iter().enumerate() {
-        let mut t = matrix_row_mul(rho, i, &s1_hat);
-        t.inv_ntt();
+        let mut t = matrix_row_mul(rho, i, &s1_hat).inv_ntt();
         t.add_mut(s2i);
         (t1[i], t0[i]) = t.power2round();
     }
@@ -221,16 +283,9 @@ fn sign_internal<
     // the largest a coefficient of `c s` can be, for `s` bounded by eta
     let beta = TAU as u32 * ETA;
 
-    let mut s1_hat = parts.s1;
-    let mut s2_hat = parts.s2;
-    let mut t0_hat = parts.t0;
-    for p in s1_hat
-        .iter_mut()
-        .chain(s2_hat.iter_mut())
-        .chain(t0_hat.iter_mut())
-    {
-        p.ntt();
-    }
+    let s1_hat: [PolyNtt; L] = core::array::from_fn(|i| parts.s1[i].ntt());
+    let s2_hat: [PolyNtt; K] = core::array::from_fn(|i| parts.s2[i].ntt());
+    let t0_hat: [PolyNtt; K] = core::array::from_fn(|i| parts.t0[i].ntt());
 
     // mu binds the message to the public key, through the tr the signing key
     // carries
@@ -249,26 +304,36 @@ fn sign_internal<
         .update(&mu)
         .finalize();
 
+    let a_hat = expand_a::<K, L>(&parts.rho);
+
     let mut kappa: u16 = 0;
     loop {
-        let y: [Poly; L] = core::array::from_fn(|i| {
-            expand_mask_poly::<GAMMA1, GAMMA1_BITS>(&rho_prime2, kappa + i as u16)
-        });
+        // ExpandMask (Algorithm 34), two polynomials of the mask at a time
+        let mut y = [Poly::ZERO; L];
+        {
+            let mut i = 0;
+            while i + 1 < L {
+                let n = kappa + i as u16;
+                let [p, q] = expand_mask_poly_x2::<GAMMA1, GAMMA1_BITS>(&rho_prime2, [n, n + 1]);
+                y[i] = p;
+                y[i + 1] = q;
+                i += 2;
+            }
+            if i < L {
+                y[i] = expand_mask_poly::<GAMMA1, GAMMA1_BITS>(&rho_prime2, kappa + i as u16);
+            }
+        }
 
         // w = A y. Its high bits are the commitment: they are all the verifier
         // will be able to recompute, and they are what the challenge hashes.
         let mut w = [Poly::ZERO; K];
         let mut commit = Shake256::new().update(&mu);
         {
-            let mut y_hat = y;
-            for p in y_hat.iter_mut() {
-                p.ntt();
-            }
+            let y_hat: [PolyNtt; L] = core::array::from_fn(|i| y[i].ntt());
             let mut w1_packed = [0u8; 32 * MAX_W1_BITS];
             let w1_packed = &mut w1_packed[..32 * W1_BITS];
-            for (i, wi) in w.iter_mut().enumerate() {
-                *wi = matrix_row_mul(&parts.rho, i, &y_hat);
-                wi.inv_ntt();
+            for (wi, ai) in w.iter_mut().zip(a_hat.iter()) {
+                *wi = row_mul(ai, &y_hat).inv_ntt();
                 // w1Encode (Algorithm 28), streamed row by row into the hash
                 wi.high_bits::<GAMMA2>().simple_pack::<W1_BITS>(w1_packed);
                 commit.update_mut(w1_packed);
@@ -279,8 +344,7 @@ fn sign_internal<
         let c_tilde = &mut c_tilde[..CTILDE];
         commit.finalize_at(c_tilde);
 
-        let mut c = sample_in_ball::<TAU>(c_tilde);
-        c.ntt();
+        let c = sample_in_ball::<TAU>(c_tilde).ntt();
 
         // z = y + c s1 is the response. The mask has to hide c s1 completely,
         // so a z that came out too large is thrown away rather than published:
@@ -288,8 +352,9 @@ fn sign_internal<
         let mut z = [Poly::ZERO; L];
         let mut retry = false;
         for ((zi, yi), s1i) in z.iter_mut().zip(y.iter()).zip(s1_hat.iter()) {
-            zi.mul_acc(&c, s1i);
-            zi.inv_ntt();
+            let mut acc = PolyAcc::ZERO;
+            acc.mul_acc(&c, s1i);
+            *zi = acc.inv_ntt();
             zi.add_mut(yi);
             retry |= zi.norm() >= GAMMA1 - beta;
         }
@@ -297,10 +362,9 @@ fn sign_internal<
         // w - c s2 has to keep the high bits of w, up to the one step a hint can
         // describe, or the verifier could not recompute the commitment
         for (wi, s2i) in w.iter_mut().zip(s2_hat.iter()) {
-            let mut cs2 = Poly::ZERO;
+            let mut cs2 = PolyAcc::ZERO;
             cs2.mul_acc(&c, s2i);
-            cs2.inv_ntt();
-            wi.sub_mut(&cs2);
+            wi.sub_mut(&cs2.inv_ntt());
             retry |= wi.low_bits_norm::<GAMMA2>() >= GAMMA2 - beta;
         }
 
@@ -308,9 +372,9 @@ fn sign_internal<
             let mut hint = [Hint::ZERO; K];
             let mut ones = 0;
             for (hi, (wi, t0i)) in hint.iter_mut().zip(w.iter().zip(t0_hat.iter())) {
-                let mut ct0 = Poly::ZERO;
-                ct0.mul_acc(&c, t0i);
-                ct0.inv_ntt();
+                let mut acc = PolyAcc::ZERO;
+                acc.mul_acc(&c, t0i);
+                let ct0 = acc.inv_ntt();
                 retry |= ct0.norm() >= GAMMA2;
                 // the verifier reaches w - c s2 + c t0, since the public key
                 // dropped t0; the hint says where that lands in another interval
@@ -371,13 +435,9 @@ fn verify_internal<
     }
     let mu: [u8; 64] = hasher.finalize();
 
-    let mut c = sample_in_ball::<TAU>(c_tilde);
-    c.ntt();
+    let c = sample_in_ball::<TAU>(c_tilde).ntt();
 
-    let mut z_hat = z;
-    for p in z_hat.iter_mut() {
-        p.ntt();
-    }
+    let z_hat: [PolyNtt; L] = core::array::from_fn(|i| z[i].ntt());
 
     // A z - c t1 2^d equals w - c s2 + c t0, ie. w up to the low bits the
     // public key does not carry; the hints put the high bits back where the
@@ -387,13 +447,11 @@ fn verify_internal<
     let w1_packed = &mut w1_packed[..32 * W1_BITS];
     for (i, (t1i, hi)) in t1.iter().zip(hint.iter()).enumerate() {
         let mut approx = matrix_row_mul(rho, i, &z_hat);
-        let mut ct1 = t1i.scale_2d();
-        ct1.ntt();
-        let mut prod = Poly::ZERO;
-        prod.mul_acc(&c, &ct1);
+        let mut prod = PolyAcc::ZERO;
+        prod.mul_acc(&c, &t1i.scale_2d().ntt());
         approx.sub_mut(&prod);
-        approx.inv_ntt();
         approx
+            .inv_ntt()
             .use_hint::<GAMMA2>(hi)
             .simple_pack::<W1_BITS>(w1_packed);
         commit.update_mut(w1_packed);
@@ -416,15 +474,11 @@ fn public_from_secret<const K: usize, const L: usize, const ETA_BITS: usize>(
     let parts = sk_decode::<K, L, ETA_BITS>(sk, eta)
         .expect("a signing key is checked when it is deserialised");
 
-    let mut s1_hat = parts.s1;
-    for p in s1_hat.iter_mut() {
-        p.ntt();
-    }
+    let s1_hat: [PolyNtt; L] = core::array::from_fn(|i| parts.s1[i].ntt());
 
     let mut t1 = [Poly::ZERO; K];
     for (i, (t1i, s2i)) in t1.iter_mut().zip(parts.s2.iter()).enumerate() {
-        let mut t = matrix_row_mul(&parts.rho, i, &s1_hat);
-        t.inv_ntt();
+        let mut t = matrix_row_mul(&parts.rho, i, &s1_hat).inv_ntt();
         t.add_mut(s2i);
         (*t1i, _) = t.power2round();
     }
@@ -834,7 +888,7 @@ mod bench {
     use test::Bencher;
 
     macro_rules! bench_parameter_set {
-        ($keypair:ident, $b_keypair:ident, $b_sign:ident, $b_verify:ident) => {
+        ($keypair:ident, $b_keypair:ident, $b_sign:ident, $b_sign_avg:ident, $b_verify:ident) => {
             #[bench]
             pub fn $b_keypair(bh: &mut Bencher) {
                 bh.iter(|| super::$keypair(&[1u8; 32]));
@@ -846,6 +900,24 @@ mod bench {
                 bh.iter(|| sk.sign(b"message", b"", &[2u8; 32]).unwrap());
             }
 
+            /// Signing averaged over many messages
+            ///
+            /// The number of rejection rounds a signature needs varies a lot
+            /// from one message to the next, so a benchmark that signs a single
+            /// fixed message measures that message rather than the parameter
+            /// set. This one amortises over 64 of them.
+            #[bench]
+            pub fn $b_sign_avg(bh: &mut Bencher) {
+                const MSGS: usize = 64;
+                let (_, sk) = super::$keypair(&[1u8; 32]);
+                let msgs: [[u8; 4]; MSGS] = core::array::from_fn(|i| (i as u32).to_le_bytes());
+                bh.iter(|| {
+                    for m in msgs.iter() {
+                        test::black_box(sk.sign(m, b"", &[2u8; 32]).unwrap());
+                    }
+                });
+            }
+
             #[bench]
             pub fn $b_verify(bh: &mut Bencher) {
                 let (vk, sk) = super::$keypair(&[1u8; 32]);
@@ -855,7 +927,7 @@ mod bench {
         };
     }
 
-    bench_parameter_set!(keypair44, keypair_44, sign_44, verify_44);
-    bench_parameter_set!(keypair65, keypair_65, sign_65, verify_65);
-    bench_parameter_set!(keypair87, keypair_87, sign_87, verify_87);
+    bench_parameter_set!(keypair44, keypair_44, sign_44, sign_avg_44, verify_44);
+    bench_parameter_set!(keypair65, keypair_65, sign_65, sign_avg_65, verify_65);
+    bench_parameter_set!(keypair87, keypair_87, sign_87, sign_avg_87, verify_87);
 }

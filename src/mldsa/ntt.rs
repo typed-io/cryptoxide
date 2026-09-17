@@ -167,7 +167,27 @@ pub(super) fn canonical(f: &[i32; N]) -> [u32; N] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::GeneratorRaw;
+    use crate::tests::{GeneratorOf, GeneratorRaw};
+
+    /// The widest `a` [`montgomery_reduce`] documents
+    const MONT_BOUND: i64 = (1i64 << 31) * QI as i64;
+
+    /// The widest `a` [`reduce`] documents
+    const REDUCE_BOUND: i32 = i32::MAX - (1 << 22);
+
+    /// Arbitrary `a` in `-MONT_BOUND ..= MONT_BOUND - 1`
+    fn next_wide(generator: &mut GeneratorRaw) -> i64 {
+        (generator.next_u64() % (2 * MONT_BOUND as u64)) as i64 - MONT_BOUND
+    }
+
+    /// Arbitrary `a` in `-REDUCE_BOUND ..= REDUCE_BOUND - 1`
+    ///
+    /// The span is a whole u32 and the centering has to happen before the
+    /// value is narrowed, or the subtraction is the one that wraps.
+    fn next_narrow(generator: &mut GeneratorRaw) -> i32 {
+        let bound = REDUCE_BOUND as i64;
+        ((generator.next_u64() % (2 * bound as u64)) as i64 - bound) as i32
+    }
 
     /// `a` is congruent to `r R` modulo `q`
     fn is_montgomery_of(r: i32, a: i64) {
@@ -200,13 +220,19 @@ mod tests {
         }
 
         // the whole documented range, then arbitrary values inside it
-        let bound = (1i64 << 31) * (QI as i64);
-        for a in [0, 1, -1, QI as i64, -(QI as i64), bound - 1, -bound] {
+        for a in [
+            0,
+            1,
+            -1,
+            QI as i64,
+            -(QI as i64),
+            MONT_BOUND - 1,
+            -MONT_BOUND,
+        ] {
             check(a);
         }
-        let mut generator = GeneratorRaw::new(20);
-        for _ in 0..20_000 {
-            check((generator.next_u64() % (2 * bound as u64)) as i64 - bound);
+        for a in GeneratorOf::new(20, 20_000, next_wide) {
+            check(a);
         }
     }
 
@@ -223,13 +249,11 @@ mod tests {
             );
         }
 
-        let bound = i32::MAX - (1 << 22);
-        for a in [0, 1, -1, QI, -QI, bound, -bound] {
+        for a in [0, 1, -1, QI, -QI, REDUCE_BOUND, -REDUCE_BOUND] {
             check(a);
         }
-        let mut generator = GeneratorRaw::new(21);
-        for _ in 0..20_000 {
-            check((generator.next_u64() % (2 * bound as u64)) as i32 - bound);
+        for a in GeneratorOf::new(21, 20_000, next_narrow) {
+            check(a);
         }
     }
 

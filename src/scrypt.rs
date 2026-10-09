@@ -172,7 +172,7 @@ impl ScryptParams {
         assert!((log_n as usize) < size_of::<usize>() * 8);
         assert!(
             size_of::<usize>() >= size_of::<u32>()
-                || (r <= core::usize::MAX as u32 && p < core::usize::MAX as u32)
+                || (r <= usize::MAX as u32 && p < usize::MAX as u32)
         );
 
         let r = r as usize;

@@ -25,8 +25,10 @@
 //! On top of those, the module contains constant time implementation of
 //! common data encodings:
 //!
+//! * [`base16`] : Base16 (hexadecimal) encoding and decoding
 //! * [`base32`] : Base32 encoding and decoding
 
+pub mod base16;
 pub mod base32;
 
 /// Constant time boolean

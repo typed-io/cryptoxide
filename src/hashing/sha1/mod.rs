@@ -24,6 +24,14 @@ mod reference;
 #[cfg(all(target_arch = "aarch64", target_feature = "sha2"))]
 mod aarch64;
 
+// x86 SHA-NI backend.
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    target_feature = "sha",
+    target_feature = "sse4.1"
+))]
+mod shani;
+
 const STATE_LEN: usize = 5;
 
 /// Process one or more 64-bytes block with the SHA-1 algorithm.
@@ -31,6 +39,15 @@ const STATE_LEN: usize = 5;
 /// `block` length must be a non-zero multiple of 64 bytes. The best
 /// implementation available for the target is selected at compile time.
 fn digest_block(state: &mut [u32; STATE_LEN], block: &[u8]) {
+    #[cfg(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "sha",
+        target_feature = "sse4.1"
+    ))]
+    {
+        return shani::digest_block(state, block);
+    }
+
     #[cfg(all(target_arch = "aarch64", target_feature = "sha2"))]
     {
         return aarch64::digest_block(state, block);

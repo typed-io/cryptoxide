@@ -10,10 +10,11 @@
 # x86 SIMD backends, to cross-compile to an x86-64 target and run the result).
 #
 # Backends covered:
-#   * aarch64: NEON ChaCha/Salsa, SHA-2 (sha2/sha3 ext.), AES (crypto ext.)
-#   * x86-64:  SSE2 ChaCha, SHA-NI/SSE4.1/AVX2 SHA-256, AVX/AVX2 BLAKE2,
-#              AES-NI AES, PCLMULQDQ GHASH
-#   * software: reference AES, reference ChaCha/Salsa/SHA-2/BLAKE2,
+#   * aarch64: NEON ChaCha/Salsa, SHA-2 (sha2/sha3 ext.), SHA-1 (sha2 ext.),
+#              AES (crypto ext.)
+#   * x86-64:  SSE2 ChaCha, SHA-NI/SSE4.1/AVX2 SHA-256, SHA-NI SHA-1,
+#              AVX2/SSE4.1 SHA-512, AVX/AVX2 BLAKE2, AES-NI AES, PCLMULQDQ GHASH
+#   * software: reference AES, reference ChaCha/Salsa/SHA-1/SHA-2/BLAKE2,
 #              reference GHASH
 #   * 32-bit software arithmetic: poly1305 donna32
 #   * 32-bit ARM (target_arch=arm): all reference backends, with poly1305
@@ -117,29 +118,42 @@ else
         fi
     fi
 
+    # On Apple Silicon x86-64 binaries run through Rosetta, which historically
+    # did not implement AVX/AVX2 (SIGILL). Recent macOS (>= 15) Rosetta does, so
+    # probe for it rather than assuming: run a tiny x86-64 program that executes
+    # an AVX2 instruction under emulation.
+    AVX2_OK=0
+    if [ $ARM -eq 1 ] && [ $X86_RUN -eq 1 ]; then
+        probe_src=$(mktemp -d)
+        printf 'int main(void){__asm__ volatile("vpaddq %%ymm0,%%ymm1,%%ymm2");return 0;}\n' > "$probe_src/avx2.c"
+        if cc -arch x86_64 -mavx2 -o "$probe_src/avx2" "$probe_src/avx2.c" 2>/dev/null \
+            && arch -x86_64 "$probe_src/avx2" >/dev/null 2>&1; then
+            AVX2_OK=1
+        fi
+        rm -rf "$probe_src"
+    fi
+
     # Each CPU model enables a superset of SIMD features, selecting different
     # backends:
-    #   core2        SSE2/SSSE3   -> SSE2 ChaCha; reference SHA-2/BLAKE2
-    #   nehalem      +SSE4.1      -> SSE4.1 SHA-256
-    #   sandybridge  +AVX         -> AVX BLAKE2 (SHA-256 stays on SSE4.1)
-    #   broadwell    +AVX2        -> AVX2 SHA-256, AVX2 BLAKE2
+    #   core2        SSE2/SSSE3   -> SSE2 ChaCha; reference SHA-1/SHA-2/BLAKE2
+    #   nehalem      +SSE4.1      -> SSE4.1 SHA-256, SSE4.1 SHA-512
+    #   sandybridge  +AVX         -> AVX BLAKE2 (SHA-2 stays on SSE4.1)
+    #   broadwell    +AVX2        -> AVX2 SHA-256, AVX2 SHA-512, AVX2 BLAKE2
     for cpu in core2 nehalem sandybridge broadwell; do
-        # Rosetta 2 does not implement AVX/AVX2, so those variants SIGILL under
-        # emulation -> only build (never run) them on Apple Silicon.
         avx=0
         case "$cpu" in
             sandybridge | broadwell) avx=1 ;;
         esac
 
-        if [ $X86_RUN -eq 1 ] && ! { [ $ARM -eq 1 ] && [ $avx -eq 1 ]; }; then
+        if [ $X86_RUN -eq 1 ] && ! { [ $ARM -eq 1 ] && [ $avx -eq 1 ] && [ $AVX2_OK -eq 0 ]; }; then
             run "x86-64 $cpu (run)" "-C target-cpu=$cpu" test --target "$TARGET_X86_64"
         else
             run "x86-64 $cpu (build-only)" "-C target-cpu=$cpu" build --target "$TARGET_X86_64"
         fi
     done
 
-    # SHA-NI SHA-256 (AMD Zen and later, Intel Goldmont/Ice Lake and later).
-    # `sha` is not implied by any `target-cpu=` model
+    # SHA-NI SHA-256 and SHA-1 (AMD Zen and later, Intel Goldmont/Ice Lake and
+    # later). `sha` is not implied by any `target-cpu=` model
     SHA_NI=0
     if [ "$OS" = "Darwin" ]; then
         if sysctl -n machdep.cpu.leaf7_features 2>/dev/null | grep -qw SHA; then

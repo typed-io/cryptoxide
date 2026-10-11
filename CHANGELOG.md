@@ -1,4 +1,4 @@
-# Unreleased
+# 0.6.6
 
 * aes/aes-gcm: add x86/x86-64 optimise backend: AES-NI for the `aes` module and PCLMULQDQ for the GHASH authentication
 * sha2-256: improve x86 backends (better scheduling, shani, misc optimisations, code cleanup)

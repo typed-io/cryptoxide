@@ -211,6 +211,55 @@ pub(crate) fn digest_block(state: &mut [u64; 8], mut block: &[u8]) {
     }
 }
 
+/// Run the 80 SHA-512 compression rounds on a fully expanded message schedule
+/// where each entry is already `W[i] + K[i]`.
+#[allow(dead_code)]
+pub(crate) fn compress(state: &mut [u64; 8], wk: &[u64; 80]) {
+    macro_rules! round {
+        ($a: ident, $b: ident, $c: ident, $d: ident, $e: ident, $f: ident, $g: ident, $h: ident, $i: expr) => {
+            let t1 = $h
+                .wrapping_add($e.rotate_right(14) ^ $e.rotate_right(18) ^ $e.rotate_right(41))
+                .wrapping_add($g ^ ($e & ($f ^ $g)))
+                .wrapping_add(wk[$i]);
+            let t2 = ($a.rotate_right(28) ^ $a.rotate_right(34) ^ $a.rotate_right(39))
+                .wrapping_add(($a & $b) | ($c & ($a | $b)));
+            $d = $d.wrapping_add(t1);
+            $h = t1.wrapping_add(t2);
+        };
+    }
+
+    let mut a = state[0];
+    let mut b = state[1];
+    let mut c = state[2];
+    let mut d = state[3];
+    let mut e = state[4];
+    let mut f = state[5];
+    let mut g = state[6];
+    let mut h = state[7];
+
+    let mut i = 0;
+    while i != 80 {
+        round!(a, b, c, d, e, f, g, h, i + 0);
+        round!(h, a, b, c, d, e, f, g, i + 1);
+        round!(g, h, a, b, c, d, e, f, i + 2);
+        round!(f, g, h, a, b, c, d, e, i + 3);
+        round!(e, f, g, h, a, b, c, d, i + 4);
+        round!(d, e, f, g, h, a, b, c, i + 5);
+        round!(c, d, e, f, g, h, a, b, i + 6);
+        round!(b, c, d, e, f, g, h, a, i + 7);
+        i += 8;
+    }
+
+    state[0] = state[0].wrapping_add(a);
+    state[1] = state[1].wrapping_add(b);
+    state[2] = state[2].wrapping_add(c);
+    state[3] = state[3].wrapping_add(d);
+    state[4] = state[4].wrapping_add(e);
+    state[5] = state[5].wrapping_add(f);
+    state[6] = state[6].wrapping_add(g);
+    state[7] = state[7].wrapping_add(h);
+}
+
 /// Constants necessary for SHA-512 family of digests.
 #[rustfmt::skip]
 pub(crate) const K64: [u64; 80] = [

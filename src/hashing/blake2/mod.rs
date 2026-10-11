@@ -61,15 +61,8 @@ impl EngineS {
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         {
             #[cfg(target_feature = "avx")]
-            const HAS_AVX: bool = true;
-            #[cfg(not(target_feature = "avx"))]
-            const HAS_AVX: bool = false;
-
-            #[cfg(target_feature = "avx")]
             {
-                if HAS_AVX {
-                    return avx::compress_s(&mut self.h, &mut self.t, buf, last);
-                }
+                return avx::compress_s(&mut self.h, &mut self.t, buf, last);
             }
         }
         reference::compress_s(&mut self.h, &mut self.t, buf, last)
@@ -114,28 +107,14 @@ impl EngineB {
     pub fn compress(&mut self, buf: &[u8], last: LastBlock) {
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         {
-            #[cfg(target_feature = "avx")]
-            const HAS_AVX: bool = true;
-            #[cfg(not(target_feature = "avx"))]
-            const HAS_AVX: bool = false;
-
-            #[cfg(target_feature = "avx2")]
-            const HAS_AVX2: bool = true;
-            #[cfg(not(target_feature = "avx2"))]
-            const HAS_AVX2: bool = false;
-
             #[cfg(target_feature = "avx2")]
             {
-                if HAS_AVX2 {
-                    return avx2::compress_b(&mut self.h, &mut self.t, buf, last);
-                }
+                return avx2::compress_b(&mut self.h, &mut self.t, buf, last);
             }
 
             #[cfg(target_feature = "avx")]
             {
-                if HAS_AVX {
-                    return avx::compress_b(&mut self.h, &mut self.t, buf, last);
-                }
+                return avx::compress_b(&mut self.h, &mut self.t, buf, last);
             }
         }
         reference::compress_b(&mut self.h, &mut self.t, buf, last)

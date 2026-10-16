@@ -21,6 +21,14 @@
 //!
 //! The general functionality would be a great addition to the rust core library
 //! to have those type of things built-in and crucially more eyeballs.
+//!
+//! The `// ct: ...` comments in this module are annotations for the
+//! `ct-scan --secret` analysis (crypto-ct-tools): `// ct: secret` marks a
+//! function whose timing must not depend on its parameters (for references
+//! and slices: on the pointed-to content; addresses and lengths are public),
+//! `// ct: declassify` a function that intentionally turns a secret into a
+//! public value. On a trait method, the annotation applies to every
+//! implementation, in this module or elsewhere.
 
 /// Constant time boolean
 ///
@@ -54,33 +62,39 @@ impl Choice {
     pub const FALSE: Self = Self(0);
 
     /// Return true if the Choice represent true
+    // ct: declassify -- converts to a branchable bool
     pub fn is_true(self) -> bool {
         self.0 == 1
     }
     /// return true if the Choice represent false
+    // ct: declassify -- converts to a branchable bool
     pub fn is_false(self) -> bool {
         self.0 == 0
     }
     /// Toggle the value represented by the Choice in constant time
     ///
     /// true become false, false become true
+    // ct: secret
     pub fn negate(self) -> Self {
         Choice(1 ^ self.0)
     }
 
     // Return an all-ones mask (`!0`) when true, or an all-zeros mask (`0`) when
     // false. Used to implement branch-free selection.
+    // ct: secret
     pub(crate) const fn to_mask(self) -> u64 {
         0u64.wrapping_sub(self.0)
     }
 }
 
+// ct: declassify -- converts to a branchable bool
 impl From<Choice> for bool {
     fn from(c: Choice) -> bool {
         c.is_true()
     }
 }
 
+// ct: secret
 impl core::ops::BitAnd for Choice {
     type Output = Choice;
     fn bitand(self, b: Choice) -> Choice {
@@ -88,6 +102,7 @@ impl core::ops::BitAnd for Choice {
     }
 }
 
+// ct: secret
 impl core::ops::BitOr for Choice {
     type Output = Choice;
     fn bitor(self, b: Choice) -> Choice {
@@ -95,6 +110,7 @@ impl core::ops::BitOr for Choice {
     }
 }
 
+// ct: secret
 impl core::ops::BitXor for Choice {
     type Output = Choice;
     fn bitxor(self, b: Choice) -> Choice {
@@ -102,6 +118,7 @@ impl core::ops::BitXor for Choice {
     }
 }
 
+// ct: secret
 impl<T> From<(Choice, T)> for CtOption<T> {
     fn from(c: (Choice, T)) -> CtOption<T> {
         CtOption {
@@ -113,6 +130,7 @@ impl<T> From<(Choice, T)> for CtOption<T> {
 
 impl<T> CtOption<T> {
     /// Transform a `CtOption<T>` into a non constant `Option<T>`
+    // ct: declassify -- reveals whether the value is present
     pub fn into_option(self) -> Option<T> {
         if self.present.is_true() {
             Some(self.t)
@@ -125,6 +143,7 @@ impl<T> CtOption<T> {
     ///
     /// Unlike [`Self::into_option`] this does not leave the constant time
     /// domain, so it can be folded into a larger validity computation.
+    // ct: secret
     pub fn is_present(&self) -> Choice {
         self.present
     }
@@ -135,6 +154,7 @@ impl<T> CtOption<T> {
     /// placeholder that must be treated as invalid, but it can still be fed
     /// through a constant-time computation whose result is discarded based
     /// on the choice, instead of branching early.
+    // ct: secret
     pub fn into_parts(self) -> (Choice, T) {
         (self.present, self.t)
     }
@@ -144,6 +164,7 @@ impl<T> CtOption<T> {
     /// The closure is always applied, whether the value is present or a
     /// placeholder, so the closure cannot fail on the possible placeholder
     /// and need to remain constant time related to the value.
+    // ct: secret(self)
     pub fn map<U, F: FnOnce(T) -> U>(self, f: F) -> CtOption<U> {
         CtOption {
             present: self.present,
@@ -158,11 +179,13 @@ impl<T> CtOption<T> {
 /// it means all elements are 0
 pub trait CtZero {
     /// Check that the element is 'zero' in constant time and return the associated `Choice`
+    // ct: secret
     fn ct_zero(self) -> Choice;
 
     /// Check that the element is 'non-zero' in constant time and return the associated `Choice`
     ///
     /// The following call `ct_nonzero(t)` is equivalent to `ct_zero(t).negate()`
+    // ct: secret
     fn ct_nonzero(self) -> Choice;
 }
 
@@ -172,10 +195,12 @@ pub trait CtZero {
 pub trait CtGreater: Sized {
     /// Check that the first element is greater to the second element in
     /// constant time and return the associated `Choice`
+    // ct: secret
     fn ct_gt(a: Self, b: Self) -> Choice;
 
     /// Check that the first element is lesser or equal to the second element in
     /// constant time and return the associated `Choice`
+    // ct: secret
     fn ct_le(a: Self, b: Self) -> Choice {
         Self::ct_gt(a, b).negate()
     }
@@ -187,10 +212,12 @@ pub trait CtGreater: Sized {
 pub trait CtLesser: Sized {
     /// Check that the first element is lesser to the second element in
     /// constant time and return the associated `Choice`
+    // ct: secret
     fn ct_lt(a: Self, b: Self) -> Choice;
 
     /// Check that the first element is greater or equal to the second element in
     /// constant time and return the associated `Choice`
+    // ct: secret
     fn ct_ge(a: Self, b: Self) -> Choice {
         Self::ct_lt(a, b).negate()
     }
@@ -201,11 +228,13 @@ pub trait CtLesser: Sized {
 /// This equivalent to the == operator found in the core library.
 pub trait CtEqual<Rhs: ?Sized = Self> {
     /// Check that the two element are equal in constant time and return the associated `Choice`
+    // ct: secret
     fn ct_eq(self, b: Rhs) -> Choice;
 
     /// Check that the two element are not equal in constant time and return the associated `Choice`
     ///
     /// this is equivalent to calling `lhs.ct_eq(rhs).negate()`
+    // ct: secret
     fn ct_ne(self, b: Rhs) -> Choice;
 }
 
@@ -219,10 +248,12 @@ pub trait CtEqual<Rhs: ?Sized = Self> {
 pub trait CtSelect: Sized {
     /// Conditionally assign `other` to `self`: `self` becomes `other` when
     /// `cond` is true, and is left unchanged otherwise.
+    // ct: secret
     fn ct_assign(&mut self, cond: Choice, other: &Self);
 
     /// Returns `a` when `cond` is true and `b` otherwise. This is the equivalent
     /// of the `if cond { a } else { b }` expression of the core library.
+    // ct: secret
     fn ct_select(cond: Choice, a: &Self, b: &Self) -> Self;
 }
 
@@ -452,6 +483,7 @@ impl<const N: usize> CtLesser for &[u8; N] {
     }
 }
 
+// ct: secret
 #[allow(unused)]
 pub(crate) fn ct_array64_maybe_swap_with<const N: usize>(
     a: &mut [u64; N],
@@ -471,6 +503,7 @@ pub(crate) fn ct_array64_maybe_swap_with<const N: usize>(
     }
 }
 
+// ct: secret
 #[allow(unused)]
 pub(crate) fn ct_array32_maybe_swap_with<const N: usize>(
     a: &mut [i32; N],
@@ -490,6 +523,7 @@ pub(crate) fn ct_array32_maybe_swap_with<const N: usize>(
     }
 }
 
+// ct: secret
 #[allow(unused)]
 pub(crate) fn ct_array64_maybe_set<const N: usize>(a: &mut [u64; N], b: &[u64; N], swap: Choice) {
     let mut tmp = [0; N];
@@ -502,6 +536,7 @@ pub(crate) fn ct_array64_maybe_set<const N: usize>(a: &mut [u64; N], b: &[u64; N
     }
 }
 
+// ct: secret
 #[allow(unused)]
 pub(crate) fn ct_array32_maybe_set<const N: usize>(a: &mut [i32; N], b: &[i32; N], swap: Choice) {
     let mut tmp = [0; N];

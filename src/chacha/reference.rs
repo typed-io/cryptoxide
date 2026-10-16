@@ -76,8 +76,24 @@ impl<const ROUNDS: usize> State<ROUNDS> {
 
     #[inline]
     pub(crate) fn rounds(&mut self) {
-        let [mut x0, mut x1, mut x2, mut x3, mut x4, mut x5, mut x6, mut x7, mut x8, mut x9, mut x10, mut x11, mut x12, mut x13, mut x14, mut x15] =
-            self.state;
+        let [
+            mut x0,
+            mut x1,
+            mut x2,
+            mut x3,
+            mut x4,
+            mut x5,
+            mut x6,
+            mut x7,
+            mut x8,
+            mut x9,
+            mut x10,
+            mut x11,
+            mut x12,
+            mut x13,
+            mut x14,
+            mut x15,
+        ] = self.state;
 
         for _ in 0..(ROUNDS / 2) {
             QR!(x0, x4, x8, x12);

@@ -369,7 +369,7 @@ context_finalize!(256);
 
 #[cfg(test)]
 mod digest_tests {
-    use super::super::tests::{test_hashing, Test};
+    use super::super::tests::{Test, test_hashing};
     use super::{Blake2s, Context};
 
     #[test]
@@ -397,7 +397,7 @@ mod digest_tests {
 
 #[cfg(test)]
 mod mac_tests {
-    use super::super::tests::{test_hashing_keyed, TestKey};
+    use super::super::tests::{TestKey, test_hashing_keyed};
     use super::{Blake2s, Context};
 
     #[test]

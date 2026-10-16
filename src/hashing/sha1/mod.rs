@@ -15,7 +15,7 @@
 //! let digest = sha1::Context::new().update(b"hello world").finalize();
 //! ```
 
-use crate::cryptoutil::{write_u32_be, FixedBuffer};
+use crate::cryptoutil::{FixedBuffer, write_u32_be};
 
 // portable software implementation, valid for all architectures
 mod reference;
@@ -159,7 +159,7 @@ impl Context {
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::{test_hashing, Test};
+    use super::super::tests::{Test, test_hashing};
     use super::*;
 
     #[test]

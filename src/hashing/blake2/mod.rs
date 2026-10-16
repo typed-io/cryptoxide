@@ -65,7 +65,8 @@ impl EngineS {
                 return avx::compress_s(&mut self.h, &mut self.t, buf, last);
             }
         }
-        reference::compress_s(&mut self.h, &mut self.t, buf, last)
+        #[allow(unreachable_code)]
+        return reference::compress_s(&mut self.h, &mut self.t, buf, last);
     }
 }
 
@@ -112,11 +113,13 @@ impl EngineB {
                 return avx2::compress_b(&mut self.h, &mut self.t, buf, last);
             }
 
+            #[allow(unreachable_code)]
             #[cfg(target_feature = "avx")]
             {
                 return avx::compress_b(&mut self.h, &mut self.t, buf, last);
             }
         }
-        reference::compress_b(&mut self.h, &mut self.t, buf, last)
+        #[allow(unreachable_code)]
+        return reference::compress_b(&mut self.h, &mut self.t, buf, last);
     }
 }

@@ -33,7 +33,7 @@ impl Align128 {
 // load 16 unaligned bytes as a 128 bits vector
 #[inline]
 unsafe fn loadu(p: *const u8) -> uint32x4_t {
-    vreinterpretq_u32_u8(vld1q_u8(p))
+    unsafe { vreinterpretq_u32_u8(vld1q_u8(p)) }
 }
 
 // The four ChaCha rotation amounts (16, 12, 8, 7) each map to a dedicated
@@ -46,24 +46,26 @@ unsafe fn loadu(p: *const u8) -> uint32x4_t {
 
 #[inline(always)]
 unsafe fn rotl16(x: uint32x4_t) -> uint32x4_t {
-    vreinterpretq_u32_u16(vrev32q_u16(vreinterpretq_u16_u32(x)))
+    unsafe { vreinterpretq_u32_u16(vrev32q_u16(vreinterpretq_u16_u32(x))) }
 }
 
 #[inline(always)]
 unsafe fn rotl8(x: uint32x4_t) -> uint32x4_t {
-    // per 32-bit lane, bytes [b0,b1,b2,b3] (le) rotate-left-8 to [b3,b0,b1,b2]
-    const IDX: [u8; 16] = [3, 0, 1, 2, 7, 4, 5, 6, 11, 8, 9, 10, 15, 12, 13, 14];
-    vreinterpretq_u32_u8(vqtbl1q_u8(vreinterpretq_u8_u32(x), vld1q_u8(IDX.as_ptr())))
+    unsafe {
+        // per 32-bit lane, bytes [b0,b1,b2,b3] (le) rotate-left-8 to [b3,b0,b1,b2]
+        const IDX: [u8; 16] = [3, 0, 1, 2, 7, 4, 5, 6, 11, 8, 9, 10, 15, 12, 13, 14];
+        vreinterpretq_u32_u8(vqtbl1q_u8(vreinterpretq_u8_u32(x), vld1q_u8(IDX.as_ptr())))
+    }
 }
 
 #[inline(always)]
 unsafe fn rotl12(x: uint32x4_t) -> uint32x4_t {
-    vsriq_n_u32::<20>(vshlq_n_u32::<12>(x), x)
+    unsafe { vsriq_n_u32::<20>(vshlq_n_u32::<12>(x), x) }
 }
 
 #[inline(always)]
 unsafe fn rotl7(x: uint32x4_t) -> uint32x4_t {
-    vsriq_n_u32::<25>(vshlq_n_u32::<7>(x), x)
+    unsafe { vsriq_n_u32::<25>(vshlq_n_u32::<7>(x), x) }
 }
 
 macro_rules! swizzle {
@@ -160,12 +162,12 @@ impl<const ROUNDS: usize> State<ROUNDS> {
 
     #[inline]
     unsafe fn constant32() -> uint32x4_t {
-        vld1q_u32(Self::CST32.as_ptr())
+        unsafe { vld1q_u32(Self::CST32.as_ptr()) }
     }
 
     #[inline]
     unsafe fn constant16() -> uint32x4_t {
-        vld1q_u32(Self::CST16.as_ptr())
+        unsafe { vld1q_u32(Self::CST16.as_ptr()) }
     }
 
     #[inline]

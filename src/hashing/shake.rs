@@ -36,7 +36,7 @@
 //! // chunk1 ++ chunk2 is the same as squeezing 64 bytes at once
 //! ```
 
-use super::sha3::{keccak_f_x2, Engine, B};
+use super::sha3::{B, Engine, keccak_f_x2};
 
 macro_rules! shake_impl {
     ($C:ident, $context:ident, $reader:ident, $capacity2:literal, $security:literal, $doc:expr) => {
@@ -216,7 +216,7 @@ impl<const RATE: usize> Xof2<RATE> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::{test_hashing, Test};
+    use super::super::tests::{Test, test_hashing};
     use super::*;
 
     /// The two batched sponges must each produce the ordinary XOF stream

@@ -76,12 +76,12 @@ impl<const ROUNDS: usize> State<ROUNDS> {
 
     #[inline]
     unsafe fn constant32() -> __m128i {
-        _mm_loadu_si128(Self::CST32.as_ptr() as *const __m128i)
+        unsafe { _mm_loadu_si128(Self::CST32.as_ptr() as *const __m128i) }
     }
 
     #[inline]
     unsafe fn constant16() -> __m128i {
-        _mm_loadu_si128(Self::CST16.as_ptr() as *const __m128i)
+        unsafe { _mm_loadu_si128(Self::CST16.as_ptr() as *const __m128i) }
     }
 
     #[inline]

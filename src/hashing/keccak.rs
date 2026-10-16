@@ -8,7 +8,7 @@
 //! * `Keccak256`
 //! * `Keccak384`
 //! * `Keccak512`
-use super::sha3::{Engine, B};
+use super::sha3::{B, Engine};
 
 macro_rules! keccak_impl {
     ($C: ident, $context:ident, $digestlength:literal, $doc:expr) => {
@@ -89,7 +89,7 @@ keccak_impl!(Keccak512, Context512, 64, "Keccak512");
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::{test_hashing, Test};
+    use super::super::tests::{Test, test_hashing};
     use super::*;
 
     #[test]

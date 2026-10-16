@@ -1,7 +1,7 @@
 //! Polynomials of `R_q = Z_q[X]/(X^256 + 1)`, along with the sampling and
 //! serialisation routines that ML-KEM defines on them
 
-use super::group::{self, add, mul, reduce, sub, Zq, GAMMAS, INV128, Q, ZETAS};
+use super::group::{self, GAMMAS, INV128, Q, ZETAS, Zq, add, mul, reduce, sub};
 use crate::hashing::shake::Shake128;
 
 /// Number of coefficients of a polynomial of `R_q`

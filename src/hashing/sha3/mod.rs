@@ -292,7 +292,7 @@ sha3_impl!(Sha3_512, Context512, 64, "SHA3 512");
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::{test_hashing, Test};
+    use super::super::tests::{Test, test_hashing};
     use super::*;
 
     // Multi-block (256 bytes) known-answer test. SHA3-256 (136-byte rate) runs

@@ -5,7 +5,7 @@
 //! * [ed25519-donna](https://github.com/floodyberry/ed25519-donna)
 //! * Sandy2x: New Curve25519 Speed Records
 
-use crate::constant_time::{ct_array64_maybe_set, ct_array64_maybe_swap_with, Choice, CtEqual};
+use crate::constant_time::{Choice, CtEqual, ct_array64_maybe_set, ct_array64_maybe_swap_with};
 use core::ops::{Add, Mul, Neg, Sub};
 
 // multiple of P

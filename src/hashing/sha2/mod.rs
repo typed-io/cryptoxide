@@ -266,7 +266,7 @@ digest!(256 Sha224, Context224, output_224bits_at, 224, H224);
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::{test_hashing, Test};
+    use super::super::tests::{Test, test_hashing};
     use super::*;
 
     // Multi-block known-answer tests for SHA-256 to deal with different backends

@@ -11,7 +11,7 @@
 //! let digest = ripemd160::Context::new().update(b"hello world").finalize();
 //! ```
 
-use crate::cryptoutil::{read_u32v_le, write_u32_le, FixedBuffer};
+use crate::cryptoutil::{FixedBuffer, read_u32v_le, write_u32_le};
 
 // Some unexported constants
 const DIGEST_BUF_LEN: usize = 5;
@@ -406,7 +406,7 @@ impl Context {
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::{test_hashing, Test};
+    use super::super::tests::{Test, test_hashing};
     use super::*;
 
     #[test]

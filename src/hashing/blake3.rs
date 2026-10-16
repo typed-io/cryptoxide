@@ -651,9 +651,9 @@ impl OutputReader {
 /// ```
 pub mod parallel {
     use super::{
-        cv_stack_add, cv_stack_root_output, read_u32v_le, ChunkState, Context, Output,
-        OutputReader, CHUNK_LEN, FLAG_DERIVE_KEY_CONTEXT, FLAG_DERIVE_KEY_MATERIAL,
-        FLAG_KEYED_HASH, IV, MAX_DEPTH,
+        CHUNK_LEN, ChunkState, Context, FLAG_DERIVE_KEY_CONTEXT, FLAG_DERIVE_KEY_MATERIAL,
+        FLAG_KEYED_HASH, IV, MAX_DEPTH, Output, OutputReader, cv_stack_add, cv_stack_root_output,
+        read_u32v_le,
     };
 
     /// BLAKE3 mode parameters (key words + domain-separation flags).

@@ -260,7 +260,7 @@ mod test {
     use alloc::vec::Vec;
     use core::iter::repeat;
 
-    use super::{scrypt, ScryptParams};
+    use super::{ScryptParams, scrypt};
 
     struct Test {
         password: &'static str,

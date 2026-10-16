@@ -68,9 +68,11 @@ const ROUND_CONSTS: [u32; 10] = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80,
 /// exactly `SubBytes(word)`.
 #[inline]
 unsafe fn sub_word(input: u32) -> u32 {
-    let input = vreinterpretq_u8_u32(vdupq_n_u32(input));
-    let sub = vaeseq_u8(input, vdupq_n_u8(0));
-    vgetq_lane_u32(vreinterpretq_u32_u8(sub), 0)
+    unsafe {
+        let input = vreinterpretq_u8_u32(vdupq_n_u32(input));
+        let sub = vaeseq_u8(input, vdupq_n_u8(0));
+        vgetq_lane_u32(vreinterpretq_u32_u8(sub), 0)
+    }
 }
 
 /// Standard Rijndael key expansion into `N` encryption round keys.
@@ -78,35 +80,37 @@ unsafe fn sub_word(input: u32) -> u32 {
 /// `L` is the key length in bytes (16 for AES-128, 32 for AES-256) and `N` is
 /// the number of round keys (11 for AES-128, 15 for AES-256).
 unsafe fn expand_key_encryption<const L: usize, const N: usize>(key: &[u8; L]) -> [uint8x16_t; N] {
-    /// There are 4 AES words (columns) in a block.
-    const BLOCK_WORDS: usize = 4;
-    /// An AES (Rijndael) word is always 32 bits / 4 bytes.
-    const WORD_SIZE: usize = 4;
+    unsafe {
+        /// There are 4 AES words (columns) in a block.
+        const BLOCK_WORDS: usize = 4;
+        /// An AES (Rijndael) word is always 32 bits / 4 bytes.
+        const WORD_SIZE: usize = 4;
 
-    let mut keys: [uint8x16_t; N] = mem::zeroed();
+        let mut keys: [uint8x16_t; N] = mem::zeroed();
 
-    // The round keys are laid out as native-endian 32-bit columns; casting the
-    // 16-byte-aligned key array to `*mut u32` is sound.
-    let cols_ptr: *mut u32 = keys.as_mut_ptr().cast();
-    let columns = core::slice::from_raw_parts_mut(cols_ptr, N * BLOCK_WORDS);
+        // The round keys are laid out as native-endian 32-bit columns; casting the
+        // 16-byte-aligned key array to `*mut u32` is sound.
+        let cols_ptr: *mut u32 = keys.as_mut_ptr().cast();
+        let columns = core::slice::from_raw_parts_mut(cols_ptr, N * BLOCK_WORDS);
 
-    for (i, chunk) in key.chunks_exact(WORD_SIZE).enumerate() {
-        columns[i] = u32::from_ne_bytes(chunk.try_into().unwrap());
-    }
-
-    // `Nk`: number of columns in the cipher key.
-    let nk = L / WORD_SIZE;
-    for i in nk..(N * BLOCK_WORDS) {
-        let mut word = columns[i - 1];
-        if i % nk == 0 {
-            word = sub_word(word).rotate_right(8) ^ ROUND_CONSTS[i / nk - 1];
-        } else if nk > 6 && i % nk == 4 {
-            word = sub_word(word);
+        for (i, chunk) in key.chunks_exact(WORD_SIZE).enumerate() {
+            columns[i] = u32::from_ne_bytes(chunk.try_into().unwrap());
         }
-        columns[i] = columns[i - nk] ^ word;
-    }
 
-    keys
+        // `Nk`: number of columns in the cipher key.
+        let nk = L / WORD_SIZE;
+        for i in nk..(N * BLOCK_WORDS) {
+            let mut word = columns[i - 1];
+            if i % nk == 0 {
+                word = sub_word(word).rotate_right(8) ^ ROUND_CONSTS[i / nk - 1];
+            } else if nk > 6 && i % nk == 4 {
+                word = sub_word(word);
+            }
+            columns[i] = columns[i - nk] ^ word;
+        }
+
+        keys
+    }
 }
 
 /// Derive the `N` decryption round keys from the encryption round keys.
@@ -114,13 +118,15 @@ unsafe fn expand_key_encryption<const L: usize, const N: usize>(key: &[u8; L]) -
 /// This is the reverse of the encryption keys, with InvMixColumns applied to
 /// all but the first and last, matching the equivalent inverse cipher.
 unsafe fn expand_key_decryption<const N: usize>(keys: &[uint8x16_t; N]) -> [uint8x16_t; N] {
-    let mut inv: [uint8x16_t; N] = mem::zeroed();
-    inv[0] = keys[N - 1];
-    for i in 1..(N - 1) {
-        inv[i] = vaesimcq_u8(keys[N - 1 - i]);
+    unsafe {
+        let mut inv: [uint8x16_t; N] = mem::zeroed();
+        inv[0] = keys[N - 1];
+        for i in 1..(N - 1) {
+            inv[i] = vaesimcq_u8(keys[N - 1 - i]);
+        }
+        inv[N - 1] = keys[0];
+        inv
     }
-    inv[N - 1] = keys[0];
-    inv
 }
 
 /// Encrypt `B` independent blocks in place, round by round.
@@ -134,15 +140,17 @@ unsafe fn encrypt_rounds<const N: usize, const B: usize>(
     keys: &[uint8x16_t; N],
     blocks: &mut [uint8x16_t; B],
 ) {
-    // All rounds but the last: AddRoundKey + SubBytes + ShiftRows, then MixColumns.
-    for &key in &keys[..N - 2] {
-        for b in blocks.iter_mut() {
-            *b = vaesmcq_u8(vaeseq_u8(*b, key));
+    unsafe {
+        // All rounds but the last: AddRoundKey + SubBytes + ShiftRows, then MixColumns.
+        for &key in &keys[..N - 2] {
+            for b in blocks.iter_mut() {
+                *b = vaesmcq_u8(vaeseq_u8(*b, key));
+            }
         }
-    }
-    // Last round: no MixColumns, followed by the final AddRoundKey.
-    for b in blocks.iter_mut() {
-        *b = veorq_u8(vaeseq_u8(*b, keys[N - 2]), keys[N - 1]);
+        // Last round: no MixColumns, followed by the final AddRoundKey.
+        for b in blocks.iter_mut() {
+            *b = veorq_u8(vaeseq_u8(*b, keys[N - 2]), keys[N - 1]);
+        }
     }
 }
 
@@ -156,32 +164,36 @@ unsafe fn decrypt_rounds<const N: usize, const B: usize>(
     keys: &[uint8x16_t; N],
     blocks: &mut [uint8x16_t; B],
 ) {
-    // All rounds but the last: AddRoundKey + InvShiftRows + InvSubBytes, then InvMixColumns.
-    for &key in &keys[..N - 2] {
-        for b in blocks.iter_mut() {
-            *b = vaesimcq_u8(vaesdq_u8(*b, key));
+    unsafe {
+        // All rounds but the last: AddRoundKey + InvShiftRows + InvSubBytes, then InvMixColumns.
+        for &key in &keys[..N - 2] {
+            for b in blocks.iter_mut() {
+                *b = vaesimcq_u8(vaesdq_u8(*b, key));
+            }
         }
-    }
-    // Last round: no InvMixColumns, followed by the final AddRoundKey.
-    for b in blocks.iter_mut() {
-        *b = veorq_u8(vaesdq_u8(*b, keys[N - 2]), keys[N - 1]);
+        // Last round: no InvMixColumns, followed by the final AddRoundKey.
+        for b in blocks.iter_mut() {
+            *b = veorq_u8(vaesdq_u8(*b, keys[N - 2]), keys[N - 1]);
+        }
     }
 }
 
 /// Load `B` blocks into vector registers.
 #[inline(always)]
 unsafe fn load_blocks<const B: usize>(blocks: &[[u8; 16]; B]) -> [uint8x16_t; B] {
-    core::array::from_fn(|i| vld1q_u8(blocks[i].as_ptr()))
+    unsafe { core::array::from_fn(|i| vld1q_u8(blocks[i].as_ptr())) }
 }
 
 /// Store `B` blocks back out of vector registers.
 #[inline(always)]
 unsafe fn store_blocks<const B: usize>(blocks: &[uint8x16_t; B]) -> [[u8; 16]; B] {
-    let mut out = [[0u8; 16]; B];
-    for (out, b) in out.iter_mut().zip(blocks.iter()) {
-        vst1q_u8(out.as_mut_ptr(), *b);
+    unsafe {
+        let mut out = [[0u8; 16]; B];
+        for (out, b) in out.iter_mut().zip(blocks.iter()) {
+            vst1q_u8(out.as_mut_ptr(), *b);
+        }
+        out
     }
-    out
 }
 
 /// Encrypt exactly `B` blocks with the `N` given encryption round keys.
@@ -190,9 +202,11 @@ unsafe fn encrypt_n<const N: usize, const B: usize>(
     keys: &[uint8x16_t; N],
     blocks: &[[u8; 16]; B],
 ) -> [[u8; 16]; B] {
-    let mut b = load_blocks(blocks);
-    encrypt_rounds(keys, &mut b);
-    store_blocks(&b)
+    unsafe {
+        let mut b = load_blocks(blocks);
+        encrypt_rounds(keys, &mut b);
+        store_blocks(&b)
+    }
 }
 
 /// Decrypt exactly `B` blocks with the `N` given decryption round keys.
@@ -201,9 +215,11 @@ unsafe fn decrypt_n<const N: usize, const B: usize>(
     keys: &[uint8x16_t; N],
     blocks: &[[u8; 16]; B],
 ) -> [[u8; 16]; B] {
-    let mut b = load_blocks(blocks);
-    decrypt_rounds(keys, &mut b);
-    store_blocks(&b)
+    unsafe {
+        let mut b = load_blocks(blocks);
+        decrypt_rounds(keys, &mut b);
+        store_blocks(&b)
+    }
 }
 
 pub(super) fn key_schedule128(key: &[u8; 16]) -> RoundKeys128 {

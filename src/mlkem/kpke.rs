@@ -5,7 +5,7 @@
 //! only a building block and offers no chosen ciphertext security of its own,
 //! hence its confinement to this crate.
 
-use super::poly::{sample_cbd, sample_ntt, Poly, ENCODED12};
+use super::poly::{ENCODED12, Poly, sample_cbd, sample_ntt};
 use crate::hashing::{sha3::Sha3_512, shake::Shake256};
 
 /// Largest `64 * ETA` used by any parameter set, ie. the `eta = 3` of ML-KEM-512

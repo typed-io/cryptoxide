@@ -24,40 +24,48 @@ const R: u64 = 0b1000_0111;
 /// `block` must be exactly one block long.
 #[inline]
 unsafe fn load(block: &[u8]) -> uint8x16_t {
-    debug_assert_eq!(block.len(), 16);
-    vrbitq_u8(vld1q_u8(block.as_ptr()))
+    unsafe {
+        debug_assert_eq!(block.len(), 16);
+        vrbitq_u8(vld1q_u8(block.as_ptr()))
+    }
 }
 
 /// Convert a normalized element back to its 16-byte GCM representation.
 #[inline]
 unsafe fn store(v: uint8x16_t) -> [u8; 16] {
-    let mut out = [0u8; 16];
-    vst1q_u8(out.as_mut_ptr(), vrbitq_u8(v));
-    out
+    unsafe {
+        let mut out = [0u8; 16];
+        vst1q_u8(out.as_mut_ptr(), vrbitq_u8(v));
+        out
+    }
 }
 
 /// Exchange the two 64-bit halves of a vector.
 #[inline]
 unsafe fn swap64(a: uint8x16_t) -> uint8x16_t {
-    vextq_u8(a, a, 8)
+    unsafe { vextq_u8(a, a, 8) }
 }
 
 /// Carry-less multiply of the low halves of `a` and `b` (`pmull`).
 #[inline]
 unsafe fn clmul_low(a: uint8x16_t, b: uint8x16_t) -> uint8x16_t {
-    vreinterpretq_u8_p128(vmull_p64(
-        vgetq_lane_u64(vreinterpretq_u64_u8(a), 0),
-        vgetq_lane_u64(vreinterpretq_u64_u8(b), 0),
-    ))
+    unsafe {
+        vreinterpretq_u8_p128(vmull_p64(
+            vgetq_lane_u64(vreinterpretq_u64_u8(a), 0),
+            vgetq_lane_u64(vreinterpretq_u64_u8(b), 0),
+        ))
+    }
 }
 
 /// Carry-less multiply of the high halves of `a` and `b` (`pmull2`).
 #[inline]
 unsafe fn clmul_high(a: uint8x16_t, b: uint8x16_t) -> uint8x16_t {
-    vreinterpretq_u8_p128(vmull_high_p64(
-        vreinterpretq_p64_u8(a),
-        vreinterpretq_p64_u8(b),
-    ))
+    unsafe {
+        vreinterpretq_u8_p128(vmull_high_p64(
+            vreinterpretq_p64_u8(a),
+            vreinterpretq_p64_u8(b),
+        ))
+    }
 }
 
 /// Unreduced 256-bit carry-less product, as three 128-bit partial sums.
@@ -75,22 +83,26 @@ impl Product {
     /// Add another unreduced product (XOR, addition in GF(2)).
     #[inline]
     unsafe fn add(&mut self, other: &Product) {
-        self.lo = veorq_u8(self.lo, other.lo);
-        self.mid = veorq_u8(self.mid, other.mid);
-        self.hi = veorq_u8(self.hi, other.hi);
+        unsafe {
+            self.lo = veorq_u8(self.lo, other.lo);
+            self.mid = veorq_u8(self.mid, other.mid);
+            self.hi = veorq_u8(self.hi, other.hi);
+        }
     }
 }
 
 /// Carry-less 128x128 -> 256-bit multiply, `b_swapped` being `swap64(b)`.
 #[inline]
 unsafe fn clmul128(a: uint8x16_t, b: uint8x16_t, b_swapped: uint8x16_t) -> Product {
-    // lo  = a_lo * b_lo
-    // mid = a_lo * b_hi + a_hi * b_lo
-    // hi  = a_hi * b_hi
-    let lo = clmul_low(a, b);
-    let mid = veorq_u8(clmul_low(a, b_swapped), clmul_high(a, b_swapped));
-    let hi = clmul_high(a, b);
-    Product { lo, mid, hi }
+    unsafe {
+        // lo  = a_lo * b_lo
+        // mid = a_lo * b_hi + a_hi * b_lo
+        // hi  = a_hi * b_hi
+        let lo = clmul_low(a, b);
+        let mid = veorq_u8(clmul_low(a, b_swapped), clmul_high(a, b_swapped));
+        let hi = clmul_high(a, b);
+        Product { lo, mid, hi }
+    }
 }
 
 /// Reduce an unreduced 256-bit product modulo x^128 + x^7 + x^2 + x + 1.
@@ -101,28 +113,30 @@ unsafe fn clmul128(a: uint8x16_t, b: uint8x16_t, b_swapped: uint8x16_t) -> Produ
 /// need one final (tiny) fold of their own.
 #[inline]
 unsafe fn reduce(p: &Product) -> uint8x16_t {
-    let zero = vdupq_n_u8(0);
-    // Fold the middle partial product into the 256-bit value [hi:lo].
-    let lo = veorq_u8(p.lo, vextq_u8(zero, p.mid, 8));
-    let hi = veorq_u8(p.hi, vextq_u8(p.mid, zero, 8));
+    unsafe {
+        let zero = vdupq_n_u8(0);
+        // Fold the middle partial product into the 256-bit value [hi:lo].
+        let lo = veorq_u8(p.lo, vextq_u8(zero, p.mid, 8));
+        let hi = veorq_u8(p.hi, vextq_u8(p.mid, zero, 8));
 
-    // R in both halves, so that it can be the operand of `pmull` and `pmull2` alike.
-    let rv = vreinterpretq_u8_u64(vdupq_n_u64(R));
-    // h0 * x^128 = h0 * R, of degree at most 70: no overflow.
-    let a = clmul_low(hi, rv);
-    // h1 * x^192 = (h1 * R) * x^64, the shift dropping the 7 top bits of h1 * R.
-    let b = clmul_high(hi, rv);
-    let b_high = vgetq_lane_u64(vreinterpretq_u64_u8(b), 1);
-    // Those dropped bits stand for b_high * x^128 = b_high * R, of degree at most 13.
-    let c = vreinterpretq_u8_p128(vmull_p64(b_high, R));
+        // R in both halves, so that it can be the operand of `pmull` and `pmull2` alike.
+        let rv = vreinterpretq_u8_u64(vdupq_n_u64(R));
+        // h0 * x^128 = h0 * R, of degree at most 70: no overflow.
+        let a = clmul_low(hi, rv);
+        // h1 * x^192 = (h1 * R) * x^64, the shift dropping the 7 top bits of h1 * R.
+        let b = clmul_high(hi, rv);
+        let b_high = vgetq_lane_u64(vreinterpretq_u64_u8(b), 1);
+        // Those dropped bits stand for b_high * x^128 = b_high * R, of degree at most 13.
+        let c = vreinterpretq_u8_p128(vmull_p64(b_high, R));
 
-    veorq_u8(veorq_u8(lo, a), veorq_u8(vextq_u8(zero, b, 8), c))
+        veorq_u8(veorq_u8(lo, a), veorq_u8(vextq_u8(zero, b, 8), c))
+    }
 }
 
 /// Multiply two normalized field elements.
 #[inline]
 unsafe fn gmul(a: uint8x16_t, b: uint8x16_t) -> uint8x16_t {
-    reduce(&clmul128(a, b, swap64(b)))
+    unsafe { reduce(&clmul128(a, b, swap64(b))) }
 }
 
 /// GHASH hash key: the powers of H needed by the aggregated reduction.
@@ -193,18 +207,20 @@ impl State {
 /// and so on, which is Horner's rule evaluated in one pass.
 #[inline]
 unsafe fn absorb(x: uint8x16_t, key: &Key, blocks: &[u8], first: usize) -> uint8x16_t {
-    debug_assert_eq!(blocks.len() % 16, 0);
-    debug_assert_eq!(first + blocks.len() / 16, WIDE);
+    unsafe {
+        debug_assert_eq!(blocks.len() % 16, 0);
+        debug_assert_eq!(first + blocks.len() / 16, WIDE);
 
-    let powers = &key.powers[first..];
-    let swapped = &key.swapped[first..];
+        let powers = &key.powers[first..];
+        let swapped = &key.swapped[first..];
 
-    let mut blocks = blocks.chunks_exact(16);
-    // The running state only enters through the first block.
-    let head = blocks.next().expect("at least one block");
-    let mut acc = clmul128(veorq_u8(load(head), x), powers[0], swapped[0]);
-    for (block, (&p, &ps)) in blocks.zip(powers[1..].iter().zip(&swapped[1..])) {
-        acc.add(&clmul128(load(block), p, ps));
+        let mut blocks = blocks.chunks_exact(16);
+        // The running state only enters through the first block.
+        let head = blocks.next().expect("at least one block");
+        let mut acc = clmul128(veorq_u8(load(head), x), powers[0], swapped[0]);
+        for (block, (&p, &ps)) in blocks.zip(powers[1..].iter().zip(&swapped[1..])) {
+            acc.add(&clmul128(load(block), p, ps));
+        }
+        reduce(&acc)
     }
-    reduce(&acc)
 }

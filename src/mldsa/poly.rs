@@ -1,7 +1,7 @@
 //! Polynomials of `R_q = Z_q[X]/(X^256 + 1)`, along with the sampling and
 //! serialisation routines that ML-DSA defines on them
 
-use super::group::{self, add, center, from_centered, low_bits, mul, sub, Zq, D, Q};
+use super::group::{self, D, Q, Zq, add, center, from_centered, low_bits, mul, sub};
 use super::ntt;
 use crate::hashing::shake::{Block2, Shake128, Shake256, Xof2};
 
@@ -655,14 +655,18 @@ mod tests {
         let mut generator = GeneratorRaw::new(5);
         for i in 0..4u16 {
             let rho = generator.bytes::<64>();
-            assert!(rej_bounded_poly::<2>(&rho, i)
-                .0
-                .iter()
-                .all(|c| group::norm(*c) <= 2));
-            assert!(rej_bounded_poly::<4>(&rho, i)
-                .0
-                .iter()
-                .all(|c| group::norm(*c) <= 4));
+            assert!(
+                rej_bounded_poly::<2>(&rho, i)
+                    .0
+                    .iter()
+                    .all(|c| group::norm(*c) <= 2)
+            );
+            assert!(
+                rej_bounded_poly::<4>(&rho, i)
+                    .0
+                    .iter()
+                    .all(|c| group::norm(*c) <= 4)
+            );
         }
     }
 

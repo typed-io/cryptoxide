@@ -55,11 +55,11 @@ use crate::hashing::shake::Shake256;
 use crate::hashing::{sha256, sha512, shake128, shake256};
 
 use encoding::{
-    pk_decode, pk_encode, sig_decode, sig_encode, sk_decode, sk_encode, SigningKeyErrorInvalidRange,
+    SigningKeyErrorInvalidRange, pk_decode, pk_encode, sig_decode, sig_encode, sk_decode, sk_encode,
 };
 use poly::{
-    expand_mask_poly, expand_mask_poly_x2, rej_bounded_poly, rej_bounded_poly_x2, rej_ntt_poly,
-    rej_ntt_poly_x2, sample_in_ball, Hint, Poly, PolyAcc, PolyNtt,
+    Hint, Poly, PolyAcc, PolyNtt, expand_mask_poly, expand_mask_poly_x2, rej_bounded_poly,
+    rej_bounded_poly_x2, rej_ntt_poly, rej_ntt_poly_x2, sample_in_ball,
 };
 
 mod encoding;

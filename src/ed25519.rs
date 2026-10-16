@@ -55,7 +55,7 @@
 //! [RFC8032]: <https://www.rfc-editor.org/rfc/rfc8032.txt>
 
 use crate::constant_time::{CtEqual, CtZero};
-use crate::curve25519::{curve25519, scalar, Fe, Ge, GePartial, Scalar};
+use crate::curve25519::{Fe, Ge, GePartial, Scalar, curve25519, scalar};
 use core::convert::TryFrom;
 
 #[cfg(feature = "sha2")]
@@ -420,8 +420,8 @@ fn edwards_to_montgomery_x(ed_y: &Fe) -> Fe {
 #[cfg(feature = "blake2")]
 pub mod blake2b {
     use super::{
-        blake2b512, EXTENDED_KEY_LENGTH, KEYPAIR_LENGTH, PRIVATE_KEY_LENGTH, PUBLIC_KEY_LENGTH,
-        SIGNATURE_LENGTH,
+        EXTENDED_KEY_LENGTH, KEYPAIR_LENGTH, PRIVATE_KEY_LENGTH, PUBLIC_KEY_LENGTH,
+        SIGNATURE_LENGTH, blake2b512,
     };
 
     /// keypair of secret key and public key, using BLAKE2b-512

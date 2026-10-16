@@ -3,7 +3,7 @@
 use core::cmp::Ordering;
 use core::ops::{Add, Neg, Sub};
 
-use super::fe::{precomp, Fe};
+use super::fe::{Fe, precomp};
 use super::scalar::Scalar;
 use crate::constant_time::{Choice, CtEqual, CtZero};
 

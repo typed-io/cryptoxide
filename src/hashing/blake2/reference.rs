@@ -1,4 +1,4 @@
-use super::common::{b, s, LastBlock, SIGMA};
+use super::common::{LastBlock, SIGMA, b, s};
 use crate::cryptoutil::{read_u32v_le, read_u64v_le};
 
 macro_rules! G {

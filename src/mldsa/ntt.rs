@@ -16,7 +16,7 @@
 //! The price is that the ranges are no longer anybody's business but this
 //! module's, so each function documents what it takes and what it gives back.
 
-use super::group::{self, center, from_centered, Zq, INV256, Q, ZETAS};
+use super::group::{self, INV256, Q, ZETAS, Zq, center, from_centered};
 use super::poly::N;
 
 /// `q` as the signed integer the arithmetic here works with

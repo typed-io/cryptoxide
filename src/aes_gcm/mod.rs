@@ -81,7 +81,7 @@ use crate::{
 mod ctr;
 mod ghash;
 
-use ctr::{make_j0, xor_group, xor_group_mut, Ctr};
+use ctr::{Ctr, make_j0, xor_group, xor_group_mut};
 use ghash::GHash;
 
 /// The block encryption AES-GCM needs: the CTR keystream and the tag.

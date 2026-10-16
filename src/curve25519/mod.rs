@@ -155,7 +155,7 @@ pub fn curve25519_base(n: &[u8; 32]) -> [u8; 32] {
 mod tests {
     use crate::constant_time::CtZero;
 
-    use super::{curve25519_base, Fe};
+    use super::{Fe, curve25519_base};
 
     #[test]
     fn from_to_bytes_preserves() {

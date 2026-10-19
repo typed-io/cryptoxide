@@ -112,10 +112,8 @@ pub(super) fn permute_x2(states: &mut [[u64; 25]; 2]) {
     }
 }
 
-pub(super) fn keccak_f(state: &mut [u8; super::super::B]) {
-    let mut words = [0u64; 25];
-    read_u64v_le(&mut words, state);
-
+/// Permute a single sponge state.
+pub(super) fn permute(words: &mut [u64; 25]) {
     unsafe {
         // one sponge only, so both elements carry the same copy of it
         let mut s = [vdupq_n_u64(0); 25];
@@ -129,6 +127,11 @@ pub(super) fn keccak_f(state: &mut [u8; super::super::B]) {
             words[i] = vgetq_lane_u64::<0>(s[i]);
         }
     }
+}
 
+pub(super) fn keccak_f(state: &mut [u8; super::super::B]) {
+    let mut words = [0u64; 25];
+    read_u64v_le(&mut words, state);
+    permute(&mut words);
     write_u64v_le(state, &words);
 }

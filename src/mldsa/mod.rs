@@ -52,7 +52,9 @@
 
 use crate::constant_time::CtEqual;
 use crate::hashing::shake::Shake256;
-use crate::hashing::{sha256, sha512, shake128, shake256};
+use crate::dsa_prehash;
+
+pub use crate::dsa_prehash::PreHash;
 
 use encoding::{
     SigningKeyErrorInvalidRange, pk_decode, pk_encode, sig_decode, sig_encode, sk_decode, sk_encode,
@@ -77,69 +79,13 @@ pub const SEED_LENGTH: usize = 32;
 pub const RANDOMIZER_LENGTH: usize = 32;
 
 /// Longest context string a signature can be bound to
-pub const MAX_CONTEXT_LENGTH: usize = 255;
+pub const MAX_CONTEXT_LENGTH: usize = dsa_prehash::MAX_CONTEXT_LENGTH;
 
 /// Widest `w1` encoding of any parameter set, the 6 bits of ML-DSA-44
 const MAX_W1_BITS: usize = 6;
 
 /// Longest commitment hash of any parameter set, the `lambda / 4` of ML-DSA-87
 const MAX_CTILDE: usize = 64;
-
-/// The hash function of `HashML-DSA`, the pre hash variant of ML-DSA
-///
-/// FIPS 204 section 5.4 signs `H(M)` in place of `M`, with the identity of `H`
-/// bound into the signature through its object identifier, so that a signature
-/// made over the digest of one function cannot be read as one made over the
-/// digest of another.
-///
-/// These are the four hash functions that FIPS 204 Algorithm 4 instantiates.
-/// The standard also allows the other approved hash functions, which this crate
-/// does not implement here.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PreHash {
-    /// SHA-256, giving a 32 bytes digest
-    Sha256,
-    /// SHA-512, giving a 64 bytes digest
-    Sha512,
-    /// SHAKE128 squeezed to 32 bytes, its security strength
-    Shake128,
-    /// SHAKE256 squeezed to 64 bytes, its security strength
-    Shake256,
-}
-
-impl PreHash {
-    /// Longest digest any of the variants produces
-    const MAX_DIGEST: usize = 64;
-
-    /// The DER encoded object identifier of the hash function
-    ///
-    /// all NIST standard sitting in the same OID tree, only last byte differs
-    const fn oid(self) -> [u8; 11] {
-        let last = match self {
-            PreHash::Sha256 => 0x01,
-            PreHash::Sha512 => 0x03,
-            PreHash::Shake128 => 0x0b,
-            PreHash::Shake256 => 0x0c,
-        };
-        [
-            0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, last,
-        ]
-    }
-
-    /// Hash `message` into `out`, returning the digest that was written
-    fn hash<'a>(self, message: &[u8], out: &'a mut [u8; Self::MAX_DIGEST]) -> &'a [u8] {
-        fn put<const M: usize>(out: &mut [u8; PreHash::MAX_DIGEST], digest: [u8; M]) -> &[u8] {
-            out[..M].copy_from_slice(&digest);
-            &out[..M]
-        }
-        match self {
-            PreHash::Sha256 => put(out, sha256(message)),
-            PreHash::Sha512 => put(out, sha512(message)),
-            PreHash::Shake128 => put(out, shake128::<32>(message)),
-            PreHash::Shake256 => put(out, shake256::<64>(message)),
-        }
-    }
-}
 
 /// Accumulate `sum_j A[i][j] v[j]` over the row `i` of the matrix `A` that
 /// `ExpandA` (FIPS 204 Algorithm 32) derives from `rho`
@@ -495,29 +441,16 @@ pub enum SigningError {
     SigningKeyInvalidRange,
 }
 
-/// Build the message representative `M'` and hand its pieces to `f`
-///
-/// `M'` is the concatenation of a domain separator, the length prefixed context
-/// string and the message, in the pure case, or the digest and its object
-/// identifier in the pre hashed one. It is passed along as its pieces so that a
-/// large message never has to be copied into a buffer of its own.
+/// Build the message representative `M'` and hand its pieces to `f`, see
+/// [`dsa_prehash::message_representative`]
 fn message_representative<T>(
     prehash: Option<PreHash>,
     message: &[u8],
     context: &[u8],
     f: impl FnOnce(&[&[u8]]) -> Result<T, SigningError>,
 ) -> Result<T, SigningError> {
-    if context.len() > MAX_CONTEXT_LENGTH {
-        return Err(SigningError::InvalidContextLength);
-    }
-    match prehash {
-        None => f(&[&[0u8, context.len() as u8], context, message]),
-        Some(ph) => {
-            let mut buf = [0u8; PreHash::MAX_DIGEST];
-            let digest = ph.hash(message, &mut buf);
-            f(&[&[1u8, context.len() as u8], context, &ph.oid(), digest])
-        }
-    }
+    dsa_prehash::message_representative(prehash, message, context, f)
+        .unwrap_or(Err(SigningError::InvalidContextLength))
 }
 
 /// Number of bits needed to represent `x`, the `bitlen` of FIPS 204

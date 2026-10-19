@@ -106,6 +106,9 @@ pub mod mlkem;
 #[cfg(feature = "mldsa")]
 pub mod mldsa;
 
+#[cfg(any(feature = "mldsa"))]
+mod dsa_prehash;
+
 #[cfg(feature = "hmac")]
 pub mod hmac;
 #[cfg(feature = "pbkdf2")]

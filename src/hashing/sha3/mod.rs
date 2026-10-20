@@ -114,7 +114,7 @@ impl<const DIGESTLEN: usize, const DSLEN: usize> Engine<DIGESTLEN, DSLEN> {
 
         let p_len = pad_len::<DSLEN>(self.offset * 8, self.rate() * 8);
 
-        let mut p = vec::from_elem(0, p_len);
+        let mut p = vec![0; p_len];
 
         if DSLEN != 0 {
             set_domain_sep(DSLEN, &mut p);

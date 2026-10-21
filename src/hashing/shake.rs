@@ -351,6 +351,22 @@ mod tests {
         )
     }
 
+    // Padding boundary known-answer test: with a message of rate - 1 bytes, the
+    // SHAKE domain separation and the final pad bit share the last byte of the
+    // block. Reference output generated with Python `hashlib`.
+    #[test]
+    fn test_shake128_pad_boundary() {
+        let msg: [u8; Shake128::BLOCK_BYTES - 1] =
+            core::array::from_fn(|i| ((i * 7 + 3) & 0xff) as u8);
+        let expected = [
+            0xbb, 0x96, 0x1b, 0xb0, 0x15, 0x52, 0x10, 0x37, 0x90, 0x5f, 0x9b, 0xaf, 0x69, 0xce,
+            0x60, 0xdd, 0x3b, 0xa7, 0x3f, 0x6e, 0xad, 0x09, 0xa5, 0x59, 0xc8, 0xd8, 0xa8, 0x5e,
+            0x10, 0x75, 0x3b, 0xca,
+        ];
+        let out: [u8; 32] = Shake128::new().update(&msg).finalize();
+        assert_eq!(out, expected);
+    }
+
     // A single large squeeze must equal the concatenation of many small
     // squeezes from the reader, and both must match the reference stream.
     // SHAKE128 has a 168-byte rate, so 200 bytes spans two squeeze blocks and

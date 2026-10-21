@@ -51,8 +51,8 @@
 //! [1]: <https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.204.pdf>
 
 use crate::constant_time::CtEqual;
-use crate::hashing::shake::Shake256;
 use crate::dsa_prehash;
+use crate::hashing::shake::Shake256;
 
 pub use crate::dsa_prehash::PreHash;
 

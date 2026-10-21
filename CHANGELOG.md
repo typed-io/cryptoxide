@@ -1,3 +1,9 @@
+# 0.6.7
+
+* mldsa: refactor prehash functionality, no changes
+* set rust minimum version to 1.95 and edition to 2024
+* sha3: remove `vec::from_elem` from padding, and by extension remove allocation in finalize.
+
 # 0.6.6
 
 * aes/aes-gcm: add x86/x86-64 optimise backend: AES-NI for the `aes` module and PCLMULQDQ for the GHASH authentication

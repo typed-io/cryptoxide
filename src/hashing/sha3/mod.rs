@@ -24,7 +24,6 @@
 //!
 //! ```
 
-use alloc::vec;
 use core::cmp;
 
 use crate::cryptoutil::zero;
@@ -75,54 +74,26 @@ impl<const DIGESTLEN: usize, const DSLEN: usize> Engine<DIGESTLEN, DSLEN> {
     pub(super) fn finalize(&mut self) {
         assert!(self.can_absorb);
 
-        fn set_domain_sep(dslen: usize, buf: &mut [u8]) {
-            assert!(!buf.is_empty());
-            if dslen == 2 {
-                // SHA-3 domain separation: 01...
-                buf[0] &= 0xfe;
-                buf[0] |= 0x2;
-            } else if dslen == 4 {
-                // SHAKE domain separation: 1111...
-                buf[0] |= 0xf;
-            }
+        // Domain separation suffix bits followed by the first bit of the
+        // pad10*1 padding: Keccak (none) 1, SHA-3 01 1, SHAKE 1111 1.
+        const {
+            assert!(DSLEN == 0 || DSLEN == 2 || DSLEN == 4);
         }
+        let ds: u8 = match DSLEN {
+            0 => 0x01,
+            2 => 0x06,
+            _ => 0x1f,
+        };
 
-        // All parameters are expected to be in bits.
-        fn pad_len<const DSLEN: usize>(offset: usize, rate: usize) -> usize {
-            assert!(rate % 8 == 0 && offset % 8 == 0);
-            let r: i64 = rate as i64;
-            let m: i64 = (offset + DSLEN) as i64;
-            let zeros = (((-m - 2) + 2 * r) % r) as usize;
-            assert!((m as usize + zeros + 2) % 8 == 0);
-            (DSLEN + zeros + 2) / 8
-        }
+        // The absorb offset is always byte aligned and strictly less than the
+        // rate, so the padding always fits in the remaining part of the current
+        // block. When offset == rate - 1, both bytes land on the same position.
+        let r = self.rate();
+        self.state[self.offset] ^= ds;
+        self.state[r - 1] ^= 0x80;
+        keccakf::keccak_f(&mut self.state);
 
-        fn set_pad<const DSLEN: usize>(buf: &mut [u8]) {
-            //assert!(buf.len() as f32 >= ((offset + 2) as f32 / 8.0).ceil());
-            let offset = DSLEN;
-            let s = offset / 8;
-            let buflen = buf.len();
-            buf[s] |= 1 << (offset % 8);
-            for i in (offset % 8) + 1..8 {
-                buf[s] &= !(1 << i);
-            }
-            for b in buf[s + 1..].iter_mut() {
-                *b = 0;
-            }
-            buf[buflen - 1] |= 0x80;
-        }
-
-        let p_len = pad_len::<DSLEN>(self.offset * 8, self.rate() * 8);
-
-        let mut p = vec::from_elem(0, p_len);
-
-        if DSLEN != 0 {
-            set_domain_sep(DSLEN, &mut p);
-        }
-
-        set_pad::<DSLEN>(&mut p);
-
-        self.process(&p);
+        self.offset = 0;
         self.can_absorb = false;
     }
 
@@ -322,6 +293,44 @@ mod tests {
             0x63, 0xd8, 0xee, 0xc3, 0xbb, 0xe9, 0xca, 0x4e,
         ];
         assert_eq!(ctx512.finalize(), expected512);
+    }
+
+    // Padding boundary known-answer tests. With a message of rate - 1 bytes,
+    // the domain separation and the final pad bit share the last byte of the
+    // block; with a message of exactly rate bytes, the padding fills a whole
+    // new block. Reference digests generated with Python `hashlib`.
+    #[test]
+    fn test_sha3_pad_boundary() {
+        let msg: [u8; 136] = core::array::from_fn(|i| ((i * 7 + 3) & 0xff) as u8);
+
+        let expected256_rate_minus_1 = [
+            0xd9, 0xdc, 0xf1, 0xf9, 0x8e, 0x49, 0xa7, 0x9b, 0x06, 0x43, 0xa9, 0xe6, 0x8f, 0xef,
+            0x48, 0x07, 0x9f, 0xf8, 0x77, 0x7c, 0x5e, 0x7e, 0x7f, 0x93, 0x46, 0x9d, 0xed, 0x65,
+            0xf1, 0x92, 0xac, 0x71,
+        ];
+        assert_eq!(
+            Context256::new().update(&msg[..135]).finalize(),
+            expected256_rate_minus_1
+        );
+
+        let expected256_rate = [
+            0x74, 0x3b, 0xd3, 0x2e, 0x77, 0x5a, 0xc7, 0x38, 0x7a, 0x57, 0xd4, 0xd5, 0x74, 0xc8,
+            0x9d, 0xde, 0xf5, 0xeb, 0xcb, 0x08, 0xbb, 0x5c, 0xc6, 0xb8, 0x8c, 0x55, 0xa2, 0x7b,
+            0x50, 0x35, 0xcc, 0x45,
+        ];
+        assert_eq!(Context256::new().update(&msg).finalize(), expected256_rate);
+
+        let expected512_rate_minus_1 = [
+            0xa0, 0x2d, 0x57, 0x95, 0xbf, 0xfd, 0x44, 0xcb, 0x0a, 0xc3, 0xcc, 0x34, 0x01, 0xae,
+            0x89, 0x05, 0x6b, 0x80, 0x17, 0x24, 0x2e, 0xaf, 0x7e, 0x80, 0x20, 0x33, 0xe9, 0x74,
+            0x67, 0x2c, 0xe7, 0x94, 0x58, 0x11, 0x76, 0x0c, 0x3b, 0x0d, 0x95, 0x78, 0xbc, 0x51,
+            0xbf, 0x90, 0xc3, 0x64, 0x63, 0x6a, 0xc8, 0x7c, 0xda, 0x9b, 0x4f, 0x3e, 0x45, 0x62,
+            0x0e, 0xa9, 0xc0, 0x30, 0x42, 0x1e, 0x9d, 0x86,
+        ];
+        assert_eq!(
+            Context512::new().update(&msg[..71]).finalize(),
+            expected512_rate_minus_1
+        );
     }
 
     #[test]

@@ -1,0 +1,3 @@
+[submodule "wycheproof"]
+	path = tests/wycheproof
+	url = https://github.com/C2SP/wycheproof.git

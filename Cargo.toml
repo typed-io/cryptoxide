@@ -10,6 +10,7 @@ keywords = [ "Crypto", "Cryptography", "Modern", "Pure" ]
 categories = [ "cryptography" ]
 edition = '2024'
 rust-version = "1.95.0"
+exclude = ["tests/wycheproof"]
 
 [badges]
 
@@ -74,3 +75,6 @@ mldsa = ["sha3", "sha2"]
 
 with-bench = []
 force-32bits = []
+
+[dev-dependencies]
+serde_json = "1"

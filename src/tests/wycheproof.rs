@@ -641,7 +641,7 @@ macro_rules! vector_tests {
             fn $name() {
                 run_file(
                     $file,
-                    include_str!(concat!("../../tests/wycheproof/testvectors_v1/", $file)),
+                    include_str!(concat!("../../tests/wycheproof/", $file)),
                     $check,
                     Some(CASES_PER_GROUP),
                 );
@@ -654,7 +654,7 @@ macro_rules! vector_tests {
             $(
                 run_file(
                     $file,
-                    include_str!(concat!("../../tests/wycheproof/testvectors_v1/", $file)),
+                    include_str!(concat!("../../tests/wycheproof/", $file)),
                     $check,
                     None,
                 );

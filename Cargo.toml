@@ -10,6 +10,7 @@ keywords = [ "Crypto", "Cryptography", "Modern", "Pure" ]
 categories = [ "cryptography" ]
 edition = '2024'
 rust-version = "1.95.0"
+exclude = ["tests/wycheproof"]
 
 [badges]
 

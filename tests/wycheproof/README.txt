@@ -1,0 +1,42 @@
+Project Wycheproof test vectors
+Upstream: https://github.com/C2SP/wycheproof
+Commit: 65ca494727a52944c204441c860b039e6786b99b
+License: Apache-2.0
+
+Files:
+- aes_gcm_test.json
+- aes_gmac_test.json
+- chacha20_poly1305_test.json
+- ed25519_test.json
+- hkdf_sha1_test.json
+- hkdf_sha256_test.json
+- hkdf_sha384_test.json
+- hkdf_sha512_test.json
+- hmac_sha1_test.json
+- hmac_sha224_test.json
+- hmac_sha256_test.json
+- hmac_sha384_test.json
+- hmac_sha512_test.json
+- mldsa_44_sign_seed_test.json
+- mldsa_44_verify_test.json
+- mldsa_65_sign_seed_test.json
+- mldsa_65_verify_test.json
+- mldsa_87_sign_seed_test.json
+- mldsa_87_verify_test.json
+- mlkem_1024_encaps_test.json
+- mlkem_1024_keygen_seed_test.json
+- mlkem_1024_semi_expanded_decaps_test.json
+- mlkem_1024_test.json
+- mlkem_512_encaps_test.json
+- mlkem_512_keygen_seed_test.json
+- mlkem_512_semi_expanded_decaps_test.json
+- mlkem_512_test.json
+- mlkem_768_encaps_test.json
+- mlkem_768_keygen_seed_test.json
+- mlkem_768_semi_expanded_decaps_test.json
+- mlkem_768_test.json
+- pbkdf2_hmacsha1_test.json
+- pbkdf2_hmacsha256_test.json
+- pbkdf2_hmacsha384_test.json
+- pbkdf2_hmacsha512_test.json
+- x25519_test.json

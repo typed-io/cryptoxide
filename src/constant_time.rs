@@ -27,9 +27,11 @@
 //!
 //! * [`base16`] : Base16 (hexadecimal) encoding and decoding
 //! * [`base32`] : Base32 encoding and decoding
+//! * [`base64`] : Base64 encoding and decoding
 
 pub mod base16;
 pub mod base32;
+pub mod base64;
 
 /// Constant time boolean
 ///

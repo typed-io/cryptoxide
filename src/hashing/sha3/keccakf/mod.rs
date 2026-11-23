@@ -51,6 +51,20 @@ pub(super) fn keccak_f(state: &mut [u8; super::B]) {
     reference::keccak_f(state)
 }
 
+/// Apply the Keccak-f[1600] permutation in-place on the 25 lanes of a sponge state.
+///
+/// This is [`keccak_f`] for the constructions that keep their state as lanes
+/// rather than bytes, saving the conversion both ways.
+#[cfg(feature = "slhdsa")]
+pub(crate) fn keccak_p(state: &mut [u64; 25]) {
+    #[cfg(all(target_arch = "aarch64", target_feature = "sha3"))]
+    {
+        return aarch64::permute(state);
+    }
+    #[allow(unreachable_code)]
+    reference::permute(state)
+}
+
 /// Apply the Keccak-f[1600] permutation to two independent sponge states.
 ///
 /// The aarch64 crypto extension backend holds a state lane in each 64-bit

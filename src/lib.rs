@@ -105,7 +105,10 @@ pub mod mlkem;
 #[cfg(feature = "mldsa")]
 pub mod mldsa;
 
-#[cfg(any(feature = "mldsa"))]
+#[cfg(feature = "slhdsa")]
+pub mod slhdsa;
+
+#[cfg(any(feature = "mldsa", feature = "slhdsa"))]
 mod dsa_prehash;
 
 #[cfg(feature = "hmac")]

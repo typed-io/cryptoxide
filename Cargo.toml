@@ -3,7 +3,6 @@ name = "cryptoxide"
 version = "0.6.7"
 authors = ["Vincent Hanquez <vincent@coretype.io>", "Nicolas Di Prima <nicolas@prime-type.co.uk>", "The Rust-Crypto Project Developers"]
 license = "MIT/Apache-2.0"
-homepage = "https://github.com/typed-io/cryptoxide/"
 repository = "https://github.com/typed-io/cryptoxide/"
 description = "pure implementation of various common modern cryptographic algorithms, WASM compatible"
 keywords = [ "Crypto", "Cryptography", "Modern", "Pure" ]
@@ -42,7 +41,8 @@ default = [
     "ed25519",
     "x25519",
     "mlkem",
-    "mldsa"
+    "mldsa",
+    "slhdsa"
 ]
 aes = []
 aes-gcm = ["aes"]
@@ -71,6 +71,8 @@ x25519 = ["curve25519"]
 mlkem = ["sha3"]
 # the pre hash variant of ML-DSA signs SHA-2 digests as well as SHA-3 ones
 mldsa = ["sha3", "sha2"]
+# the SHA2 parameter sets use HMAC for their message randomizer
+slhdsa = ["sha3", "sha2", "hmac"]
 
 with-bench = []
 force-32bits = []

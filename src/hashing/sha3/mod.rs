@@ -30,7 +30,9 @@ use crate::cryptoutil::zero;
 
 mod keccakf;
 
-pub(super) use keccakf::keccak_f_x2;
+pub(crate) use keccakf::keccak_f_x2;
+#[cfg(feature = "slhdsa")]
+pub(crate) use keccakf::keccak_p;
 
 pub(super) const B: usize = 200;
 

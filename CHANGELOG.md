@@ -3,6 +3,7 @@
 * add SLH-DSA (FIPS 205) in the `slhdsa` module, under the new `slhdsa` feature, with the twelve
   standard parameter sets (SHA2 and SHAKE, 128/192/256 bits, `s` and `f` variants), the pure and
   pre hash (`HashSLH-DSA`) variants, and deterministic or hedged signing
+* add constant time base16, base32 and base64. using standard hardcoded alphabets for now.
 
 # 0.6.7
 

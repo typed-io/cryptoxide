@@ -2,7 +2,7 @@ use super::eng256;
 use super::eng512;
 
 #[rustfmt::skip]
-pub(super) const H512: [u64; eng512::STATE_LEN] = [
+pub(crate) const H512: [u64; eng512::STATE_LEN] = [
     0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
     0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179,
 ];
@@ -25,7 +25,7 @@ pub(super) const H512_TRUNC_224: [u64; eng512::STATE_LEN] = [
     0x0f6d2b697bd44da8, 0x77e36f7304c48942, 0x3f9d85a86a1d36c8, 0x1112e6ad91d692a1,
 ];
 
-pub(super) const H256: [u32; eng256::STATE_LEN] = [
+pub(crate) const H256: [u32; eng256::STATE_LEN] = [
     0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
 ];
 

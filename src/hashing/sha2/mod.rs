@@ -54,6 +54,18 @@ mod initials;
 use crate::cryptoutil::FixedBuffer;
 use initials::*;
 
+/// The raw SHA-256 and SHA-512 compression functions and initial states
+///
+/// For the constructions of the crate that hash many short inputs sharing a
+/// common prefix, and resume from a state where that prefix is already
+/// compressed rather than from the initial one.
+#[cfg(feature = "slhdsa")]
+pub(crate) mod raw {
+    pub(crate) use super::impl256::digest_block as compress256;
+    pub(crate) use super::impl512::digest_block as compress512;
+    pub(crate) use super::initials::{H256, H512};
+}
+
 macro_rules! digest {
     (256 $name:ident, $ctxname:ident, $output_fn: ident, $output_bits:expr, $state:ident) => {
         digest!(
